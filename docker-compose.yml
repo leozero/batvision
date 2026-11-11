@@ -1,0 +1,22 @@
+# Deployed by Dokploy ("Compose" service). The domain and HTTPS are configured in
+# Dokploy, which adds the Traefik routing to port 8420 itself.
+services:
+  batvision:
+    image: ghcr.io/${GHCR_OWNER:?set GHCR_OWNER in Dokploy env}/batvision:${BATVISION_TAG:-latest}
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    expose:
+      - "8420"
+    environment:
+      RUST_LOG: ${RUST_LOG:-info}
+    volumes:
+      - ${MEDIA_PATH:?set MEDIA_PATH to your media library}:/media:ro
+      - ${DATA_PATH:-./data}:/data
+      - ${CACHE_PATH:-./cache}:/cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu, video]

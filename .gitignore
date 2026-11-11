@@ -1,0 +1,25 @@
+# Rust
+/server/target/
+
+# Node
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# Tests
+/apps/*/test-results/
+/apps/*/playwright-report/
+/apps/*/blob-report/
+
+# Local runtime data
+/.dev/
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

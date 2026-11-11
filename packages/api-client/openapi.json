@@ -1,0 +1,123 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "batvision",
+    "description": "batvision media server",
+    "license": {
+      "name": "AGPL-3.0-only"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Liveness check used by Docker and the reverse proxy.",
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/info": {
+      "get": {
+        "tags": [
+          "system"
+        ],
+        "summary": "Server version and detected ffmpeg capabilities.",
+        "description": "TODO(milestone 1): restrict to admins once authentication exists.",
+        "operationId": "info",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SystemInfo"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FfmpegInfo": {
+        "type": "object",
+        "required": [
+          "working_encoders"
+        ],
+        "properties": {
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "First line of `ffmpeg -version`, or `None` if ffmpeg could not be run."
+          },
+          "working_encoders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Encoders that completed a test encode."
+          }
+        }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "status",
+          "version"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "SystemInfo": {
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "properties": {
+          "ffmpeg": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FfmpegInfo",
+                "description": "`None` while the startup probe is still running."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "system",
+      "description": "Server status"
+    }
+  ]
+}
