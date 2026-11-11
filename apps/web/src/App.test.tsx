@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { createApiClient } from "@batvision/api-client";
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./App";
 
 function fakeFetch(routes: Record<string, unknown>): typeof fetch {
@@ -12,21 +12,32 @@ function fakeFetch(routes: Record<string, unknown>): typeof fetch {
   };
 }
 
+afterEach(cleanup);
+
 describe("App", () => {
-  it("shows server status and detected encoders", async () => {
+  it("shows server status and that setup is needed", async () => {
     const api = createApiClient(
       "http://test",
       fakeFetch({
         "/api/health": { status: "ok", version: "0.1.0" },
-        "/api/system/info": {
-          version: "0.1.0",
-          ffmpeg: { version: "ffmpeg version 7.1", working_encoders: ["hevc_nvenc", "av1_nvenc"] },
-        },
+        "/api/setup": { needed: true },
       }),
     );
     render(<App api={api} />);
     expect(await screen.findByTestId("server-status")).toHaveTextContent("ok — v0.1.0");
-    expect(screen.getByTestId("encoders")).toHaveTextContent("hevc_nvenc, av1_nvenc");
+    expect(screen.getByTestId("setup")).toHaveTextContent("First launch");
+  });
+
+  it("shows ready once an admin exists", async () => {
+    const api = createApiClient(
+      "http://test",
+      fakeFetch({
+        "/api/health": { status: "ok", version: "0.1.0" },
+        "/api/setup": { needed: false },
+      }),
+    );
+    render(<App api={api} />);
+    expect(await screen.findByTestId("setup")).toHaveTextContent("Ready");
   });
 
   it("reports an unreachable server", async () => {

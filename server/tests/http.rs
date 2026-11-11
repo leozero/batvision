@@ -1,63 +1,56 @@
-use axum::{
-    body::Body,
-    http::{Request, StatusCode},
-};
-use batvision_server::{AppState, app, config::Config};
-use http_body_util::BodyExt;
-use serde_json::Value;
-use tower::ServiceExt;
+mod common;
 
-fn config(web_dir: Option<std::path::PathBuf>) -> Config {
-    let mut config = Config::from_lookup(|_| None).unwrap();
-    config.web_dir = web_dir;
-    config
-}
-
-async fn get(router: axum::Router, uri: &str) -> (StatusCode, String) {
-    let res = router
-        .oneshot(Request::get(uri).body(Body::empty()).unwrap())
-        .await
-        .unwrap();
-    let status = res.status();
-    let body = res.into_body().collect().await.unwrap().to_bytes();
-    (status, String::from_utf8(body.to_vec()).unwrap())
-}
+use axum::http::StatusCode;
+use common::{TestApp, test_config};
 
 #[tokio::test]
 async fn health_returns_ok_and_version() {
-    let (status, body) = get(app(AppState::new(config(None))), "/api/health").await;
+    let app = TestApp::new().await;
+    let (status, json) = app.get("/api/health", None).await;
     assert_eq!(status, StatusCode::OK);
-    let json: Value = serde_json::from_str(&body).unwrap();
     assert_eq!(json["status"], "ok");
     assert_eq!(json["version"], env!("CARGO_PKG_VERSION"));
 }
 
 #[tokio::test]
-async fn system_info_reports_pending_probe_as_null() {
-    let (status, body) = get(app(AppState::new(config(None))), "/api/system/info").await;
+async fn system_info_is_admin_only() {
+    let app = TestApp::new().await;
+    let (status, _) = app.get("/api/system/info", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    let (token, _) = app.ready_admin().await;
+    let (status, json) = app.get("/api/system/info", Some(&token)).await;
     assert_eq!(status, StatusCode::OK);
-    let json: Value = serde_json::from_str(&body).unwrap();
-    assert!(json["ffmpeg"].is_null());
+    assert!(json["ffmpeg"].is_null(), "probe not run in tests");
 }
 
 #[tokio::test]
-async fn openapi_lists_system_routes() {
-    let (status, body) = get(app(AppState::new(config(None))), "/api/openapi.json").await;
+async fn openapi_lists_routes_and_bearer_scheme() {
+    let app = TestApp::new().await;
+    let (status, json) = app.get("/api/openapi.json", None).await;
     assert_eq!(status, StatusCode::OK);
-    let json: Value = serde_json::from_str(&body).unwrap();
-    assert!(json["paths"]["/api/health"].is_object());
-    assert!(json["paths"]["/api/system/info"].is_object());
+    for path in [
+        "/api/health",
+        "/api/auth/login",
+        "/api/me",
+        "/api/admin/users",
+    ] {
+        assert!(json["paths"][path].is_object(), "missing {path}");
+    }
+    assert_eq!(
+        json["components"]["securitySchemes"]["bearer"]["scheme"],
+        "bearer"
+    );
 }
 
 #[tokio::test]
 async fn unknown_api_route_is_404_even_with_web_dir() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("index.html"), "<html>spa</html>").unwrap();
-    let (status, _) = get(
-        app(AppState::new(config(Some(dir.path().into())))),
-        "/api/does-not-exist",
-    )
-    .await;
+    let mut config = test_config();
+    config.web_dir = Some(dir.path().into());
+    let app = TestApp::with_config(config).await;
+    let (status, _) = app.get("/api/does-not-exist", None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
 
@@ -65,11 +58,42 @@ async fn unknown_api_route_is_404_even_with_web_dir() {
 async fn spa_routes_fall_back_to_index() {
     let dir = tempfile::tempdir().unwrap();
     std::fs::write(dir.path().join("index.html"), "<html>spa</html>").unwrap();
-    let (status, body) = get(
-        app(AppState::new(config(Some(dir.path().into())))),
-        "/series/42",
-    )
-    .await;
+    let mut config = test_config();
+    config.web_dir = Some(dir.path().into());
+    let app = TestApp::with_config(config).await;
+    let (status, body) = app.get("/series/42", None).await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body.contains("spa"));
+    assert!(body.as_str().unwrap().contains("spa"));
+}
+
+#[tokio::test]
+async fn every_openapi_ref_resolves() {
+    fn collect(value: &serde_json::Value, refs: &mut Vec<String>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                for (key, v) in map {
+                    match (key.as_str(), v) {
+                        ("$ref", serde_json::Value::String(r)) => refs.push(r.clone()),
+                        _ => collect(v, refs),
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => items.iter().for_each(|v| collect(v, refs)),
+            _ => {}
+        }
+    }
+    let app = TestApp::new().await;
+    let (_, spec) = app.get("/api/openapi.json", None).await;
+    let mut refs = Vec::new();
+    collect(&spec, &mut refs);
+    assert!(!refs.is_empty());
+    for r in refs {
+        let name = r
+            .strip_prefix("#/components/schemas/")
+            .expect("local schema ref");
+        assert!(
+            spec["components"]["schemas"][name].is_object(),
+            "unresolved $ref {r}"
+        );
+    }
 }

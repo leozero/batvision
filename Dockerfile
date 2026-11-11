@@ -17,6 +17,7 @@ RUN pnpm --filter @batvision/web build
 FROM rust:1.99-slim-trixie AS server
 WORKDIR /src/server
 COPY server/Cargo.toml server/Cargo.lock ./
+COPY server/migrations migrations
 COPY server/src src
 RUN --mount=type=cache,id=cargo-registry,target=/usr/local/cargo/registry \
     --mount=type=cache,id=cargo-target,target=/src/server/target \
@@ -47,7 +48,8 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
     BATVISION_DATA_DIR=/data \
     BATVISION_CACHE_DIR=/cache \
     BATVISION_MEDIA_DIR=/media \
-    BATVISION_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg
+    BATVISION_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
+    BATVISION_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe
 
 RUN mkdir -p /data /cache /media && chown 1000:1000 /data /cache
 USER 1000:1000

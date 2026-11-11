@@ -24,6 +24,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
+      - name: Install ffmpeg (real ffprobe test)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - run: cargo fmt --check
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo test --locked

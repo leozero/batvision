@@ -2,7 +2,7 @@ use axum::{Json, extract::State};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::{AppState, ffmpeg::FfmpegInfo};
+use crate::{AppState, auth::Admin, ffmpeg::FfmpegInfo};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct Health {
@@ -27,12 +27,10 @@ pub struct SystemInfo {
     pub ffmpeg: Option<FfmpegInfo>,
 }
 
-/// Server version and detected ffmpeg capabilities.
-///
-/// TODO(milestone 1): restrict to admins once authentication exists.
-#[utoipa::path(get, path = "/api/system/info", tag = "system",
-    responses((status = 200, body = SystemInfo)))]
-pub async fn info(State(state): State<AppState>) -> Json<SystemInfo> {
+/// Server version and detected ffmpeg capabilities (admins only).
+#[utoipa::path(get, path = "/api/system/info", tag = "system", security(("bearer" = [])),
+    responses((status = 200, body = SystemInfo), (status = 403, body = crate::error::ErrorBody)))]
+pub async fn info(State(state): State<AppState>, _: Admin) -> Json<SystemInfo> {
     Json(SystemInfo {
         version: env!("CARGO_PKG_VERSION"),
         ffmpeg: state.ffmpeg.read().await.clone(),

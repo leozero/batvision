@@ -1,6 +1,11 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { defineConfig } from "@playwright/test";
 
 const port = 8421;
+// Fresh server state for every run.
+const dataDir = mkdtempSync(join(tmpdir(), "batvision-e2e-"));
 
 /**
  * End-to-end tests run the real Rust server serving the built web app (`pnpm build` first),
@@ -17,8 +22,9 @@ export default defineConfig({
     env: {
       BATVISION_BIND: `127.0.0.1:${port}`,
       BATVISION_WEB_DIR: "dist",
-      BATVISION_DATA_DIR: "test-results/server/data",
-      BATVISION_CACHE_DIR: "test-results/server/cache",
+      BATVISION_DATA_DIR: join(dataDir, "data"),
+      BATVISION_CACHE_DIR: join(dataDir, "cache"),
+      BATVISION_SCAN_INTERVAL_MINUTES: "0",
     },
   },
 });

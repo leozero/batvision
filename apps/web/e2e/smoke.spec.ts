@@ -4,6 +4,12 @@ test("web app is served by the server and reaches the API", async ({ page }) => 
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "batvision" })).toBeVisible();
   await expect(page.getByTestId("server-status")).toContainText("ok");
+  await expect(page.getByTestId("setup")).toContainText("First launch");
+});
+
+test("system info is not public", async ({ request }) => {
+  const res = await request.get("/api/system/info");
+  expect(res.status()).toBe(401);
 });
 
 test("client-side routes survive a reload", async ({ page }) => {

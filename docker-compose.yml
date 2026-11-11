@@ -9,6 +9,10 @@ services:
       - "8420"
     environment:
       RUST_LOG: ${RUST_LOG:-info}
+      # Behind Dokploy's Traefik: the client IP comes from X-Forwarded-For.
+      BATVISION_TRUST_PROXY: "true"
+      BATVISION_TMDB_TOKEN: ${TMDB_TOKEN:-}
+      BATVISION_DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-fr-FR}
     volumes:
       - ${MEDIA_PATH:?set MEDIA_PATH to your media library}:/media:ro
       - ${DATA_PATH:-./data}:/data

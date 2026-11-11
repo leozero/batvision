@@ -1,48 +1,216 @@
+pub mod auth;
 pub mod config;
+pub mod db;
+pub mod error;
 pub mod ffmpeg;
+pub mod library;
+pub mod metadata;
 pub mod routes;
 
 use std::sync::Arc;
 
-use axum::{Json, Router, http::StatusCode, routing::get};
+use axum::{
+    Json, Router,
+    http::StatusCode,
+    routing::{delete, get, post},
+};
 use tokio::sync::RwLock;
 use tower_http::{
     services::{ServeDir, ServeFile},
     trace::TraceLayer,
 };
-use utoipa::OpenApi;
+use utoipa::{
+    Modify, OpenApi,
+    openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme},
+};
 
-use crate::{config::Config, ffmpeg::FfmpegInfo};
+use crate::{
+    auth::AuthState, config::Config, db::Db, ffmpeg::FfmpegInfo, library::scanner::ScanManager,
+    metadata::tmdb::TmdbClient,
+};
 
 #[derive(OpenApi)]
 #[openapi(
     info(title = "batvision", license(name = "AGPL-3.0-only")),
-    paths(routes::system::health, routes::system::info),
-    tags((name = "system", description = "Server status"))
+    modifiers(&BearerAuth),
+    paths(
+        routes::system::health,
+        routes::system::info,
+        routes::auth::setup_status,
+        routes::auth::setup,
+        routes::auth::login,
+        routes::auth::login_totp,
+        routes::auth::logout,
+        routes::auth::accept_invitation,
+        routes::auth::quick_connect_start,
+        routes::auth::quick_connect_poll,
+        routes::auth::quick_connect_approve,
+        routes::me::get_me,
+        routes::me::update_me,
+        routes::me::change_password,
+        routes::me::totp_setup,
+        routes::me::totp_enable,
+        routes::me::totp_disable,
+        routes::me::regenerate_recovery_codes,
+        routes::me::list_devices,
+        routes::me::revoke_device,
+        routes::admin::list_users,
+        routes::admin::create_user,
+        routes::admin::delete_user,
+        routes::admin::create_invitation,
+        routes::admin::list_invitations,
+        routes::admin::delete_invitation,
+        routes::library::list_libraries,
+        routes::library::create_library,
+        routes::library::delete_library,
+        routes::library::scan_library,
+        routes::library::list_scans,
+        routes::library::search_metadata,
+        routes::library::identify_movie,
+        routes::library::identify_series,
+        routes::library::libraries,
+        routes::library::movies,
+        routes::library::movie,
+        routes::library::series_list,
+        routes::library::series,
+        routes::library::season_episodes,
+        routes::library::episode,
+        routes::library::image,
+    ),
+    tags(
+        (name = "system", description = "Server status"),
+        (name = "auth", description = "Sign-in flows"),
+        (name = "me", description = "The signed-in user's account"),
+        (name = "admin", description = "Administration (admins with 2FA only)"),
+        (name = "library", description = "Browsing movies and series"),
+    )
 )]
 pub struct ApiDoc;
+
+struct BearerAuth;
+
+impl Modify for BearerAuth {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let components = openapi.components.get_or_insert_with(Default::default);
+        components.add_security_scheme(
+            "bearer",
+            SecurityScheme::Http(HttpBuilder::new().scheme(HttpAuthScheme::Bearer).build()),
+        );
+    }
+}
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
+    pub db: Db,
+    pub auth: Arc<AuthState>,
     /// Filled in by the background ffmpeg probe.
     pub ffmpeg: Arc<RwLock<Option<FfmpegInfo>>>,
+    /// `None` without a TMDB token: libraries still work, without metadata.
+    pub tmdb: Option<Arc<TmdbClient>>,
+    pub scans: Arc<ScanManager>,
 }
 
 impl AppState {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, db: Db) -> Self {
+        let tmdb = config.tmdb_token.as_deref().map(|token| {
+            Arc::new(TmdbClient::new(
+                &config.tmdb_api_url,
+                &config.tmdb_image_url,
+                token,
+            ))
+        });
         Self {
+            tmdb,
+            scans: Arc::new(ScanManager::default()),
             config: Arc::new(config),
+            db,
+            auth: Arc::new(AuthState::default()),
             ffmpeg: Arc::new(RwLock::new(None)),
         }
+    }
+
+    /// While no account exists, creates the one-time token needed to create the first admin.
+    pub async fn init_setup_token(&self) -> anyhow::Result<Option<String>> {
+        let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+            .fetch_one(&self.db)
+            .await?;
+        if users > 0 {
+            return Ok(None);
+        }
+        let token = auth::crypto::random_code(b"ABCDEFGHJKMNPQRSTUVWXYZ23456789", 24);
+        *self.auth.setup_token.lock().unwrap() = Some(token.clone());
+        Ok(Some(token))
     }
 }
 
 pub fn app(state: AppState) -> Router {
+    use routes::{admin, auth, library, me, system};
+
     let api = Router::new()
-        .route("/health", get(routes::system::health))
-        .route("/system/info", get(routes::system::info))
+        .route("/health", get(system::health))
+        .route("/system/info", get(system::info))
         .route("/openapi.json", get(|| async { Json(ApiDoc::openapi()) }))
+        // Auth
+        .route("/setup", get(auth::setup_status).post(auth::setup))
+        .route("/auth/login", post(auth::login))
+        .route("/auth/login/totp", post(auth::login_totp))
+        .route("/auth/logout", post(auth::logout))
+        .route("/auth/invitations/accept", post(auth::accept_invitation))
+        .route("/auth/quick-connect/start", post(auth::quick_connect_start))
+        .route("/auth/quick-connect/poll", post(auth::quick_connect_poll))
+        .route(
+            "/auth/quick-connect/approve",
+            post(auth::quick_connect_approve),
+        )
+        // Me
+        .route("/me", get(me::get_me).patch(me::update_me))
+        .route("/me/password", axum::routing::put(me::change_password))
+        .route("/me/totp/setup", post(me::totp_setup))
+        .route("/me/totp/enable", post(me::totp_enable))
+        .route("/me/totp/disable", post(me::totp_disable))
+        .route(
+            "/me/totp/recovery-codes",
+            post(me::regenerate_recovery_codes),
+        )
+        .route("/me/devices", get(me::list_devices))
+        .route("/me/devices/{id}", delete(me::revoke_device))
+        // Admin
+        .route(
+            "/admin/users",
+            get(admin::list_users).post(admin::create_user),
+        )
+        .route("/admin/users/{id}", delete(admin::delete_user))
+        .route(
+            "/admin/invitations",
+            get(admin::list_invitations).post(admin::create_invitation),
+        )
+        .route("/admin/invitations/{id}", delete(admin::delete_invitation))
+        .route(
+            "/admin/libraries",
+            get(library::list_libraries).post(library::create_library),
+        )
+        .route("/admin/libraries/{id}", delete(library::delete_library))
+        .route("/admin/libraries/{id}/scan", post(library::scan_library))
+        .route("/admin/scans", get(library::list_scans))
+        .route("/admin/metadata/search", get(library::search_metadata))
+        .route("/admin/movies/{id}/identify", post(library::identify_movie))
+        .route(
+            "/admin/series/{id}/identify",
+            post(library::identify_series),
+        )
+        // Library
+        .route("/libraries", get(library::libraries))
+        .route("/movies", get(library::movies))
+        .route("/movies/{id}", get(library::movie))
+        .route("/series", get(library::series_list))
+        .route("/series/{id}", get(library::series))
+        .route(
+            "/series/{id}/seasons/{season}",
+            get(library::season_episodes),
+        )
+        .route("/episodes/{id}", get(library::episode))
+        .route("/images/{size}/{file}", get(library::image))
         // Without this, unknown /api paths would inherit the SPA fallback and return HTML.
         .fallback(|| async { StatusCode::NOT_FOUND });
 

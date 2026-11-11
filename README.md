@@ -5,7 +5,7 @@ Self-hosted media server (movies and TV series), rewritten from scratch with Jel
 - Specification: [docs/spec.md](docs/spec.md)
 - Decision log: [docs/decisions.md](docs/decisions.md)
 
-> Early development: only the project foundations exist so far.
+> Early development: the server core exists, the clients don't yet.
 
 ## Layout
 
@@ -55,15 +55,20 @@ pnpm --filter @batvision/api-client generate
 
 ## Server configuration
 
-| Variable              | Default (dev)  | Purpose                                                |
-| --------------------- | -------------- | ------------------------------------------------------ |
-| `BATVISION_BIND`      | `0.0.0.0:8420` | Listen address (HTTPS is handled by the reverse proxy) |
-| `BATVISION_WEB_DIR`   | —              | Built web client, served as a SPA                      |
-| `BATVISION_DATA_DIR`  | `./.dev/data`  | Database and images, **to be backed up**               |
-| `BATVISION_MEDIA_DIR` | `./.dev/media` | Media library, read-only                               |
-| `BATVISION_CACHE_DIR` | `./.dev/cache` | Transcodes and encoded versions, disposable            |
-| `BATVISION_FFMPEG`    | `ffmpeg`       | ffmpeg binary                                          |
-| `RUST_LOG`            | `info`         | Log level                                              |
+| Variable                          | Default (dev)  | Purpose                                                                 |
+| --------------------------------- | -------------- | ----------------------------------------------------------------------- |
+| `BATVISION_BIND`                  | `0.0.0.0:8420` | Listen address (HTTPS is handled by the reverse proxy)                  |
+| `BATVISION_WEB_DIR`               | —              | Built web client, served as a SPA                                       |
+| `BATVISION_DATA_DIR`              | `./.dev/data`  | Database and images, **to be backed up**                                |
+| `BATVISION_MEDIA_DIR`             | `./.dev/media` | Media library, read-only                                                |
+| `BATVISION_CACHE_DIR`             | `./.dev/cache` | Transcodes and encoded versions, disposable                             |
+| `BATVISION_FFMPEG`                | `ffmpeg`       | ffmpeg binary                                                           |
+| `BATVISION_FFPROBE`               | `ffprobe`      | ffprobe binary                                                          |
+| `BATVISION_TMDB_TOKEN`            | —              | TMDB "API Read Access Token". Without it, no metadata                   |
+| `BATVISION_DEFAULT_LANGUAGE`      | `fr-FR`        | Default metadata language, also used for new accounts                   |
+| `BATVISION_SCAN_INTERVAL_MINUTES` | `15`           | Interval between automatic scans (`0` disables them)                    |
+| `BATVISION_TRUST_PROXY`           | `false`        | Read the client IP from `X-Forwarded-For` (only behind a reverse proxy) |
+| `RUST_LOG`                        | `info`         | Log level                                                               |
 
 ## Deployment (Dokploy)
 
@@ -72,6 +77,14 @@ pnpm --filter @batvision/api-client generate
 3. **In Dokploy:** create a **Compose** service pointing at this repository, using `docker-compose.yml`.
 4. **Variables:** copy [.env.example](.env.example) into the _Environment_ tab and adjust the paths.
 5. **Domain:** add your domain on the `batvision` service, port `8420`, with HTTPS. Dokploy configures Traefik.
-6. **Check:** `https://<domain>/` should show the server version and, under _Encoders_, `av1_nvenc`, `hevc_nvenc` and `h264_nvenc`. If they're missing, the GPU is not reachable from the container.
+6. **Check:** `https://<domain>/` should show the server version.
 
-> `/api/system/info` is public during milestone 0. It becomes admin-only in milestone 1.
+## First launch
+
+1. On first start, the server logs: `no account exists yet: create the first administrator with setup token XXXXXXXX`.
+2. Create the administrator account with that token (`POST /api/setup`, then from the web UI once milestone 2 lands). The token works once. If the server restarts before that, a new token is printed.
+3. Enable 2FA (`/api/me/totp/setup`, then `/api/me/totp/enable`). It is mandatory for administrators: without it, admin routes are refused.
+4. Add your libraries (`POST /api/admin/libraries` with a folder relative to `/media`, for example `Movies`). A first scan starts right away.
+5. `GET /api/system/info` (admin) lists the detected encoders: `av1_nvenc`, `hevc_nvenc` and `h264_nvenc` should be there. If they're missing, the GPU is not reachable from the container.
+
+The full API documentation is served by the server at `/api/openapi.json`.

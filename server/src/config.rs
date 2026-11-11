@@ -3,7 +3,7 @@ use std::{net::SocketAddr, path::PathBuf};
 use anyhow::Context;
 
 /// Runtime configuration, read from `BATVISION_*` environment variables.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Config {
     /// Address the HTTP server listens on. TLS is terminated by the reverse proxy.
     pub bind: SocketAddr,
@@ -17,6 +17,18 @@ pub struct Config {
     pub cache_dir: PathBuf,
     /// ffmpeg binary.
     pub ffmpeg: PathBuf,
+    /// ffprobe binary.
+    pub ffprobe: PathBuf,
+    /// Behind a reverse proxy: take the client IP from `X-Forwarded-For`.
+    pub trust_proxy: bool,
+    /// TMDB API Read Access Token (v4 "Bearer" token). Without it, no metadata is fetched.
+    pub tmdb_token: Option<String>,
+    pub tmdb_api_url: String,
+    pub tmdb_image_url: String,
+    /// Language used for metadata when no user exists yet, and for new users.
+    pub default_language: String,
+    /// Minutes between automatic library scans. 0 disables them.
+    pub scan_interval_minutes: u64,
 }
 
 impl Config {
@@ -39,7 +51,48 @@ impl Config {
             media_dir: get("BATVISION_MEDIA_DIR", "./.dev/media").into(),
             cache_dir: get("BATVISION_CACHE_DIR", "./.dev/cache").into(),
             ffmpeg: get("BATVISION_FFMPEG", "ffmpeg").into(),
+            ffprobe: get("BATVISION_FFPROBE", "ffprobe").into(),
+            trust_proxy: parse_bool(&get("BATVISION_TRUST_PROXY", "false"))
+                .context("BATVISION_TRUST_PROXY must be true or false")?,
+            tmdb_token: lookup("BATVISION_TMDB_TOKEN").filter(|t| !t.trim().is_empty()),
+            tmdb_api_url: get("BATVISION_TMDB_API_URL", "https://api.themoviedb.org/3"),
+            tmdb_image_url: get("BATVISION_TMDB_IMAGE_URL", "https://image.tmdb.org/t/p"),
+            default_language: get("BATVISION_DEFAULT_LANGUAGE", "fr-FR"),
+            scan_interval_minutes: get("BATVISION_SCAN_INTERVAL_MINUTES", "15")
+                .parse()
+                .context("BATVISION_SCAN_INTERVAL_MINUTES must be a number")?,
         })
+    }
+}
+
+/// Manual impl so the TMDB token never ends up in logs.
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("bind", &self.bind)
+            .field("web_dir", &self.web_dir)
+            .field("data_dir", &self.data_dir)
+            .field("media_dir", &self.media_dir)
+            .field("cache_dir", &self.cache_dir)
+            .field("ffmpeg", &self.ffmpeg)
+            .field("ffprobe", &self.ffprobe)
+            .field("trust_proxy", &self.trust_proxy)
+            .field(
+                "tmdb_token",
+                &self.tmdb_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("tmdb_api_url", &self.tmdb_api_url)
+            .field("default_language", &self.default_language)
+            .field("scan_interval_minutes", &self.scan_interval_minutes)
+            .finish()
+    }
+}
+
+fn parse_bool(value: &str) -> Option<bool> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "1" | "true" | "yes" => Some(true),
+        "0" | "false" | "no" => Some(false),
+        _ => None,
     }
 }
 
@@ -62,6 +115,29 @@ mod tests {
         assert_eq!(config.bind.to_string(), "0.0.0.0:8420");
         assert_eq!(config.web_dir, None);
         assert_eq!(config.ffmpeg, PathBuf::from("ffmpeg"));
+        assert!(!config.trust_proxy);
+        assert_eq!(config.tmdb_token, None);
+        assert_eq!(config.scan_interval_minutes, 15);
+    }
+
+    #[test]
+    fn empty_tmdb_token_means_none() {
+        let config = Config::from_lookup(lookup(&[("BATVISION_TMDB_TOKEN", " ")])).unwrap();
+        assert_eq!(config.tmdb_token, None);
+    }
+
+    #[test]
+    fn debug_output_redacts_tmdb_token() {
+        let config =
+            Config::from_lookup(lookup(&[("BATVISION_TMDB_TOKEN", "secret-token")])).unwrap();
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("secret-token"));
+        assert!(debug.contains("<redacted>"));
+    }
+
+    #[test]
+    fn rejects_invalid_bool() {
+        assert!(Config::from_lookup(lookup(&[("BATVISION_TRUST_PROXY", "maybe")])).is_err());
     }
 
     #[test]

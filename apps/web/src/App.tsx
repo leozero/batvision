@@ -4,19 +4,19 @@ import { useEffect, useState } from "react";
 type State =
   | { kind: "loading" }
   | { kind: "error" }
-  | { kind: "ready"; health: Schemas["Health"]; info: Schemas["SystemInfo"] };
+  | { kind: "ready"; health: Schemas["Health"]; setup: Schemas["SetupStatus"] };
 
-/** Milestone 0 placeholder: proves the web client reaches the server through the generated API client. */
+/** Placeholder until milestone 2: proves the web client reaches the server through the generated API client. */
 export function App({ api }: { api: ApiClient }) {
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.GET("/api/health"), api.GET("/api/system/info")])
-      .then(([health, info]) => {
+    Promise.all([api.GET("/api/health"), api.GET("/api/setup")])
+      .then(([health, setup]) => {
         if (cancelled) return;
-        if (health.data && info.data) {
-          setState({ kind: "ready", health: health.data, info: info.data });
+        if (health.data && setup.data) {
+          setState({ kind: "ready", health: health.data, setup: setup.data });
         } else {
           setState({ kind: "error" });
         }
@@ -38,14 +38,12 @@ export function App({ api }: { api: ApiClient }) {
           <dd data-testid="server-status">
             {state.health.status} — v{state.health.version}
           </dd>
-          <dt>ffmpeg</dt>
-          <dd data-testid="ffmpeg">
-            {state.info.ffmpeg === null || state.info.ffmpeg === undefined
-              ? "detecting…"
-              : (state.info.ffmpeg.version ?? "not found")}
+          <dt>Setup</dt>
+          <dd data-testid="setup">
+            {state.setup.needed
+              ? "First launch: create the administrator account with the setup token printed in the server logs."
+              : "Ready"}
           </dd>
-          <dt>Encoders</dt>
-          <dd data-testid="encoders">{state.info.ffmpeg?.working_encoders.join(", ") || "—"}</dd>
         </dl>
       )}
     </main>

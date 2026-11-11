@@ -1,4 +1,6 @@
-use batvision_server::{AppState, app, config::Config, ffmpeg};
+use std::net::SocketAddr;
+
+use batvision_server::{AppState, app, config::Config, db, ffmpeg};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -24,7 +26,13 @@ async fn main() -> anyhow::Result<()> {
     }
     tracing::info!(?config, "starting batvision");
 
-    let state = AppState::new(config.clone());
+    let db = db::open(&config.data_dir).await?;
+    let state = AppState::new(config.clone(), db);
+    if let Some(token) = state.init_setup_token().await? {
+        tracing::warn!(
+            "no account exists yet: create the first administrator with setup token {token}"
+        );
+    }
 
     let probe_state = state.clone();
     tokio::spawn(async move {
@@ -33,11 +41,20 @@ async fn main() -> anyhow::Result<()> {
         *probe_state.ffmpeg.write().await = Some(info);
     });
 
+    if state.tmdb.is_none() {
+        tracing::warn!("BATVISION_TMDB_TOKEN is not set: libraries will have no metadata");
+    }
+    // First tick runs right away: libraries are scanned at startup.
+    batvision_server::library::scanner::spawn_scheduler(state.clone());
+
     let listener = tokio::net::TcpListener::bind(config.bind).await?;
     tracing::info!("listening on http://{}", config.bind);
-    axum::serve(listener, app(state))
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
+    axum::serve(
+        listener,
+        app(state).into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await?;
     Ok(())
 }
 

@@ -4,6 +4,318 @@
  */
 
 export interface paths {
+    "/api/admin/invitations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_invitations"];
+        put?: never;
+        post: operations["create_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/invitations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_invitation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_libraries"];
+        put?: never;
+        /** Adds a library and starts its first scan. */
+        post: operations["create_library"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/libraries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Removes a library from batvision (files on disk are never touched). */
+        delete: operations["delete_library"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/libraries/{id}/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["scan_library"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/metadata/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Searches TMDB, to pick the right match for a misidentified item. */
+        get: operations["search_metadata"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/movies/{id}/identify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pins a movie to a TMDB id. Later scans never override a manual identification. */
+        post: operations["identify_movie"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_scans"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/series/{id}/identify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pins a series to a TMDB id and refetches its seasons and episodes. */
+        post: operations["identify_series"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_users"];
+        put?: never;
+        post: operations["create_user"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["delete_user"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/invitations/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Creates an account from an invitation link and signs the device in. */
+        post: operations["accept_invitation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["login_totp"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revokes the calling device's token. */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/quick-connect/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Approves the code shown on another device, signing it in as the caller. */
+        post: operations["quick_connect_approve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/quick-connect/poll": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["quick_connect_poll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/quick-connect/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["quick_connect_start"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/episodes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["episode"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/health": {
         parameters: {
             query?: never;
@@ -21,7 +333,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/system/info": {
+    "/api/images/{size}/{file}": {
         parameters: {
             query?: never;
             header?: never;
@@ -29,9 +341,272 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Server version and detected ffmpeg capabilities.
-         * @description TODO(milestone 1): restrict to admins once authentication exists.
+         * TMDB image (poster, backdrop, still), cached on disk. Public, so it works in
+         *     `<img>` tags; only images referenced by the library are served.
          */
+        get: operations["image"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["libraries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_me"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["update_me"];
+        trace?: never;
+    };
+    "/api/me/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_devices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/devices/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Signs a device out. Its token stops working immediately. */
+        delete: operations["revoke_device"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Changes the password and signs out every other device. */
+        put: operations["change_password"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/totp/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Disables 2FA. Not allowed for administrators, for whom it is mandatory. */
+        post: operations["totp_disable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/totp/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["totp_enable"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/totp/recovery-codes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Replaces all recovery codes (for example after using several of them). */
+        post: operations["regenerate_recovery_codes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/me/totp/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Starts 2FA enrollment. 2FA becomes active only after `/api/me/totp/enable`. */
+        post: operations["totp_setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/movies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["movies"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/movies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["movie"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["series_list"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/series/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["series"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/series/{id}/seasons/{season}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["season_episodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["setup_status"];
+        put?: never;
+        /** Creates the first administrator. They must then enable 2FA before using admin features. */
+        post: operations["setup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/system/info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Server version and detected ffmpeg capabilities (admins only). */
         get: operations["info"];
         put?: never;
         post?: never;
@@ -45,19 +620,423 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AcceptInvitationRequest: {
+            device: components["schemas"]["DeviceInfo"];
+            password: string;
+            token: string;
+            username: string;
+        };
+        AudioTrack: {
+            /** Format: int64 */
+            channels?: number | null;
+            codec: string;
+            default: boolean;
+            /** Format: int64 */
+            index: number;
+            kind: components["schemas"]["TrackKind"];
+            /** @description ISO 639-2 code as tagged in the file (`fre`, `eng`…), if any. */
+            language?: string | null;
+            title?: string | null;
+        };
+        ChangePasswordRequest: {
+            current_password: string;
+            new_password: string;
+        };
+        CreateInvitationRequest: {
+            role: components["schemas"]["Role"];
+            /**
+             * Format: int32
+             * @description Validity in hours (default 72, max 720).
+             */
+            valid_hours?: number | null;
+        };
+        CreateLibraryRequest: {
+            kind: components["schemas"]["LibraryKind"];
+            name: string;
+            /** @description Folder relative to the media root, e.g. `Films`. */
+            path: string;
+        };
+        CreateUserRequest: {
+            password: string;
+            role: components["schemas"]["Role"];
+            username: string;
+        };
+        /** @description What a client says about itself when signing in. */
+        DeviceInfo: {
+            /** @description Human-readable name shown in the device list ("Pixel 9", "Firefox – Mac"). */
+            name: string;
+            platform: components["schemas"]["Platform"];
+        };
+        DeviceSummary: {
+            /** Format: int64 */
+            created_at: number;
+            /** @description The device making this request. */
+            current: boolean;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            last_seen_at: number;
+            name: string;
+            platform: components["schemas"]["Platform"];
+        };
+        EpisodeDetail: components["schemas"]["EpisodeSummary"] & {
+            file?: components["schemas"]["FileInfo"] | null;
+            series_title: string;
+        };
+        EpisodeSummary: {
+            air_date?: string | null;
+            /** Format: int64 */
+            duration_ms?: number | null;
+            /** Format: int64 */
+            episode_number: number;
+            /** Format: int64 */
+            episode_number_end?: number | null;
+            /** Format: int64 */
+            id: number;
+            overview?: string | null;
+            /** Format: int64 */
+            runtime_minutes?: number | null;
+            /** Format: int64 */
+            season_number: number;
+            /** Format: int64 */
+            series_id: number;
+            still_path?: string | null;
+            title?: string | null;
+        };
+        /**
+         * @description Error body returned by every endpoint. `code` is stable and meant for clients;
+         *     `message` is for humans and logs.
+         */
+        ErrorBody: {
+            code: string;
+            message: string;
+        };
         FfmpegInfo: {
             /** @description First line of `ffmpeg -version`, or `None` if ffmpeg could not be run. */
             version?: string | null;
             /** @description Encoders that completed a test encode. */
             working_encoders: string[];
         };
+        FileInfo: {
+            /** Format: int64 */
+            id: number;
+            media?: components["schemas"]["MediaInfo"] | null;
+            /** Format: int64 */
+            size_bytes: number;
+        };
         Health: {
             status: string;
             version: string;
         };
+        IdentifyRequest: {
+            /** Format: int64 */
+            tmdb_id: number;
+        };
+        Invitation: {
+            /** Format: int64 */
+            created_at: number;
+            /** Format: int64 */
+            expires_at: number;
+            /** Format: int64 */
+            id: number;
+            role: components["schemas"]["Role"];
+            /** Format: int64 */
+            used_at?: number | null;
+            /** Format: int64 */
+            used_by?: number | null;
+        };
+        InvitationCreated: {
+            /** Format: int64 */
+            expires_at: number;
+            /** Format: int64 */
+            id: number;
+            /** @description Shown only once. The client builds the invitation link from it. */
+            token: string;
+        };
+        Library: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["LibraryKind"];
+            /** Format: int64 */
+            last_scan_at?: number | null;
+            name: string;
+            /** @description Relative to the media root. */
+            path: string;
+        };
+        /** @enum {string} */
+        LibraryKind: "movies" | "series";
+        LibrarySummary: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["LibraryKind"];
+            name: string;
+        };
+        LoginRequest: {
+            device: components["schemas"]["DeviceInfo"];
+            password: string;
+            username: string;
+        };
+        LoginResponse: (components["schemas"]["Session"] & {
+            /** @enum {string} */
+            status: "ok";
+        }) | {
+            challenge: string;
+            /** @enum {string} */
+            status: "totp_required";
+        };
+        MediaInfo: {
+            audio: components["schemas"]["AudioTrack"][];
+            /** Format: int64 */
+            bitrate?: number | null;
+            /** @description ffprobe format names, e.g. `matroska,webm` or `mov,mp4,m4a,3gp,3g2,mj2`. */
+            container?: string | null;
+            /** Format: int64 */
+            duration_ms?: number | null;
+            /** Format: int64 */
+            size_bytes?: number | null;
+            subtitles: components["schemas"]["SubtitleTrack"][];
+            video?: components["schemas"]["VideoStream"] | null;
+        };
+        MetadataCandidate: {
+            overview?: string | null;
+            poster_path?: string | null;
+            title: string;
+            /** Format: int64 */
+            tmdb_id: number;
+            /** Format: int64 */
+            year?: number | null;
+        };
+        MovieDetail: {
+            /** Format: int64 */
+            added_at: number;
+            backdrop_path?: string | null;
+            file?: components["schemas"]["FileInfo"] | null;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            library_id: number;
+            overview?: string | null;
+            poster_path?: string | null;
+            release_date?: string | null;
+            /** Format: int64 */
+            runtime_minutes?: number | null;
+            title: string;
+            /** Format: int64 */
+            tmdb_id?: number | null;
+            /** Format: int64 */
+            year?: number | null;
+        };
+        MoviePage: {
+            items: components["schemas"]["MovieSummary"][];
+            /** Format: int64 */
+            total: number;
+        };
+        MovieSummary: {
+            /** Format: int64 */
+            added_at: number;
+            /** Format: int64 */
+            id: number;
+            poster_path?: string | null;
+            title: string;
+            /** Format: int64 */
+            year?: number | null;
+        };
+        /** @enum {string} */
+        Platform: "web" | "desktop" | "android" | "android_tv" | "other";
+        QuickConnectApproveRequest: {
+            code: string;
+        };
+        QuickConnectPoll: {
+            /** @enum {string} */
+            status: "pending";
+        } | {
+            /** @enum {string} */
+            status: "expired";
+        } | (components["schemas"]["Session"] & {
+            /** @enum {string} */
+            status: "ok";
+        });
+        QuickConnectPollRequest: {
+            poll_secret: string;
+        };
+        QuickConnectStartRequest: {
+            device: components["schemas"]["DeviceInfo"];
+        };
+        QuickConnectStarted: {
+            /** @description Show this on screen; the user types it on a signed-in device. */
+            code: string;
+            /** Format: int64 */
+            expires_in_secs: number;
+            /** @description Keep secret; send it to `/api/auth/quick-connect/poll`. */
+            poll_secret: string;
+        };
+        RecoveryCodes: {
+            /** @description Shown only once. Each code can be used once instead of a TOTP code. */
+            codes: string[];
+        };
+        RegenerateRecoveryCodesRequest: {
+            /** @description Current TOTP code. */
+            code: string;
+        };
+        /** @enum {string} */
+        Role: "admin" | "user";
+        ScanReport: {
+            episodes: number;
+            files_probed: number;
+            metadata_errors: number;
+            metadata_refreshed: number;
+            /** @description Why metadata was skipped, if it was (no TMDB token…). */
+            metadata_skipped?: string | null;
+            movies: number;
+            /**
+             * Format: int64
+             * @description Items not found anymore (hidden until their files come back).
+             */
+            newly_missing: number;
+            probe_errors: number;
+            series: number;
+        };
+        ScanStatus: {
+            error?: string | null;
+            /** Format: int64 */
+            finished_at?: number | null;
+            /** Format: int64 */
+            library_id: number;
+            report?: components["schemas"]["ScanReport"] | null;
+            running: boolean;
+            /** Format: int64 */
+            started_at?: number | null;
+        };
+        SeasonSummary: {
+            /** Format: int64 */
+            episode_count: number;
+            /** Format: int64 */
+            id: number;
+            poster_path?: string | null;
+            /** Format: int64 */
+            season_number: number;
+            title?: string | null;
+        };
+        SeriesDetail: {
+            backdrop_path?: string | null;
+            first_air_date?: string | null;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            library_id: number;
+            overview?: string | null;
+            poster_path?: string | null;
+            seasons: components["schemas"]["SeasonSummary"][];
+            title: string;
+            /** Format: int64 */
+            tmdb_id?: number | null;
+            /** Format: int64 */
+            year?: number | null;
+        };
+        SeriesPage: {
+            items: components["schemas"]["SeriesSummary"][];
+            /** Format: int64 */
+            total: number;
+        };
+        SeriesSummary: {
+            /** Format: int64 */
+            added_at: number;
+            /** Format: int64 */
+            episode_count: number;
+            /** Format: int64 */
+            id: number;
+            poster_path?: string | null;
+            title: string;
+            /** Format: int64 */
+            year?: number | null;
+        };
+        /** @description Returned when a device is signed in. The token is shown only once. */
+        Session: {
+            /** Format: int64 */
+            device_id: number;
+            /** @description Send as `Authorization: Bearer <token>`. */
+            token: string;
+            user: components["schemas"]["User"];
+        };
+        SetupRequest: {
+            device: components["schemas"]["DeviceInfo"];
+            password: string;
+            /** @description Printed in the server logs at startup while no account exists. */
+            setup_token: string;
+            username: string;
+        };
+        SetupStatus: {
+            /** @description True while no account exists: the first admin must be created with the setup token. */
+            needed: boolean;
+        };
+        SubtitleTrack: {
+            codec: string;
+            default: boolean;
+            /** Format: int64 */
+            index: number;
+            kind: components["schemas"]["TrackKind"];
+            language?: string | null;
+            /** @description Text subtitles can be converted for the client; image ones must be burned in. */
+            text: boolean;
+            title?: string | null;
+        };
         SystemInfo: {
             ffmpeg?: components["schemas"]["FfmpegInfo"] | null;
             version: string;
+        };
+        TotpDisableRequest: {
+            code: string;
+            password: string;
+        };
+        TotpEnableRequest: {
+            /** @description Current code from the authenticator app, proving it was set up correctly. */
+            code: string;
+        };
+        TotpLoginRequest: {
+            challenge: string;
+            /** @description 6-digit code from the authenticator app, or a recovery code. */
+            code: string;
+        };
+        TotpSetup: {
+            /** @description `otpauth://` URL, to display as a QR code. */
+            otpauth_url: string;
+            /** @description Base32 secret, for manual entry. */
+            secret: string;
+        };
+        TotpSetupRequest: {
+            password: string;
+        };
+        /**
+         * @description What a track is for, used to carry a track choice from one episode to the next.
+         * @enum {string}
+         */
+        TrackKind: "normal" | "commentary" | "forced" | "sdh";
+        UpdateMeRequest: {
+            /** @description TMDB language tag, e.g. `fr-FR`, `en-US`. */
+            language?: string | null;
+        };
+        User: {
+            /** Format: int64 */
+            id: number;
+            /** @description TMDB language tag for metadata (`fr-FR`, `en-US`…). */
+            language: string;
+            role: components["schemas"]["Role"];
+            totp_enabled: boolean;
+            username: string;
+        };
+        VideoStream: {
+            /** Format: int64 */
+            bit_depth?: number | null;
+            codec: string;
+            /** @description HDR10/HLG/Dolby Vision, detected from the transfer characteristics. */
+            hdr: boolean;
+            /** Format: int64 */
+            height?: number | null;
+            /** Format: int64 */
+            index: number;
+            profile?: string | null;
+            /** Format: int64 */
+            width?: number | null;
         };
     };
     responses: never;
@@ -68,6 +1047,654 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    list_invitations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Invitation"][];
+                };
+            };
+        };
+    };
+    create_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateInvitationRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvitationCreated"];
+                };
+            };
+        };
+    };
+    delete_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_libraries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Library"][];
+                };
+            };
+        };
+    };
+    create_library: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLibraryRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Library"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_library: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    scan_library: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    search_metadata: {
+        parameters: {
+            query: {
+                kind: "movies" | "series";
+                query: string;
+                year?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetadataCandidate"][];
+                };
+            };
+        };
+    };
+    identify_movie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentifyRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_scans: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanStatus"][];
+                };
+            };
+        };
+    };
+    identify_series: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IdentifyRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_users: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"][];
+                };
+            };
+        };
+    };
+    create_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateUserRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    accept_invitation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptInvitationRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LoginResponse"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    login_totp: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpLoginRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    quick_connect_approve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuickConnectApproveRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    quick_connect_poll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuickConnectPollRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuickConnectPoll"];
+                };
+            };
+        };
+    };
+    quick_connect_start: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuickConnectStartRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QuickConnectStarted"];
+                };
+            };
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    episode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     health: {
         parameters: {
             query?: never;
@@ -87,6 +1714,496 @@ export interface operations {
             };
         };
     };
+    image: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                size: string;
+                file: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    libraries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibrarySummary"][];
+                };
+            };
+        };
+    };
+    get_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+        };
+    };
+    update_me: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMeRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["User"];
+                };
+            };
+        };
+    };
+    list_devices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSummary"][];
+                };
+            };
+        };
+    };
+    revoke_device: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangePasswordRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    totp_disable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpDisableRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    totp_enable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpEnableRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    regenerate_recovery_codes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegenerateRecoveryCodesRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecoveryCodes"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    totp_setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpSetupRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpSetup"];
+                };
+            };
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    movies: {
+        parameters: {
+            query?: {
+                library_id?: number | null;
+                sort?: "title" | "added" | "year";
+                /** @description Default 50, max 200. */
+                limit?: number | null;
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MoviePage"];
+                };
+            };
+        };
+    };
+    movie: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MovieDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    series_list: {
+        parameters: {
+            query?: {
+                library_id?: number | null;
+                sort?: "title" | "added" | "year";
+                /** @description Default 50, max 200. */
+                limit?: number | null;
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesPage"];
+                };
+            };
+        };
+    };
+    series: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeriesDetail"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    season_episodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+                season: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EpisodeSummary"][];
+                };
+            };
+        };
+    };
+    setup_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupStatus"];
+                };
+            };
+        };
+    };
+    setup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Session"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     info: {
         parameters: {
             query?: never;
@@ -102,6 +2219,14 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SystemInfo"];
+                };
+            };
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
