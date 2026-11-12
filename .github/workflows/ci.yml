@@ -92,6 +92,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox needs.
+      - name: Allow the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Download the Electron binary
         run: pnpm --filter @batvision/desktop exec electron --version
       - run: pnpm --filter @batvision/web build

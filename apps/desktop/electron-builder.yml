@@ -29,6 +29,8 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
 linux:
+  # Defaults to the package name, which isn't a valid file name.
+  executableName: batvision
   category: AudioVideo
   target:
     - target: AppImage
