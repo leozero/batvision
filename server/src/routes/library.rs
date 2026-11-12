@@ -427,7 +427,12 @@ pub struct MovieSummary {
     pub title: String,
     pub year: Option<i64>,
     pub poster_path: Option<String>,
+    pub backdrop_path: Option<String>,
     pub added_at: i64,
+    pub duration_ms: Option<i64>,
+    /// The caller's resume position (0 if not started or already watched).
+    pub position_ms: i64,
+    pub played: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -443,8 +448,17 @@ pub async fn movies(
     current: CurrentDevice,
     Query(q): Query<BrowseQuery>,
 ) -> ApiResult<Json<MoviePage>> {
-    let lang = &current.user.language;
-    let default = &state.config.default_language;
+    Ok(Json(query_movies(&state, &current.user, &q, None).await?))
+}
+
+/// Movies as seen by `user`; `only_ids` restricts to a set of ids (search).
+pub async fn query_movies(
+    state: &AppState,
+    user: &crate::auth::User,
+    q: &BrowseQuery,
+    only_ids: Option<&[i64]>,
+) -> ApiResult<MoviePage> {
+    let ids = only_ids.map(|ids| serde_json::to_string(ids).expect("serializable"));
     let items = sqlx::query_as(
         "SELECT * FROM (
            SELECT m.id,
@@ -453,30 +467,41 @@ pub async fn movies(
                (SELECT title FROM translations WHERE item_kind = 'movie' AND item_id = m.id AND language = ?2),
                m.parsed_title) AS title,
              COALESCE(CAST(substr(m.release_date, 1, 4) AS INTEGER), m.parsed_year) AS year,
-             m.poster_path, m.added_at
+             m.poster_path, m.backdrop_path, m.added_at,
+             (SELECT duration_ms FROM media_files mf WHERE mf.item_kind = 'movie' AND mf.item_id = m.id
+                AND mf.missing_since IS NULL ORDER BY mf.size_bytes DESC LIMIT 1) AS duration_ms,
+             COALESCE((SELECT position_ms FROM user_item_data u
+                WHERE u.user_id = ?7 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS position_ms,
+             COALESCE((SELECT played FROM user_item_data u
+                WHERE u.user_id = ?7 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played
            FROM movies m
-           WHERE m.missing_since IS NULL AND (?3 IS NULL OR m.library_id = ?3))
+           WHERE m.missing_since IS NULL AND (?3 IS NULL OR m.library_id = ?3)
+             AND (?8 IS NULL OR m.id IN (SELECT value FROM json_each(?8))))
          ORDER BY
            CASE WHEN ?4 = 'added' THEN added_at ELSE 0 END DESC,
            CASE WHEN ?4 = 'year' THEN COALESCE(year, 0) ELSE 0 END DESC,
            title COLLATE NOCASE
          LIMIT ?5 OFFSET ?6",
     )
-    .bind(lang)
-    .bind(default)
+    .bind(&user.language)
+    .bind(&state.config.default_language)
     .bind(q.library_id)
     .bind(q.sort.as_str())
     .bind(q.limit())
     .bind(q.offset())
+    .bind(user.id)
+    .bind(&ids)
     .fetch_all(&state.db)
     .await?;
     let total = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM movies WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)",
+        "SELECT COUNT(*) FROM movies WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)
+         AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))",
     )
     .bind(q.library_id)
+    .bind(&ids)
     .fetch_one(&state.db)
     .await?;
-    Ok(Json(MoviePage { items, total }))
+    Ok(MoviePage { items, total })
 }
 
 #[derive(Serialize, ToSchema)]
@@ -485,9 +510,17 @@ pub struct FileInfo {
     pub size_bytes: i64,
     /// `None` until the file has been analyzed (or if analysis failed).
     pub media: Option<MediaInfo>,
+    /// Subtitle files next to the video.
+    pub external_subtitles: Vec<ExternalSubtitleInfo>,
 }
 
-async fn file_info(state: &AppState, kind: &str, item_id: i64) -> ApiResult<Option<FileInfo>> {
+#[derive(Serialize, ToSchema)]
+pub struct ExternalSubtitleInfo {
+    pub language: Option<String>,
+    pub kind: media_info::TrackKind,
+}
+
+pub async fn file_info(state: &AppState, kind: &str, item_id: i64) -> ApiResult<Option<FileInfo>> {
     let row: Option<(i64, i64, Option<String>)> = sqlx::query_as(
         "SELECT id, size_bytes, probe_json FROM media_files
          WHERE item_kind = ? AND item_id = ? AND missing_since IS NULL
@@ -497,10 +530,32 @@ async fn file_info(state: &AppState, kind: &str, item_id: i64) -> ApiResult<Opti
     .bind(item_id)
     .fetch_optional(&state.db)
     .await?;
-    Ok(row.map(|(id, size_bytes, probe)| FileInfo {
+    let Some((id, size_bytes, probe)) = row else {
+        return Ok(None);
+    };
+    let external_subtitles = sqlx::query_as::<_, (Option<String>, bool, bool)>(
+        "SELECT language, forced, sdh FROM subtitle_files WHERE media_file_id = ? ORDER BY path",
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?
+    .into_iter()
+    .map(|(language, forced, sdh)| ExternalSubtitleInfo {
+        language,
+        kind: if forced {
+            media_info::TrackKind::Forced
+        } else if sdh {
+            media_info::TrackKind::Sdh
+        } else {
+            media_info::TrackKind::Normal
+        },
+    })
+    .collect();
+    Ok(Some(FileInfo {
         id,
         size_bytes,
         media: probe.and_then(|json| media_info::parse(&json).ok()),
+        external_subtitles,
     }))
 }
 
@@ -517,6 +572,8 @@ pub struct MovieDetail {
     pub backdrop_path: Option<String>,
     pub tmdb_id: Option<i64>,
     pub added_at: i64,
+    pub position_ms: i64,
+    pub played: bool,
     #[sqlx(skip)]
     pub file: Option<FileInfo>,
 }
@@ -529,6 +586,14 @@ pub async fn movie(
     current: CurrentDevice,
     Path(id): Path<i64>,
 ) -> ApiResult<Json<MovieDetail>> {
+    Ok(Json(load_movie_detail(&state, &current.user, id).await?))
+}
+
+pub async fn load_movie_detail(
+    state: &AppState,
+    user: &crate::auth::User,
+    id: i64,
+) -> ApiResult<MovieDetail> {
     let mut detail: MovieDetail = sqlx::query_as(
         "SELECT m.id, m.library_id,
            COALESCE(
@@ -540,17 +605,22 @@ pub async fn movie(
              (SELECT overview FROM translations WHERE item_kind = 'movie' AND item_id = m.id AND language = ?2)
            ) AS overview,
            COALESCE(CAST(substr(m.release_date, 1, 4) AS INTEGER), m.parsed_year) AS year,
-           m.release_date, m.runtime_minutes, m.poster_path, m.backdrop_path, m.tmdb_id, m.added_at
+           m.release_date, m.runtime_minutes, m.poster_path, m.backdrop_path, m.tmdb_id, m.added_at,
+           COALESCE((SELECT position_ms FROM user_item_data u
+              WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS position_ms,
+           COALESCE((SELECT played FROM user_item_data u
+              WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played
          FROM movies m WHERE m.id = ?3 AND m.missing_since IS NULL",
     )
-    .bind(&current.user.language)
+    .bind(&user.language)
     .bind(&state.config.default_language)
     .bind(id)
+    .bind(user.id)
     .fetch_optional(&state.db)
     .await?
     .ok_or(ApiError::NotFound)?;
-    detail.file = file_info(&state, "movie", id).await?;
-    Ok(Json(detail))
+    detail.file = file_info(state, "movie", id).await?;
+    Ok(detail)
 }
 
 #[derive(Serialize, ToSchema, sqlx::FromRow)]
@@ -559,7 +629,10 @@ pub struct SeriesSummary {
     pub title: String,
     pub year: Option<i64>,
     pub poster_path: Option<String>,
+    pub backdrop_path: Option<String>,
     pub episode_count: i64,
+    /// Episodes the caller hasn't watched yet.
+    pub unplayed_count: i64,
     pub added_at: i64,
 }
 
@@ -576,6 +649,17 @@ pub async fn series_list(
     current: CurrentDevice,
     Query(q): Query<BrowseQuery>,
 ) -> ApiResult<Json<SeriesPage>> {
+    Ok(Json(query_series(&state, &current.user, &q, None).await?))
+}
+
+/// Series as seen by `user`; `only_ids` restricts to a set of ids (search).
+pub async fn query_series(
+    state: &AppState,
+    user: &crate::auth::User,
+    q: &BrowseQuery,
+    only_ids: Option<&[i64]>,
+) -> ApiResult<SeriesPage> {
+    let ids = only_ids.map(|ids| serde_json::to_string(ids).expect("serializable"));
     let items = sqlx::query_as(
         "SELECT * FROM (
            SELECT s.id,
@@ -584,35 +668,43 @@ pub async fn series_list(
                (SELECT title FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?2),
                s.parsed_title) AS title,
              COALESCE(CAST(substr(s.first_air_date, 1, 4) AS INTEGER), s.parsed_year) AS year,
-             s.poster_path,
+             s.poster_path, s.backdrop_path,
              (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.id AND e.missing_since IS NULL)
                AS episode_count,
+             (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.id AND e.missing_since IS NULL
+                AND NOT EXISTS (SELECT 1 FROM user_item_data u WHERE u.user_id = ?7
+                  AND u.item_kind = 'episode' AND u.item_id = e.id AND u.played = 1)) AS unplayed_count,
              -- A new episode brings the series back to the top of recently added.
              COALESCE((SELECT MAX(e.added_at) FROM episodes e
                        WHERE e.series_id = s.id AND e.missing_since IS NULL), s.added_at) AS added_at
            FROM series s
-           WHERE s.missing_since IS NULL AND (?3 IS NULL OR s.library_id = ?3))
+           WHERE s.missing_since IS NULL AND (?3 IS NULL OR s.library_id = ?3)
+             AND (?8 IS NULL OR s.id IN (SELECT value FROM json_each(?8))))
          ORDER BY
            CASE WHEN ?4 = 'added' THEN added_at ELSE 0 END DESC,
            CASE WHEN ?4 = 'year' THEN COALESCE(year, 0) ELSE 0 END DESC,
            title COLLATE NOCASE
          LIMIT ?5 OFFSET ?6",
     )
-    .bind(&current.user.language)
+    .bind(&user.language)
     .bind(&state.config.default_language)
     .bind(q.library_id)
     .bind(q.sort.as_str())
     .bind(q.limit())
     .bind(q.offset())
+    .bind(user.id)
+    .bind(&ids)
     .fetch_all(&state.db)
     .await?;
     let total = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM series WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)",
+        "SELECT COUNT(*) FROM series WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)
+         AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))",
     )
     .bind(q.library_id)
+    .bind(&ids)
     .fetch_one(&state.db)
     .await?;
-    Ok(Json(SeriesPage { items, total }))
+    Ok(SeriesPage { items, total })
 }
 
 #[derive(Serialize, ToSchema, sqlx::FromRow)]
@@ -637,6 +729,9 @@ pub struct SeriesDetail {
     pub tmdb_id: Option<i64>,
     #[sqlx(skip)]
     pub seasons: Vec<SeasonSummary>,
+    /// Episode the play button starts: the one in progress, else the next unwatched.
+    #[sqlx(skip)]
+    pub up_next: Option<EpisodeSummary>,
 }
 
 #[utoipa::path(get, path = "/api/series/{id}", tag = "library", security(("bearer" = [])),
@@ -688,6 +783,11 @@ pub async fn series(
     .bind(id)
     .fetch_all(&state.db)
     .await?;
+    if let Some(episode_id) =
+        crate::userdata::series_up_next(&state.db, current.user.id, id).await?
+    {
+        detail.up_next = Some(load_episode(&state, &current.user, episode_id).await?);
+    }
     Ok(Json(detail))
 }
 
@@ -704,6 +804,8 @@ pub struct EpisodeSummary {
     pub runtime_minutes: Option<i64>,
     pub still_path: Option<String>,
     pub duration_ms: Option<i64>,
+    pub position_ms: i64,
+    pub played: bool,
 }
 
 #[utoipa::path(get, path = "/api/series/{id}/seasons/{season}", tag = "library",
@@ -728,7 +830,11 @@ pub async fn season_episodes(
                e.air_date, e.runtime_minutes, e.still_path,
                (SELECT duration_ms FROM media_files mf
                 WHERE mf.item_kind = 'episode' AND mf.item_id = e.id AND mf.missing_since IS NULL
-                ORDER BY size_bytes DESC LIMIT 1) AS duration_ms
+                ORDER BY size_bytes DESC LIMIT 1) AS duration_ms,
+               COALESCE((SELECT position_ms FROM user_item_data u
+                  WHERE u.user_id = ?5 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS position_ms,
+               COALESCE((SELECT played FROM user_item_data u
+                  WHERE u.user_id = ?5 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS played
              FROM episodes e
              WHERE e.series_id = ?3 AND e.season_number = ?4 AND e.missing_since IS NULL
              ORDER BY e.episode_number",
@@ -737,6 +843,7 @@ pub async fn season_episodes(
         .bind(&state.config.default_language)
         .bind(id)
         .bind(season)
+        .bind(current.user.id)
         .fetch_all(&state.db)
         .await?,
     ))
@@ -747,20 +854,20 @@ pub struct EpisodeDetail {
     #[serde(flatten)]
     pub episode: EpisodeSummary,
     pub series_title: String,
+    pub series_poster_path: Option<String>,
+    pub series_backdrop_path: Option<String>,
+    pub previous_episode_id: Option<i64>,
+    pub next_episode_id: Option<i64>,
     pub file: Option<FileInfo>,
 }
 
-#[utoipa::path(get, path = "/api/episodes/{id}", tag = "library", security(("bearer" = [])),
-    params(("id" = i64, Path)),
-    responses((status = 200, body = EpisodeDetail), (status = 404, body = crate::error::ErrorBody)))]
-pub async fn episode(
-    State(state): State<AppState>,
-    current: CurrentDevice,
-    Path(id): Path<i64>,
-) -> ApiResult<Json<EpisodeDetail>> {
-    let lang = &current.user.language;
-    let default = &state.config.default_language;
-    let episode: EpisodeSummary = sqlx::query_as(
+/// One episode as seen by `user` (title in their language, their progress).
+pub async fn load_episode(
+    state: &AppState,
+    user: &crate::auth::User,
+    id: i64,
+) -> ApiResult<EpisodeSummary> {
+    sqlx::query_as(
         "SELECT e.id, e.series_id, e.season_number, e.episode_number, e.episode_number_end,
            COALESCE(
              (SELECT title FROM translations WHERE item_kind = 'episode' AND item_id = e.id AND language = ?1),
@@ -773,31 +880,73 @@ pub async fn episode(
            e.air_date, e.runtime_minutes, e.still_path,
            (SELECT duration_ms FROM media_files mf
             WHERE mf.item_kind = 'episode' AND mf.item_id = e.id AND mf.missing_since IS NULL
-            ORDER BY size_bytes DESC LIMIT 1) AS duration_ms
+            ORDER BY size_bytes DESC LIMIT 1) AS duration_ms,
+           COALESCE((SELECT position_ms FROM user_item_data u
+              WHERE u.user_id = ?4 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS position_ms,
+           COALESCE((SELECT played FROM user_item_data u
+              WHERE u.user_id = ?4 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS played
          FROM episodes e WHERE e.id = ?3 AND e.missing_since IS NULL",
     )
-    .bind(lang)
-    .bind(default)
+    .bind(&user.language)
+    .bind(&state.config.default_language)
     .bind(id)
+    .bind(user.id)
     .fetch_optional(&state.db)
     .await?
-    .ok_or(ApiError::NotFound)?;
-    let series_title: String = sqlx::query_scalar(
+    .ok_or(ApiError::NotFound)
+}
+
+#[derive(sqlx::FromRow)]
+pub struct SeriesHeader {
+    pub title: String,
+    pub poster_path: Option<String>,
+    pub backdrop_path: Option<String>,
+}
+
+pub async fn load_series_header(
+    state: &AppState,
+    user: &crate::auth::User,
+    series_id: i64,
+) -> ApiResult<SeriesHeader> {
+    Ok(sqlx::query_as(
         "SELECT COALESCE(
            (SELECT title FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?1),
            (SELECT title FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?2),
-           s.parsed_title)
+           s.parsed_title) AS title, s.poster_path, s.backdrop_path
          FROM series s WHERE s.id = ?3",
     )
-    .bind(lang)
-    .bind(default)
-    .bind(episode.series_id)
+    .bind(&user.language)
+    .bind(&state.config.default_language)
+    .bind(series_id)
     .fetch_one(&state.db)
+    .await?)
+}
+
+#[utoipa::path(get, path = "/api/episodes/{id}", tag = "library", security(("bearer" = [])),
+    params(("id" = i64, Path)),
+    responses((status = 200, body = EpisodeDetail), (status = 404, body = crate::error::ErrorBody)))]
+pub async fn episode(
+    State(state): State<AppState>,
+    current: CurrentDevice,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<EpisodeDetail>> {
+    let episode = load_episode(&state, &current.user, id).await?;
+    let header = load_series_header(&state, &current.user, episode.series_id).await?;
+    let (previous_episode_id, next_episode_id) = crate::userdata::neighbours(
+        &state.db,
+        episode.series_id,
+        episode.season_number,
+        episode.episode_number,
+    )
     .await?;
     let file = file_info(&state, "episode", id).await?;
     Ok(Json(EpisodeDetail {
         episode,
-        series_title,
+        series_title: header.title,
+        series_poster_path: header.poster_path,
+        series_backdrop_path: header.backdrop_path,
+        previous_episode_id,
+        next_episode_id,
         file,
     }))
 }

@@ -15,6 +15,7 @@ use super::{
     media_info,
     naming::{self, DetectedMovie, DetectedSeries},
 };
+use crate::playback::subtitles;
 use crate::{
     AppState,
     db::{Db, now},
@@ -161,6 +162,8 @@ pub fn spawn_scheduler(state: AppState) {
 struct ScannedFile {
     size: u64,
     modified: i64,
+    /// Subtitle files next to the video (relative to the library), with what their name says.
+    subtitles: Vec<(PathBuf, subtitles::Sidecar)>,
 }
 
 /// Lists files under `root` (relative paths), off the async runtime.
@@ -172,6 +175,7 @@ async fn walk(root: PathBuf) -> anyhow::Result<HashMap<PathBuf, ScannedFile>> {
             root.display()
         );
         let mut files = HashMap::new();
+        let mut subtitle_files = Vec::new();
         for entry in walkdir::WalkDir::new(&root).follow_links(true) {
             let entry = match entry {
                 Ok(entry) => entry,
@@ -184,6 +188,16 @@ async fn walk(root: PathBuf) -> anyhow::Result<HashMap<PathBuf, ScannedFile>> {
                 continue;
             }
             let relative = entry.path().strip_prefix(&root)?.to_path_buf();
+            let is_subtitle = relative
+                .extension()
+                .and_then(|e| e.to_str())
+                .is_some_and(|e| {
+                    subtitles::SUBTITLE_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str())
+                });
+            if is_subtitle {
+                subtitle_files.push(relative);
+                continue;
+            }
             if naming::should_ignore(&relative) {
                 continue;
             }
@@ -199,8 +213,24 @@ async fn walk(root: PathBuf) -> anyhow::Result<HashMap<PathBuf, ScannedFile>> {
                 ScannedFile {
                     size: meta.len(),
                     modified,
+                    subtitles: Vec::new(),
                 },
             );
+        }
+        // Attach each subtitle file to the video it's named after, in the same folder.
+        for subtitle in subtitle_files {
+            for (video, file) in files.iter_mut() {
+                if video.parent() != subtitle.parent() {
+                    continue;
+                }
+                let Some(stem) = video.file_stem().and_then(|s| s.to_str()) else {
+                    continue;
+                };
+                if let Some(sidecar) = subtitles::parse_sidecar(stem, &subtitle) {
+                    file.subtitles.push((subtitle.clone(), sidecar));
+                    break;
+                }
+            }
         }
         Ok(files)
     })
@@ -217,9 +247,10 @@ async fn upsert_file(
     kind: &str,
     item_id: i64,
     file: &ScannedFile,
+    library_path: &Path,
 ) -> anyhow::Result<()> {
     // A changed size or date means a new file: its probe is redone.
-    sqlx::query(
+    let file_id: i64 = sqlx::query_as(
         "INSERT INTO media_files (path, item_kind, item_id, size_bytes, modified_at)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT (path) DO UPDATE SET
@@ -233,13 +264,52 @@ async fn upsert_file(
            duration_ms = CASE WHEN media_files.size_bytes != excluded.size_bytes
                OR media_files.modified_at != excluded.modified_at THEN NULL ELSE media_files.duration_ms END,
            size_bytes = excluded.size_bytes,
-           modified_at = excluded.modified_at",
+           modified_at = excluded.modified_at
+         RETURNING id",
     )
     .bind(path)
     .bind(kind)
     .bind(item_id)
     .bind(file.size as i64)
     .bind(file.modified)
+    .fetch_one(db)
+    .await
+    .map(|row: (i64,)| row.0)?;
+    sync_subtitles(db, file_id, file, library_path).await
+}
+
+async fn sync_subtitles(
+    db: &Db,
+    media_file_id: i64,
+    file: &ScannedFile,
+    library_path: &Path,
+) -> anyhow::Result<()> {
+    let mut seen = Vec::new();
+    for (relative, sidecar) in &file.subtitles {
+        let path = path_str(&library_path.join(relative));
+        sqlx::query(
+            "INSERT INTO subtitle_files (media_file_id, path, format, language, forced, sdh)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT (path) DO UPDATE SET media_file_id = excluded.media_file_id,
+               format = excluded.format, language = excluded.language,
+               forced = excluded.forced, sdh = excluded.sdh",
+        )
+        .bind(media_file_id)
+        .bind(&path)
+        .bind(&sidecar.format)
+        .bind(&sidecar.language)
+        .bind(sidecar.forced)
+        .bind(sidecar.sdh)
+        .execute(db)
+        .await?;
+        seen.push(path);
+    }
+    sqlx::query(
+        "DELETE FROM subtitle_files WHERE media_file_id = ?
+         AND path NOT IN (SELECT value FROM json_each(?))",
+    )
+    .bind(media_file_id)
+    .bind(serde_json::to_string(&seen)?)
     .execute(db)
     .await?;
     Ok(())
@@ -282,7 +352,7 @@ async fn sync_movies(
         .await?;
         let relative = movie.file.strip_prefix(library_path)?;
         let file_path = path_str(&movie.file);
-        upsert_file(db, &file_path, "movie", id, &files[relative]).await?;
+        upsert_file(db, &file_path, "movie", id, &files[relative], library_path).await?;
         seen_ids.push(id);
         seen_files.push(file_path);
     }
@@ -381,7 +451,15 @@ async fn sync_series(
             .await?;
             let relative = episode.file.strip_prefix(library_path)?;
             let file_path = path_str(&episode.file);
-            upsert_file(db, &file_path, "episode", episode_id, &files[relative]).await?;
+            upsert_file(
+                db,
+                &file_path,
+                "episode",
+                episode_id,
+                &files[relative],
+                library_path,
+            )
+            .await?;
             seen_episodes.push(episode_id);
             seen_files.push(file_path);
         }

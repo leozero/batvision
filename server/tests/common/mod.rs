@@ -82,6 +82,33 @@ impl TestApp {
         (status, value)
     }
 
+    /// Raw request with custom headers; returns status, response headers and JSON body.
+    pub async fn request_with_headers(
+        &self,
+        method: Method,
+        uri: &str,
+        headers: &[(&str, &str)],
+        body: Option<Value>,
+    ) -> (StatusCode, axum::http::HeaderMap, Value) {
+        let mut req = Request::builder().method(method).uri(uri);
+        for (name, value) in headers {
+            req = req.header(*name, *value);
+        }
+        let req = match body {
+            Some(body) => req
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body.to_string())),
+            None => req.body(Body::empty()),
+        }
+        .unwrap();
+        let res = self.router.clone().oneshot(req).await.unwrap();
+        let status = res.status();
+        let headers = res.headers().clone();
+        let bytes = res.into_body().collect().await.unwrap().to_bytes();
+        let value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, headers, value)
+    }
+
     pub async fn get(&self, uri: &str, token: Option<&str>) -> (StatusCode, Value) {
         self.request(Method::GET, uri, token, None).await
     }
@@ -101,7 +128,7 @@ impl TestApp {
                     "setup_token": setup_token,
                     "username": username,
                     "password": PASSWORD,
-                    "device": device("Admin browser", "web"),
+                    "device": device("Admin laptop", "desktop"),
                 }),
             )
             .await;

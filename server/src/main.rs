@@ -27,7 +27,12 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!(?config, "starting batvision");
 
     let db = db::open(&config.data_dir).await?;
-    let state = AppState::new(config.clone(), db);
+    let mut state = AppState::new(config.clone(), db);
+    // Persisted so signed media URLs survive a restart.
+    state.signer =
+        batvision_server::playback::signing::MediaSigner::load_or_create(&config.data_dir)?;
+    state.transcodes.clean();
+    state.transcodes.clone().spawn_reaper();
     if let Some(token) = state.init_setup_token().await? {
         tracing::warn!(
             "no account exists yet: create the first administrator with setup token {token}"

@@ -29,6 +29,10 @@ pub struct Config {
     pub default_language: String,
     /// Minutes between automatic library scans. 0 disables them.
     pub scan_interval_minutes: u64,
+    /// `Secure` flag on the session cookie. Only disable for plain-HTTP local testing.
+    pub secure_cookies: bool,
+    /// Fixed first-run setup token (otherwise a random one is printed in the logs).
+    pub setup_token: Option<String>,
 }
 
 impl Config {
@@ -61,6 +65,9 @@ impl Config {
             scan_interval_minutes: get("BATVISION_SCAN_INTERVAL_MINUTES", "15")
                 .parse()
                 .context("BATVISION_SCAN_INTERVAL_MINUTES must be a number")?,
+            secure_cookies: parse_bool(&get("BATVISION_SECURE_COOKIES", "true"))
+                .context("BATVISION_SECURE_COOKIES must be true or false")?,
+            setup_token: lookup("BATVISION_SETUP_TOKEN").filter(|t| t.trim().len() >= 16),
         })
     }
 }
@@ -84,6 +91,11 @@ impl std::fmt::Debug for Config {
             .field("tmdb_api_url", &self.tmdb_api_url)
             .field("default_language", &self.default_language)
             .field("scan_interval_minutes", &self.scan_interval_minutes)
+            .field("secure_cookies", &self.secure_cookies)
+            .field(
+                "setup_token",
+                &self.setup_token.as_ref().map(|_| "<redacted>"),
+            )
             .finish()
     }
 }

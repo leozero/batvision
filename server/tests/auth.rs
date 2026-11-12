@@ -710,3 +710,76 @@ async fn quick_connect_approval_needs_auth_and_a_valid_code() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+// ---- Web sessions (cookie) --------------------------------------------------------------
+
+#[tokio::test]
+async fn web_clients_get_an_httponly_cookie_instead_of_a_token() {
+    let app = TestApp::new().await;
+    let (admin, _) = app.ready_admin().await;
+    app.create_user(&admin, "alice").await;
+
+    let (status, headers, body) = app
+        .request_with_headers(
+            Method::POST,
+            "/api/auth/login",
+            &[],
+            Some(json!({ "username": "alice", "password": PASSWORD, "device": device("Firefox", "web") })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["status"], "ok");
+    assert!(body["token"].is_null(), "token never reaches page scripts");
+    let cookie = headers[axum::http::header::SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    assert!(cookie.starts_with("bv_session=bvd_"));
+    for flag in ["HttpOnly", "SameSite=Strict", "Path=/", "Secure"] {
+        assert!(cookie.contains(flag), "{flag} missing in {cookie}");
+    }
+    let pair = cookie.split(';').next().unwrap().to_owned();
+
+    let (status, _, me) = app
+        .request_with_headers(Method::GET, "/api/me", &[("cookie", &pair)], None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(me["username"], "alice");
+
+    let (status, headers, _) = app
+        .request_with_headers(
+            Method::POST,
+            "/api/auth/logout",
+            &[("cookie", &pair)],
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(
+        headers[axum::http::header::SET_COOKIE]
+            .to_str()
+            .unwrap()
+            .contains("Max-Age=0")
+    );
+    let (status, _, _) = app
+        .request_with_headers(Method::GET, "/api/me", &[("cookie", &pair)], None)
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn non_web_clients_get_the_token_in_the_body() {
+    let app = TestApp::new().await;
+    let (admin, _) = app.ready_admin().await;
+    app.create_user(&admin, "alice").await;
+    let (_, headers, body) = app
+        .request_with_headers(
+            Method::POST,
+            "/api/auth/login",
+            &[],
+            Some(json!({ "username": "alice", "password": PASSWORD, "device": device("Pixel", "android") })),
+        )
+        .await;
+    assert!(body["token"].as_str().unwrap().starts_with("bvd_"));
+    assert!(headers.get(axum::http::header::SET_COOKIE).is_none());
+}

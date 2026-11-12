@@ -5,7 +5,9 @@ pub mod error;
 pub mod ffmpeg;
 pub mod library;
 pub mod metadata;
+pub mod playback;
 pub mod routes;
+pub mod userdata;
 
 use std::sync::Arc;
 
@@ -25,14 +27,20 @@ use utoipa::{
 };
 
 use crate::{
-    auth::AuthState, config::Config, db::Db, ffmpeg::FfmpegInfo, library::scanner::ScanManager,
+    auth::AuthState,
+    config::Config,
+    db::Db,
+    ffmpeg::FfmpegInfo,
+    library::scanner::ScanManager,
     metadata::tmdb::TmdbClient,
+    playback::{signing::MediaSigner, transcode::TranscodeManager},
 };
 
 #[derive(OpenApi)]
 #[openapi(
     info(title = "batvision", license(name = "AGPL-3.0-only")),
     modifiers(&BearerAuth),
+    components(schemas(userdata::MarkableKind)),
     paths(
         routes::system::health,
         routes::system::info,
@@ -76,6 +84,17 @@ use crate::{
         routes::library::season_episodes,
         routes::library::episode,
         routes::library::image,
+        routes::home::report_progress,
+        routes::home::set_played,
+        routes::home::home,
+        routes::home::search,
+        routes::home::get_preferences,
+        routes::home::put_preferences,
+        routes::playback::start,
+        routes::playback::stop,
+        routes::playback::stream,
+        routes::playback::subtitle,
+        routes::playback::hls,
     ),
     tags(
         (name = "system", description = "Server status"),
@@ -83,6 +102,7 @@ use crate::{
         (name = "me", description = "The signed-in user's account"),
         (name = "admin", description = "Administration (admins with 2FA only)"),
         (name = "library", description = "Browsing movies and series"),
+        (name = "playback", description = "Playback, progress and watched state"),
     )
 )]
 pub struct ApiDoc;
@@ -109,6 +129,9 @@ pub struct AppState {
     /// `None` without a TMDB token: libraries still work, without metadata.
     pub tmdb: Option<Arc<TmdbClient>>,
     pub scans: Arc<ScanManager>,
+    /// Signs media URLs. Random per process unless replaced by the persisted key.
+    pub signer: MediaSigner,
+    pub transcodes: Arc<TranscodeManager>,
 }
 
 impl AppState {
@@ -120,9 +143,17 @@ impl AppState {
                 token,
             ))
         });
+        let mut key = [0u8; 32];
+        rand::fill(&mut key);
+        let transcodes = Arc::new(TranscodeManager::new(
+            config.cache_dir.join("transcodes"),
+            config.ffmpeg.clone(),
+        ));
         Self {
             tmdb,
             scans: Arc::new(ScanManager::default()),
+            signer: MediaSigner::new(key),
+            transcodes,
             config: Arc::new(config),
             db,
             auth: Arc::new(AuthState::default()),
@@ -138,14 +169,17 @@ impl AppState {
         if users > 0 {
             return Ok(None);
         }
-        let token = auth::crypto::random_code(b"ABCDEFGHJKMNPQRSTUVWXYZ23456789", 24);
+        let token = match &self.config.setup_token {
+            Some(token) => token.trim().to_owned(),
+            None => auth::crypto::random_code(b"ABCDEFGHJKMNPQRSTUVWXYZ23456789", 24),
+        };
         *self.auth.setup_token.lock().unwrap() = Some(token.clone());
         Ok(Some(token))
     }
 }
 
 pub fn app(state: AppState) -> Router {
-    use routes::{admin, auth, library, me, system};
+    use routes::{admin, auth, home, library, me, playback, system};
 
     let api = Router::new()
         .route("/health", get(system::health))
@@ -211,6 +245,19 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/episodes/{id}", get(library::episode))
         .route("/images/{size}/{file}", get(library::image))
+        .route("/home", get(home::home))
+        .route("/search", get(home::search))
+        .route("/progress", post(home::report_progress))
+        .route("/played/{kind}/{id}", axum::routing::put(home::set_played))
+        .route("/playback", post(playback::start))
+        .route("/playback/stop", post(playback::stop))
+        .route("/stream/{token}", get(playback::stream))
+        .route("/subtitles/{token}", get(playback::subtitle))
+        .route("/hls/{session}/{file}", get(playback::hls))
+        .route(
+            "/me/preferences",
+            get(home::get_preferences).put(home::put_preferences),
+        )
         // Without this, unknown /api paths would inherit the SPA fallback and return HTML.
         .fallback(|| async { StatusCode::NOT_FOUND });
 

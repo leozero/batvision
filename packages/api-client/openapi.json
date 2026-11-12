@@ -913,6 +913,61 @@
         }
       }
     },
+    "/api/hls/{session}/{file}": {
+      "get": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "A file of an HLS session. Waits for ffmpeg to produce it.",
+        "operationId": "hls",
+        "parameters": [
+          {
+            "name": "session",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "file",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {},
+          "404": {}
+        }
+      }
+    },
+    "/api/home": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "operationId": "home",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Home"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/images/{size}/{file}": {
       "get": {
         "tags": [
@@ -1119,6 +1174,62 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/me/preferences": {
+      "get": {
+        "tags": [
+          "me"
+        ],
+        "operationId": "get_preferences",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "me"
+        ],
+        "operationId": "put_preferences",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Preferences"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
                 }
               }
             }
@@ -1445,6 +1556,210 @@
         ]
       }
     },
+    "/api/playback": {
+      "post": {
+        "tags": [
+          "playback"
+        ],
+        "operationId": "start",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackInfo"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/playback/stop": {
+      "post": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "Stops an HLS session (leaving the player). Sessions also stop on their own when idle.",
+        "operationId": "stop",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StopRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/played/{kind}/{id}": {
+      "put": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "Marks a movie, an episode, or every episode of a season or series as (un)watched.",
+        "operationId": "set_played",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/MarkableKind"
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetPlayedRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/progress": {
+      "post": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "Reports the playback position (every few seconds, on pause and on exit).",
+        "operationId": "report_progress",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressReport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProgressResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Finds movies and series whose title contains `q` (in any fetched language).",
+        "operationId": "search",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResults"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/series": {
       "get": {
         "tags": [
@@ -1668,6 +1983,57 @@
         }
       }
     },
+    "/api/stream/{token}": {
+      "get": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "The original file, with HTTP Range support (seeking).",
+        "operationId": "stream",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {},
+          "206": {},
+          "404": {}
+        }
+      }
+    },
+    "/api/subtitles/{token}": {
+      "get": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "A subtitle as WebVTT. Extraction is cached; the time shift is applied per request.",
+        "operationId": "subtitle",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "text/vtt": {}
+            }
+          },
+          "404": {}
+        }
+      }
+    },
     "/api/system/info": {
       "get": {
         "tags": [
@@ -1728,6 +2094,45 @@
           }
         }
       },
+      "AudioOption": {
+        "type": "object",
+        "required": [
+          "index",
+          "codec",
+          "kind"
+        ],
+        "properties": {
+          "channels": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "codec": {
+            "type": "string"
+          },
+          "index": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TrackKind"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "AudioTrack": {
         "type": "object",
         "required": [
@@ -1769,6 +2174,56 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "Capabilities": {
+        "type": "object",
+        "description": "What a client says it can play.",
+        "required": [
+          "containers",
+          "video_codecs",
+          "audio_codecs"
+        ],
+        "properties": {
+          "audio_codecs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ffprobe codec names: `aac`, `mp3`, `opus`, `flac`, `ac3`, `eac3`."
+          },
+          "containers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "`mp4`, `webm`, `mkv`, `ts`…"
+          },
+          "hdr": {
+            "type": "boolean",
+            "description": "Can display HDR as is. Otherwise HDR video is tone-mapped to SDR."
+          },
+          "max_audio_channels": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "max_height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "video_codecs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "ffprobe codec names: `h264`, `hevc`, `vp9`, `av1`."
           }
         }
       },
@@ -1919,6 +2374,32 @@
                   }
                 ]
               },
+              "next_episode_id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "previous_episode_id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "series_backdrop_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "series_poster_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "series_title": {
                 "type": "string"
               }
@@ -1932,7 +2413,9 @@
           "id",
           "series_id",
           "season_number",
-          "episode_number"
+          "episode_number",
+          "position_ms",
+          "played"
         ],
         "properties": {
           "air_date": {
@@ -1968,6 +2451,13 @@
               "string",
               "null"
             ]
+          },
+          "played": {
+            "type": "boolean"
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64"
           },
           "runtime_minutes": {
             "type": [
@@ -2014,6 +2504,23 @@
           }
         }
       },
+      "ExternalSubtitleInfo": {
+        "type": "object",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TrackKind"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "FfmpegInfo": {
         "type": "object",
         "required": [
@@ -2040,9 +2547,17 @@
         "type": "object",
         "required": [
           "id",
-          "size_bytes"
+          "size_bytes",
+          "external_subtitles"
         ],
         "properties": {
+          "external_subtitles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExternalSubtitleInfo"
+            },
+            "description": "Subtitle files next to the video."
+          },
           "id": {
             "type": "integer",
             "format": "int64"
@@ -2076,6 +2591,139 @@
           },
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "Home": {
+        "type": "object",
+        "required": [
+          "continue_watching",
+          "next_up",
+          "recent_movies",
+          "recent_series"
+        ],
+        "properties": {
+          "continue_watching": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HomeItem"
+            }
+          },
+          "hero": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/HomeItem",
+                "description": "Big banner at the top: what's in progress, else what's next, else the latest movie."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_up": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HomeItem"
+            }
+          },
+          "recent_movies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MovieSummary"
+            }
+          },
+          "recent_series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeriesSummary"
+            }
+          }
+        }
+      },
+      "HomeItem": {
+        "type": "object",
+        "description": "A movie or an episode, ready to show as a card.",
+        "required": [
+          "kind",
+          "id",
+          "title",
+          "position_ms"
+        ],
+        "properties": {
+          "backdrop_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "episode_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "image_path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Wide image: movie backdrop, episode still (or series backdrop)."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlayableKind"
+          },
+          "overview": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "season_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "series_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Episode title."
+          },
+          "title": {
+            "type": "string",
+            "description": "Movie title, or series title for an episode."
           }
         }
       },
@@ -2277,6 +2925,15 @@
           }
         ]
       },
+      "MarkableKind": {
+        "type": "string",
+        "enum": [
+          "movie",
+          "episode",
+          "season",
+          "series"
+        ]
+      },
       "MediaInfo": {
         "type": "object",
         "required": [
@@ -2371,13 +3028,24 @@
           }
         }
       },
+      "Method": {
+        "type": "string",
+        "enum": [
+          "direct",
+          "remux",
+          "transcode_audio",
+          "transcode"
+        ]
+      },
       "MovieDetail": {
         "type": "object",
         "required": [
           "id",
           "library_id",
           "title",
-          "added_at"
+          "added_at",
+          "position_ms",
+          "played"
         ],
         "properties": {
           "added_at": {
@@ -2413,6 +3081,13 @@
               "string",
               "null"
             ]
+          },
+          "played": {
+            "type": "boolean"
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64"
           },
           "poster_path": {
             "type": [
@@ -2476,16 +3151,39 @@
         "required": [
           "id",
           "title",
-          "added_at"
+          "added_at",
+          "position_ms",
+          "played"
         ],
         "properties": {
           "added_at": {
             "type": "integer",
             "format": "int64"
           },
+          "backdrop_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "played": {
+            "type": "boolean"
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The caller's resume position (0 if not started or already watched)."
           },
           "poster_path": {
             "type": [
@@ -2514,6 +3212,198 @@
           "android_tv",
           "other"
         ]
+      },
+      "PlayableKind": {
+        "type": "string",
+        "enum": [
+          "movie",
+          "episode"
+        ]
+      },
+      "PlaybackInfo": {
+        "type": "object",
+        "required": [
+          "method",
+          "url",
+          "hls",
+          "start_ms",
+          "audio_tracks",
+          "subtitles"
+        ],
+        "properties": {
+          "audio_index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "audio_tracks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AudioOption"
+            }
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "hls": {
+            "type": "boolean"
+          },
+          "method": {
+            "$ref": "#/components/schemas/Method"
+          },
+          "next_episode_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HLS session, to stop it when leaving the player."
+          },
+          "start_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "HLS: media time at which the stream starts (its time 0). Direct: where to seek."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtitle_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "WebVTT for the selected text subtitle, timed for this stream."
+          },
+          "subtitles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtitleChoice"
+            }
+          },
+          "url": {
+            "type": "string",
+            "description": "Direct: the file. Otherwise an HLS playlist (play with hls.js)."
+          }
+        }
+      },
+      "PlaybackRequest": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "capabilities"
+        ],
+        "properties": {
+          "audio_index": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Audio stream index chosen by the user. Omitted: automatic choice."
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/Capabilities"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlayableKind"
+          },
+          "remember": {
+            "type": "boolean",
+            "description": "The user changed tracks: remember the choice for the rest of the series."
+          },
+          "start_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Where to start, in ms. Omitted: the resume position."
+          },
+          "subtitle": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`off`, `s<index>` (embedded) or `x<id>` (external file). Omitted: automatic choice."
+          }
+        }
+      },
+      "Preferences": {
+        "type": "object",
+        "required": [
+          "subtitle_mode"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 639-2 code (`fre`, `eng`…). `None`: the file's default track."
+          },
+          "subtitle_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtitle_mode": {
+            "$ref": "#/components/schemas/SubtitleMode"
+          }
+        }
+      },
+      "ProgressReport": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "position_ms"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlayableKind"
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ProgressResult": {
+        "type": "object",
+        "required": [
+          "played"
+        ],
+        "properties": {
+          "played": {
+            "type": "boolean",
+            "description": "True once watched past 90 %: the client can offer the next episode."
+          }
+        }
       },
       "QuickConnectApproveRequest": {
         "type": "object",
@@ -2762,6 +3652,27 @@
           }
         }
       },
+      "SearchResults": {
+        "type": "object",
+        "required": [
+          "movies",
+          "series"
+        ],
+        "properties": {
+          "movies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MovieSummary"
+            }
+          },
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SeriesSummary"
+            }
+          }
+        }
+      },
       "SeasonSummary": {
         "type": "object",
         "required": [
@@ -2853,6 +3764,17 @@
             ],
             "format": "int64"
           },
+          "up_next": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/EpisodeSummary",
+                "description": "Episode the play button starts: the one in progress, else the next unwatched."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "year": {
             "type": [
               "integer",
@@ -2887,12 +3809,19 @@
           "id",
           "title",
           "episode_count",
+          "unplayed_count",
           "added_at"
         ],
         "properties": {
           "added_at": {
             "type": "integer",
             "format": "int64"
+          },
+          "backdrop_path": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "episode_count": {
             "type": "integer",
@@ -2911,6 +3840,11 @@
           "title": {
             "type": "string"
           },
+          "unplayed_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Episodes the caller hasn't watched yet."
+          },
           "year": {
             "type": [
               "integer",
@@ -2924,7 +3858,6 @@
         "type": "object",
         "description": "Returned when a device is signed in. The token is shown only once.",
         "required": [
-          "token",
           "device_id",
           "user"
         ],
@@ -2934,11 +3867,25 @@
             "format": "int64"
           },
           "token": {
-            "type": "string",
-            "description": "Send as `Authorization: Bearer <token>`."
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Send as `Authorization: Bearer <token>`. Absent for web clients: their token\nis set as an HttpOnly cookie, out of reach of page scripts."
           },
           "user": {
             "$ref": "#/components/schemas/User"
+          }
+        }
+      },
+      "SetPlayedRequest": {
+        "type": "object",
+        "required": [
+          "played"
+        ],
+        "properties": {
+          "played": {
+            "type": "boolean"
           }
         }
       },
@@ -2977,6 +3924,61 @@
             "description": "True while no account exists: the first admin must be created with the setup token."
           }
         }
+      },
+      "StopRequest": {
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "properties": {
+          "session_id": {
+            "type": "string"
+          }
+        }
+      },
+      "SubtitleChoice": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "external"
+        ],
+        "properties": {
+          "external": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/TrackKind"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "boolean",
+            "description": "Image subtitles are burned into the video (triggers a transcode)."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SubtitleMode": {
+        "type": "string",
+        "enum": [
+          "always",
+          "foreign",
+          "never"
+        ]
       },
       "SubtitleTrack": {
         "type": "object",
@@ -3239,6 +4241,10 @@
     {
       "name": "library",
       "description": "Browsing movies and series"
+    },
+    {
+      "name": "playback",
+      "description": "Playback, progress and watched state"
     }
   ]
 }

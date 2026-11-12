@@ -2,7 +2,12 @@
 
 use std::time::Instant;
 
-use axum::{Json, extract::State, http::StatusCode};
+use axum::{
+    Json,
+    extract::State,
+    http::{StatusCode, header},
+    response::{IntoResponse, Response},
+};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -12,6 +17,7 @@ use crate::{
         self, ClientIp, CurrentDevice, DeviceInfo, Role, Session,
         crypto::{self, constant_time_eq},
         quick_connect::{self, Poll},
+        session_response,
     },
     db::now,
     error::{ApiError, ApiResult},
@@ -50,7 +56,7 @@ pub async fn setup(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
     Json(req): Json<SetupRequest>,
-) -> ApiResult<(StatusCode, Json<Session>)> {
+) -> ApiResult<Response> {
     req.device.validate()?;
     let key = format!("setup:{ip}");
     let limiter = &state.auth.login_limiter;
@@ -100,7 +106,13 @@ pub async fn setup(
     };
     tracing::info!(username = %req.username, "first administrator created, setup complete");
     let session = auth::issue_session(&state.db, user_id, &req.device).await?;
-    Ok((StatusCode::CREATED, Json(session)))
+    Ok(session_response(
+        session,
+        req.device.platform,
+        StatusCode::CREATED,
+        state.config.secure_cookies,
+        |s| serde_json::to_value(s).expect("serializable"),
+    ))
 }
 
 // ---- Password login -----------------------------------------------------------------
@@ -136,7 +148,7 @@ pub async fn login(
     State(state): State<AppState>,
     ClientIp(ip): ClientIp,
     Json(req): Json<LoginRequest>,
-) -> ApiResult<Json<LoginResponse>> {
+) -> ApiResult<Response> {
     req.device.validate()?;
     let ip_key = format!("ip:{ip}");
     let user_key = format!("user:{}", req.username.to_lowercase());
@@ -169,10 +181,16 @@ pub async fn login(
 
     if totp_enabled {
         let challenge = state.auth.create_challenge(user_id, req.device);
-        return Ok(Json(LoginResponse::TotpRequired { challenge }));
+        return Ok(Json(LoginResponse::TotpRequired { challenge }).into_response());
     }
     let session = auth::issue_session(&state.db, user_id, &req.device).await?;
-    Ok(Json(LoginResponse::Ok(session)))
+    Ok(session_response(
+        session,
+        req.device.platform,
+        StatusCode::OK,
+        state.config.secure_cookies,
+        |s| serde_json::to_value(LoginResponse::Ok(s)).expect("serializable"),
+    ))
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -191,7 +209,7 @@ pub struct TotpLoginRequest {
 pub async fn login_totp(
     State(state): State<AppState>,
     Json(req): Json<TotpLoginRequest>,
-) -> ApiResult<Json<Session>> {
+) -> ApiResult<Response> {
     let user_id = state.auth.challenge_user(&req.challenge)?;
     let key = format!("totp:{user_id}");
     let limiter = &state.auth.login_limiter;
@@ -205,22 +223,32 @@ pub async fn login_totp(
     limiter.record_success(&[&key]);
     let challenge = state.auth.consume_challenge(&req.challenge)?;
     let session = auth::issue_session(&state.db, user_id, &challenge.device).await?;
-    Ok(Json(session))
+    Ok(session_response(
+        session,
+        challenge.device.platform,
+        StatusCode::OK,
+        state.config.secure_cookies,
+        |s| serde_json::to_value(s).expect("serializable"),
+    ))
 }
 
 /// Revokes the calling device's token.
 #[utoipa::path(post, path = "/api/auth/logout", tag = "auth",
     security(("bearer" = [])), responses((status = 204)))]
-pub async fn logout(
-    State(state): State<AppState>,
-    current: CurrentDevice,
-) -> ApiResult<StatusCode> {
+pub async fn logout(State(state): State<AppState>, current: CurrentDevice) -> ApiResult<Response> {
     sqlx::query("UPDATE devices SET revoked_at = ? WHERE id = ?")
         .bind(now())
         .bind(current.device_id)
         .execute(&state.db)
         .await?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok((
+        StatusCode::NO_CONTENT,
+        [(
+            header::SET_COOKIE,
+            auth::clear_session_cookie(state.config.secure_cookies),
+        )],
+    )
+        .into_response())
 }
 
 // ---- Invitations -------------------------------------------------------------------
@@ -243,7 +271,7 @@ pub struct AcceptInvitationRequest {
 pub async fn accept_invitation(
     State(state): State<AppState>,
     Json(req): Json<AcceptInvitationRequest>,
-) -> ApiResult<(StatusCode, Json<Session>)> {
+) -> ApiResult<Response> {
     req.device.validate()?;
     let token_hash = crypto::hash_token(req.token.trim());
     let invalid = || ApiError::forbidden("invalid_invitation", "invitation invalid or expired");
@@ -295,7 +323,13 @@ pub async fn accept_invitation(
         .await?;
 
     let session = auth::issue_session(&state.db, user_id, &req.device).await?;
-    Ok((StatusCode::CREATED, Json(session)))
+    Ok(session_response(
+        session,
+        req.device.platform,
+        StatusCode::CREATED,
+        state.config.secure_cookies,
+        |s| serde_json::to_value(s).expect("serializable"),
+    ))
 }
 
 // ---- Quick connect -----------------------------------------------------------------

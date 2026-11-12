@@ -13,8 +13,10 @@ use std::{
 };
 
 use axum::{
+    Json,
     extract::{ConnectInfo, FromRequestParts},
-    http::{header, request::Parts},
+    http::{HeaderMap, HeaderValue, StatusCode, header, request::Parts},
+    response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -84,8 +86,9 @@ impl DeviceInfo {
 /// Returned when a device is signed in. The token is shown only once.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct Session {
-    /// Send as `Authorization: Bearer <token>`.
-    pub token: String,
+    /// Send as `Authorization: Bearer <token>`. Absent for web clients: their token
+    /// is set as an HttpOnly cookie, out of reach of page scripts.
+    pub token: Option<String>,
     pub device_id: i64,
     pub user: User,
 }
@@ -218,10 +221,59 @@ pub async fn issue_session(db: &Db, user_id: i64, device: &DeviceInfo) -> ApiRes
     .await?;
     let user = load_user(db, user_id).await?;
     Ok(Session {
-        token,
+        token: Some(token),
         device_id,
         user,
     })
+}
+
+pub const SESSION_COOKIE: &str = "bv_session";
+
+fn cookie(value: &str, max_age: i64, secure: bool) -> HeaderValue {
+    let secure = if secure { "; Secure" } else { "" };
+    HeaderValue::from_str(&format!(
+        "{SESSION_COOKIE}={value}; Path=/; HttpOnly; SameSite=Strict; Max-Age={max_age}{secure}"
+    ))
+    .expect("valid cookie header")
+}
+
+/// Expires the session cookie.
+pub fn clear_session_cookie(secure: bool) -> HeaderValue {
+    cookie("", 0, secure)
+}
+
+/// Turns a new session into a response: web clients get the token as an HttpOnly
+/// cookie (and not in the body), other clients get it in the body.
+pub fn session_response(
+    mut session: Session,
+    platform: Platform,
+    status: StatusCode,
+    secure_cookies: bool,
+    wrap: impl FnOnce(Session) -> serde_json::Value,
+) -> Response {
+    let mut headers = HeaderMap::new();
+    if platform == Platform::Web
+        && let Some(token) = session.token.take()
+    {
+        // One year: the device can be revoked at any time.
+        headers.insert(
+            header::SET_COOKIE,
+            cookie(&token, 365 * 24 * 3600, secure_cookies),
+        );
+    }
+    (status, headers, Json(wrap(session))).into_response()
+}
+
+fn token_from_cookie(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get_all(header::COOKIE)
+        .iter()
+        .filter_map(|v| v.to_str().ok())
+        .flat_map(|v| v.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(name, _)| *name == SESSION_COOKIE)
+        .map(|(_, value)| value)
+        .filter(|value| !value.is_empty())
 }
 
 pub async fn load_user(db: &Db, user_id: i64) -> ApiResult<User> {
@@ -249,6 +301,7 @@ impl FromRequestParts<AppState> for CurrentDevice {
             .get(header::AUTHORIZATION)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "))
+            .or_else(|| token_from_cookie(&parts.headers))
             .ok_or(ApiError::Unauthenticated)?;
 
         #[derive(sqlx::FromRow)]
