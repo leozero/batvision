@@ -357,9 +357,20 @@ fn tokenize(raw: &str) -> Vec<String> {
         }
     });
     let spaced = without_parens.replace('_', " ");
+    let dot_separated = !raw.trim().contains(char::is_whitespace);
 
     let mut tokens = Vec::new();
     for word in spaced.split_whitespace() {
+        // In a dot-separated name, dots left at the edges by a removed tag
+        // (`Title.[1080p].MULTi`) separate nothing; elsewhere they belong (`Mr. Holland`).
+        let word = if dot_separated {
+            word.trim_matches('.')
+        } else {
+            word
+        };
+        if word.is_empty() {
+            continue;
+        }
         if !INTERNAL_DOT.is_match(word) {
             tokens.push(word.to_owned());
             continue;
@@ -683,6 +694,11 @@ mod tests {
                 None,
             ),
             ("11.22.63", "11.22.63", None),
+            (
+                "Equilibrium.[1080p].MULTi.(2002).BluRay.x264-PopHD",
+                "Equilibrium",
+                Some(2002),
+            ),
             ("11.22.63 (2016)", "11.22.63", Some(2016)),
             ("11.22.63.S01.MULTi.1080p.WEB.x264-GRP", "11.22.63", None),
             ("1917 (2019)", "1917", Some(2019)),

@@ -336,7 +336,10 @@ async fn sync_movies(
                parsed_year = excluded.parsed_year,
                missing_since = NULL,
                metadata_updated_at = CASE WHEN movies.identify_locked = 0
-                   AND excluded.tmdb_id IS NOT NULL AND excluded.tmdb_id IS NOT movies.tmdb_id
+                   AND ((excluded.tmdb_id IS NOT NULL AND excluded.tmdb_id IS NOT movies.tmdb_id)
+                        OR (movies.tmdb_id IS NULL AND excluded.tmdb_id IS NULL
+                            AND (excluded.parsed_title IS NOT movies.parsed_title
+                                 OR excluded.parsed_year IS NOT movies.parsed_year)))
                    THEN NULL ELSE movies.metadata_updated_at END,
                tmdb_id = CASE WHEN movies.identify_locked = 1 THEN movies.tmdb_id
                    ELSE COALESCE(excluded.tmdb_id, movies.tmdb_id) END
@@ -405,7 +408,10 @@ async fn sync_series(
                parsed_year = excluded.parsed_year,
                missing_since = NULL,
                metadata_updated_at = CASE WHEN series.identify_locked = 0
-                   AND excluded.tmdb_id IS NOT NULL AND excluded.tmdb_id IS NOT series.tmdb_id
+                   AND ((excluded.tmdb_id IS NOT NULL AND excluded.tmdb_id IS NOT series.tmdb_id)
+                        OR (series.tmdb_id IS NULL AND excluded.tmdb_id IS NULL
+                            AND (excluded.parsed_title IS NOT series.parsed_title
+                                 OR excluded.parsed_year IS NOT series.parsed_year)))
                    THEN NULL ELSE series.metadata_updated_at END,
                tmdb_id = CASE WHEN series.identify_locked = 1 THEN series.tmdb_id
                    ELSE COALESCE(excluded.tmdb_id, series.tmdb_id) END

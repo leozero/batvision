@@ -326,6 +326,28 @@ async fn unmatched_movies_keep_their_parsed_title() {
 }
 
 #[tokio::test]
+async fn unmatched_movies_are_searched_again_when_their_parsed_title_changes() {
+    let f = fixture(true).await;
+    touch(f.media.path(), "Films/Inception (2010)/inception.mkv");
+    let id = f.create_library("Films", "movies", "Films").await;
+    // As left by an older parser: a garbled title that TMDB could not match.
+    sqlx::query(
+        "UPDATE movies SET parsed_title = 'Inception 1080p', tmdb_id = NULL,
+         metadata_updated_at = unixepoch()",
+    )
+    .execute(&f.app.state.db)
+    .await
+    .unwrap();
+
+    let report = f.rescan(id).await;
+    assert_eq!(report.metadata_refreshed, 1);
+    let page = f.get("/api/movies").await;
+    let movie = page["items"][0]["id"].as_i64().unwrap();
+    let detail = f.get(&format!("/api/movies/{movie}")).await;
+    assert_eq!(detail["tmdb_id"], 27205);
+}
+
+#[tokio::test]
 async fn manual_identification_sticks_across_scans() {
     let f = fixture(true).await;
     touch(f.media.path(), "Films/Inception (2010)/Inception.mkv");
