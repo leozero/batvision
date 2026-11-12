@@ -14,8 +14,11 @@ Self-hosted media server (movies and TV series), rewritten from scratch with Jel
 | `server/`              | Rust server (axum, SQLite, ffmpeg)                       | AGPL-3.0 |
 | `apps/web/`            | Web client (React, Vite)                                 | GPL-3.0  |
 | `apps/desktop/`        | Desktop app (Electron): the web client plus downloads    | GPL-3.0  |
+| `apps/mobile/`         | Android app (Expo, React Native) and its Kotlin engine   | GPL-3.0  |
 | `packages/api-client/` | TypeScript client generated from the OpenAPI description | GPL-3.0  |
 | `packages/bridge/`     | Types shared by the desktop app and the web client       | GPL-3.0  |
+| `packages/core/`       | Pure logic shared by the clients (formats, quality)      | GPL-3.0  |
+| `packages/i18n/`       | Interface translations (French, English)                 | GPL-3.0  |
 
 ## Development
 
@@ -49,6 +52,20 @@ pnpm --filter @batvision/desktop start
 
 On first launch it asks for the server address (`http://127.0.0.1:8420` for a local server). Downloads go to `Videos/Batvision` by default. Installers for macOS, Windows and Linux (unsigned for now) are on the [releases page](https://github.com/leozero/batvision/releases), or built locally with `pnpm --filter @batvision/desktop dist`. To publish a release, set the version in `apps/desktop/package.json` and push a matching `v*` tag: installed apps pick it up (Windows and Linux update themselves, macOS shows a download banner).
 
+### Android app
+
+Needs the Android SDK and JDK 17 or later (Android Studio's own is fine: `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`). The `android/` folder is generated, never edited by hand:
+
+```bash
+pnpm --filter @batvision/mobile build:apk
+```
+
+```bash
+adb install -r apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+```
+
+During development, `pnpm --filter @batvision/mobile android` runs a debug build with live reload on a device or an emulator. On first launch the app asks for the server address (`http://10.0.2.2:8420` reaches a local server from the emulator). Signed APKs are attached to the releases; they need the release key in the repository secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`), and `apps/mobile/app.json` and `package.json` must carry the release version.
+
 ### Tests
 
 ```bash
@@ -67,6 +84,16 @@ The desktop scenario (needs ffmpeg; on Linux, run it under `xvfb-run`):
 
 ```bash
 pnpm --filter @batvision/desktop build && pnpm --filter @batvision/desktop test:e2e
+```
+
+The Android scenario (needs ffmpeg, a running emulator and [Maestro](https://github.com/mobile-dev-inc/maestro)), after building the APK:
+
+```bash
+cd apps/mobile/android && ./gradlew :batvision-sync:testDebugUnitTest
+```
+
+```bash
+pnpm --filter @batvision/mobile test:e2e
 ```
 
 ### After changing the server API

@@ -8,10 +8,14 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
 COPY packages/api-client/package.json packages/api-client/
 COPY packages/bridge/package.json packages/bridge/
+COPY packages/core/package.json packages/core/
+COPY packages/i18n/package.json packages/i18n/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --filter @batvision/web...
 COPY packages/api-client packages/api-client
 COPY packages/bridge packages/bridge
+COPY packages/core packages/core
+COPY packages/i18n packages/i18n
 COPY apps/web apps/web
 RUN pnpm --filter @batvision/web build
 

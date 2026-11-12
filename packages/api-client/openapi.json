@@ -2951,12 +2951,17 @@
           "auto_download",
           "profile",
           "mobile_data",
-          "storage"
+          "storage",
+          "charging_only"
         ],
         "properties": {
           "auto_download": {
             "type": "boolean",
             "description": "Download watchlist movies automatically."
+          },
+          "charging_only": {
+            "type": "boolean",
+            "description": "Download only while the device charges (D69)."
           },
           "mobile_cap_bytes": {
             "type": [
@@ -2964,11 +2969,11 @@
               "null"
             ],
             "format": "int64",
-            "description": "Monthly mobile data cap."
+            "description": "Monthly mobile data cap, counted by the device."
           },
           "mobile_data": {
-            "type": "boolean",
-            "description": "Allow downloads over mobile data (lighter versions only)."
+            "$ref": "#/components/schemas/MobileData",
+            "description": "What may download over mobile data (D68)."
           },
           "profile": {
             "$ref": "#/components/schemas/Profile"
@@ -3995,6 +4000,14 @@
           "remux",
           "transcode_audio",
           "transcode"
+        ]
+      },
+      "MobileData": {
+        "type": "string",
+        "enum": [
+          "off",
+          "light",
+          "all"
         ]
       },
       "MovieDetail": {

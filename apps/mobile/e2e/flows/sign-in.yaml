@@ -1,0 +1,27 @@
+# First launch: server address, then a user without 2FA signs in.
+appId: fr.batvision.android
+---
+- launchApp:
+    clearState: true
+# The harness grants notifications; the dialog may still show on some images.
+- tapOn:
+    text: "Allow"
+    optional: true
+- tapOn:
+    id: server-address
+- inputText: ${SERVER}
+- tapOn:
+    id: connect
+- tapOn:
+    id: username
+- inputText: ${USERNAME}
+- tapOn:
+    id: password
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: sign-in
+- extendedWaitUntil:
+    visible:
+      id: tab-movies
+    timeout: 20000

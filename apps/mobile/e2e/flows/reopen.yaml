@@ -1,0 +1,9 @@
+# Server back: reopening the app syncs, sending the offline progress.
+appId: fr.batvision.android
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: tab-movies
+    timeout: 30000

@@ -6,3 +6,5 @@ minimumReleaseAgeExclude:
 allowBuilds:
   electron: true
   electron-winstaller: true
+  # Optional native file watcher (Tailwind 3 in the Android app): not needed to build.
+  "@parcel/watcher": false

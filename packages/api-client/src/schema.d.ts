@@ -1131,13 +1131,15 @@ export interface components {
         DeviceSettings: {
             /** @description Download watchlist movies automatically. */
             auto_download: boolean;
+            /** @description Download only while the device charges (D69). */
+            charging_only: boolean;
             /**
              * Format: int64
-             * @description Monthly mobile data cap.
+             * @description Monthly mobile data cap, counted by the device.
              */
             mobile_cap_bytes?: number | null;
-            /** @description Allow downloads over mobile data (lighter versions only). */
-            mobile_data: boolean;
+            /** @description What may download over mobile data (D68). */
+            mobile_data: components["schemas"]["MobileData"];
             profile: components["schemas"]["Profile"];
             /**
              * Format: int64
@@ -1418,6 +1420,8 @@ export interface components {
         };
         /** @enum {string} */
         Method: "direct" | "remux" | "transcode_audio" | "transcode";
+        /** @enum {string} */
+        MobileData: "off" | "light" | "all";
         MovieDetail: {
             /** Format: int64 */
             added_at: number;

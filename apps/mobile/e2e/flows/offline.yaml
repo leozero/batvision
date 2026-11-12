@@ -1,0 +1,33 @@
+# Server stopped: the app opens on the offline library and plays the local copy.
+appId: fr.batvision.android
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: retry
+    timeout: 30000
+- tapOn:
+    id: offline-movie-${MOVIE_ID}
+- extendedWaitUntil:
+    visible:
+      id: player-time
+    timeout: 15000
+# Seek once the video plays, not while it loads.
+- extendedWaitUntil:
+    notVisible:
+      id: player-loading
+    timeout: 15000
+# Paused, then 70 s in: past the 60 s resume threshold, before 90 % (watched) (D36).
+- tapOn:
+    id: play-pause
+    waitToSettleTimeoutMs: 200
+- repeat:
+    times: 7
+    commands:
+      # A playing video never "settles": don't wait for it between taps.
+      - tapOn:
+          id: forward-10
+          waitToSettleTimeoutMs: 200
+- tapOn:
+    id: player-back

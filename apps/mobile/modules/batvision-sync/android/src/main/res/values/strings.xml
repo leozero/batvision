@@ -1,0 +1,5 @@
+<resources>
+  <string name="batvision_channel">Downloads</string>
+  <string name="batvision_downloading">Downloading %1$s</string>
+  <string name="batvision_pause">Pause</string>
+</resources>

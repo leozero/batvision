@@ -148,20 +148,21 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
       </Field>
       {isAndroid ? (
         <>
-          <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-surface-2 px-4 py-3">
-            <span className="text-sm font-medium">{t("downloads.mobileData")}</span>
-            <input
-              type="checkbox"
-              className="size-5 accent-[var(--color-accent)]"
-              checked={s.mobile_data}
-              onChange={(e) => update({ mobile_data: e.target.checked })}
-            />
-          </label>
+          <Field label={t("downloads.mobileData")}>
+            <Select
+              value={s.mobile_data}
+              onChange={(e) => update({ mobile_data: e.target.value as Schemas["MobileData"] })}
+            >
+              <option value="off">{t("downloads.mobileDataMode.off")}</option>
+              <option value="light">{t("downloads.mobileDataMode.light")}</option>
+              <option value="all">{t("downloads.mobileDataMode.all")}</option>
+            </Select>
+          </Field>
           <Field label={t("downloads.mobileCap")}>
             <Input
               type="number"
               min={1}
-              disabled={!s.mobile_data}
+              disabled={s.mobile_data === "off"}
               defaultValue={gb(s.mobile_cap_bytes)}
               placeholder="2"
               onBlur={(e) =>
@@ -178,6 +179,15 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
               <option value="sd">{t("downloads.storageSd")}</option>
             </Select>
           </Field>
+          <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-surface-2 px-4 py-3">
+            <span className="text-sm font-medium">{t("downloads.chargingOnly")}</span>
+            <input
+              type="checkbox"
+              className="size-5 accent-[var(--color-accent)]"
+              checked={s.charging_only}
+              onChange={(e) => update({ charging_only: e.target.checked })}
+            />
+          </label>
         </>
       ) : null}
     </div>

@@ -135,8 +135,11 @@ impl Fixture {
                 Method::PUT,
                 &format!("/api/downloads/devices/{}/settings", self.phone_id),
                 Some(&self.phone),
-                Some(json!({ "auto_download": auto, "profile": "mobile", "quota_bytes": null,
-                             "mobile_data": false, "mobile_cap_bytes": null, "storage": "internal" })),
+                Some(
+                    json!({ "auto_download": auto, "profile": "mobile", "quota_bytes": null,
+                             "mobile_data": "off", "mobile_cap_bytes": null, "storage": "internal",
+                         "charging_only": false }),
+                ),
             )
             .await;
         assert_eq!(status, StatusCode::OK, "{body}");
@@ -194,8 +197,39 @@ async fn device_settings_defaults_and_ownership() {
         "Android defaults to the mobile profile"
     );
 
+    assert_eq!(
+        plan["settings"]["quota_bytes"], 20_000_000_000_i64,
+        "20 GB on Android"
+    );
+    assert_eq!(
+        plan["settings"]["mobile_data"], "off",
+        "Wi-Fi only by default"
+    );
+    assert_eq!(plan["settings"]["charging_only"], false);
+
     f.set_auto(true).await;
     assert_eq!(f.plan().await["settings"]["auto_download"], true);
+
+    // Mobile data mode, cap and charging rule are kept for the device's engine.
+    let (status, body) = f
+        .app
+        .request(
+            Method::PUT,
+            &format!("/api/downloads/devices/{}/settings", f.phone_id),
+            Some(&f.phone),
+            Some(
+                json!({ "auto_download": true, "profile": "mobile", "quota_bytes": 5_000_000_000_i64,
+                         "mobile_data": "all", "mobile_cap_bytes": 2_000_000_000_i64,
+                         "storage": "sd", "charging_only": true }),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let settings = &f.plan().await["settings"];
+    assert_eq!(settings["mobile_data"], "all");
+    assert_eq!(settings["mobile_cap_bytes"], 2_000_000_000_i64);
+    assert_eq!(settings["storage"], "sd");
+    assert_eq!(settings["charging_only"], true);
 
     // Someone else's device can't be configured.
     let (status, _) = f
@@ -206,7 +240,8 @@ async fn device_settings_defaults_and_ownership() {
             Some(&f.admin),
             Some(
                 json!({ "auto_download": true, "profile": "max", "quota_bytes": null,
-                         "mobile_data": false, "mobile_cap_bytes": null, "storage": "internal" }),
+                         "mobile_data": "off", "mobile_cap_bytes": null, "storage": "internal",
+                         "charging_only": false }),
             ),
         )
         .await;
@@ -454,7 +489,8 @@ async fn request_encode_download_confirm_and_cache_cleanup() {
             Some(&f.phone),
             Some(
                 json!({ "auto_download": true, "profile": "max", "quota_bytes": null,
-                         "mobile_data": false, "mobile_cap_bytes": null, "storage": "internal" }),
+                         "mobile_data": "off", "mobile_cap_bytes": null, "storage": "internal",
+                         "charging_only": false }),
             ),
         )
         .await;

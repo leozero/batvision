@@ -65,9 +65,11 @@
 server/                 Rust project
 apps/web/
 apps/desktop/           Electron
-apps/mobile/            Expo (Android + Android TV)
+apps/mobile/            Expo (Android + Android TV), Kotlin sync engine in modules/
 packages/api-client/    generated from the OpenAPI description, never edited by hand
 packages/bridge/        types shared by the desktop app and the web client
+packages/core/          pure logic shared by the clients
+packages/i18n/          interface translations
 docs/
 ```
 
@@ -173,10 +175,9 @@ Series subscriptions and manual downloads are explicit requests for one device: 
 
 ### 7.4 Network
 
-- By default, downloads happen on Wi-Fi only (and while charging when possible).
-- **Mobile data:** per-device setting, off by default.
-  - Once enabled, it enforces a **monthly cap** (for example 2 GB).
-  - On mobile data, only **lighter versions** are downloaded.
+- By default, downloads happen on Wi-Fi only. An "Only while charging" option exists per device, off by default (D69).
+- **Mobile data:** per-device setting (D68): off (default), light versions only (`mobile`, `saver`), or all qualities.
+  - Once enabled, it enforces a **monthly cap** (for example 2 GB), counted on the device per calendar month; at the cap, downloads wait for Wi-Fi.
 
 ### 7.5 Encoding profiles
 
@@ -235,6 +236,18 @@ Series subscriptions and manual downloads are explicit requests for one device: 
 - One signed-in account per install.
 - Builds: macOS (arm64, x64), Windows, Linux AppImage, unsigned until milestone 7, published as GitHub releases.
 - Updates (D58): Windows and Linux download new releases in the background and install them on quit or from the banner; macOS shows a banner linking to the release.
+
+### 7.10 Android client
+
+- Native React Native screens (Expo, expo-router, NativeWind): home, movies, series, search, details, player, downloads and device settings, sign-in. Administration and account security stay on the web (D61, D62).
+- First launch: server address, then sign-in (password + 2FA). The device token is kept in the Android keystore (expo-secure-store). One account per install (D67).
+- **Download engine in Kotlin** (D63), a local Expo module running on WorkManager so it works with the app closed: upload offline progress, fetch the plan, request, download with resume (HTTP Range), confirm, delete. It honours the device's network rules (Wi-Fi, mobile data mode and cap, charging) and shows a progress notification with Pause while downloading.
+- Files go to the app's own folder on the phone or the SD card (setting `storage`), moved when it changes; 20 GB quota by default (D70). Downloaded items' metadata and images are kept next to them for the offline library.
+- Sync on open, when the network returns and every 30 minutes (WorkManager may delay it). Syncs the app asks for don't wait for Android to validate internet access, so a server on the home network works without it. While the server encodes for the phone, the engine checks again every 15 s (up to 8 minutes) so the download starts as soon as the file is ready.
+- Player: react-native-video (Media3) with HLS, audio and subtitle tracks, side-loaded WebVTT for downloads, the quality menu (D60), resume, next episode, picture in picture, landscape, screen kept on (D71).
+- Offline library when the server is unreachable, as on desktop (D72).
+- The app reports its model as device name and whether it decodes AV1 in hardware (MediaCodec).
+- Distribution: signed APK attached to the GitHub releases; the app shows a banner when a newer one exists (D65, D66).
 
 ## 8. Milestones
 

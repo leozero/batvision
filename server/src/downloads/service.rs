@@ -32,12 +32,26 @@ pub struct DeviceSettings {
     pub profile: Profile,
     /// Space downloads may use on the device; `None` = no limit.
     pub quota_bytes: Option<i64>,
-    /// Allow downloads over mobile data (lighter versions only).
-    pub mobile_data: bool,
-    /// Monthly mobile data cap.
+    /// What may download over mobile data (D68).
+    pub mobile_data: MobileData,
+    /// Monthly mobile data cap, counted by the device.
     pub mobile_cap_bytes: Option<i64>,
     /// Android: app storage or SD card.
     pub storage: Storage,
+    /// Download only while the device charges (D69).
+    pub charging_only: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, sqlx::Type)]
+#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+pub enum MobileData {
+    /// Wi-Fi only.
+    Off,
+    /// Lighter versions (`mobile`, `saver`) over mobile data; `max` waits for Wi-Fi.
+    Light,
+    /// Every quality over mobile data.
+    All,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, sqlx::Type)]
@@ -55,14 +69,16 @@ pub fn default_settings(platform: Platform) -> DeviceSettings {
             Platform::Android | Platform::AndroidTv => Profile::Mobile,
             _ => Profile::Max,
         },
-        // Desktop: 100 GB (D48). Android picks its own once it knows the free space.
+        // Desktop: 100 GB (D48); Android: 20 GB (D70).
         quota_bytes: match platform {
             Platform::Desktop => Some(100 * 1_000_000_000),
+            Platform::Android => Some(20 * 1_000_000_000),
             _ => None,
         },
-        mobile_data: false,
+        mobile_data: MobileData::Off,
         mobile_cap_bytes: None,
         storage: Storage::Internal,
+        charging_only: false,
     }
 }
 
@@ -94,31 +110,21 @@ pub async fn load_settings(
     device_id: i64,
     platform: Platform,
 ) -> ApiResult<(DeviceSettings, bool)> {
-    let row: Option<(DeviceSettings, bool)> = sqlx::query_as::<
-        _,
-        (bool, Profile, Option<i64>, bool, Option<i64>, Storage, bool),
-    >(
-        "SELECT auto_download, profile, quota_bytes, mobile_data, mobile_cap_bytes, storage, av1
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        #[sqlx(flatten)]
+        settings: DeviceSettings,
+        av1: bool,
+    }
+    let row: Option<(DeviceSettings, bool)> = sqlx::query_as::<_, Row>(
+        "SELECT auto_download, profile, quota_bytes, mobile_data, mobile_cap_bytes, storage,
+           charging_only, av1
          FROM device_settings WHERE device_id = ?",
     )
     .bind(device_id)
     .fetch_optional(&state.db)
     .await?
-    .map(
-        |(auto_download, profile, quota_bytes, mobile_data, mobile_cap_bytes, storage, av1)| {
-            (
-                DeviceSettings {
-                    auto_download,
-                    profile,
-                    quota_bytes,
-                    mobile_data,
-                    mobile_cap_bytes,
-                    storage,
-                },
-                av1,
-            )
-        },
-    );
+    .map(|r| (r.settings, r.av1));
     Ok(row.unwrap_or_else(|| (default_settings(platform), false)))
 }
 
@@ -130,13 +136,13 @@ pub async fn save_settings(
 ) -> ApiResult<()> {
     sqlx::query(
         "INSERT INTO device_settings (device_id, auto_download, profile, quota_bytes, mobile_data,
-           mobile_cap_bytes, storage, av1, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, 0), ?9)
+           mobile_cap_bytes, storage, av1, updated_at, charging_only)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, 0), ?9, ?10)
          ON CONFLICT (device_id) DO UPDATE SET auto_download = excluded.auto_download,
            profile = excluded.profile, quota_bytes = excluded.quota_bytes,
            mobile_data = excluded.mobile_data, mobile_cap_bytes = excluded.mobile_cap_bytes,
            storage = excluded.storage, av1 = COALESCE(?8, device_settings.av1),
-           updated_at = excluded.updated_at",
+           updated_at = excluded.updated_at, charging_only = excluded.charging_only",
     )
     .bind(device_id)
     .bind(s.auto_download)
@@ -147,6 +153,7 @@ pub async fn save_settings(
     .bind(s.storage)
     .bind(av1)
     .bind(now())
+    .bind(s.charging_only)
     .execute(&state.db)
     .await?;
     Ok(())

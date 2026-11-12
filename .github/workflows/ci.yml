@@ -108,3 +108,65 @@ jobs:
           name: desktop-playwright-report
           path: apps/desktop/playwright-report
           retention-days: 7
+
+  android:
+    name: Android (engine tests, end-to-end on an emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - name: Install ffmpeg (encodes the test movie)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v6
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate the Android project (D74)
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform android --no-install
+      - name: Sync engine unit tests (Kotlin, D64)
+        working-directory: apps/mobile/android
+        run: ./gradlew :batvision-sync:testDebugUnitTest
+      - name: Build the release APK
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease
+      - name: Install Maestro
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.12.1/maestro.zip
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$HOME"
+          echo "$HOME/maestro/bin" >> "$GITHUB_PATH"
+      - name: Enable KVM (hardware acceleration for the emulator)
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: End-to-end on an emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          MAESTRO_OUTPUT: ${{ github.workspace }}/apps/mobile/maestro-output
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
+          script: pnpm --filter @batvision/mobile test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-e2e
+          path: |
+            apps/mobile/playwright-report
+            apps/mobile/maestro-output
+          retention-days: 7
