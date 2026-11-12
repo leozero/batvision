@@ -316,6 +316,8 @@ export default function Player() {
           resizeMode="contain"
           paused={paused}
           controls={false}
+          // Transcoded streams are growing HLS playlists: not a live broadcast.
+          controlsStyles={{ hideLiveBadge: true }}
           reportBandwidth
           enterPictureInPictureOnLeave
           selectedTextTrack={
