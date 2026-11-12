@@ -366,6 +366,7 @@ export const en: Shape<typeof fr> = {
     version: "Version",
     encoders: "Encoders",
     gpu: "GPU",
+    gpuFull: "Decoding, HDR conversion and encoding on the GPU",
     gpuOk: "NVENC hardware encoding available",
     gpuMissing: "No hardware encoder detected",
     ffmpegMissing: "not found",

@@ -303,18 +303,25 @@ pub async fn start(
         let token = state.signer.sign(Grant::File { f: file.id }, expires);
         (format!("/api/stream/{token}"), false, None)
     } else {
-        let encoder = match state.ffmpeg.read().await.as_ref() {
+        let (encoder, gpu_filters) = match state.ffmpeg.read().await.as_ref() {
             Some(probe) if probe.working_encoders.iter().any(|e| e == "h264_nvenc") => {
-                VideoEncoder::Nvenc
+                (VideoEncoder::Nvenc, probe.gpu_filters)
             }
-            _ => VideoEncoder::Software,
+            _ => (VideoEncoder::Software, false),
         };
+        let gpu = info
+            .video
+            .as_ref()
+            .filter(|_| gpu_filters)
+            .map(playback::gpu::Source::of);
         let job = TranscodeJob {
             input: state.config.media_dir.join(&file.path),
             plan: plan.clone(),
             video_index: info.video.as_ref().map(|v| v.index),
             start_ms,
             encoder,
+            gpu,
+            source_width: info.video.as_ref().and_then(|v| v.width),
         };
         let source_height = info.video.as_ref().and_then(|v| v.height);
         let session = state

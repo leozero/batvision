@@ -3376,9 +3376,14 @@
       "FfmpegInfo": {
         "type": "object",
         "required": [
-          "working_encoders"
+          "working_encoders",
+          "gpu_filters"
         ],
         "properties": {
+          "gpu_filters": {
+            "type": "boolean",
+            "description": "Decoding, scaling and HDR tone mapping on the NVIDIA GPU work."
+          },
           "version": {
             "type": [
               "string",

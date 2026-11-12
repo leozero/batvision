@@ -338,11 +338,7 @@ pub fn encoders(state: &AppState) -> Encoders {
         .ffmpeg
         .try_read()
         .ok()
-        .and_then(|guard| {
-            guard
-                .as_ref()
-                .map(|i| Encoders::from_names(&i.working_encoders))
-        })
+        .and_then(|guard| guard.as_ref().map(Encoders::from_info))
         .unwrap_or_default()
 }
 

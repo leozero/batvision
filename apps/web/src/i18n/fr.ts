@@ -366,6 +366,7 @@ export const fr = {
     version: "Version",
     encoders: "Encodeurs",
     gpu: "Carte graphique",
+    gpuFull: "Décodage, conversion HDR et encodage sur la carte graphique",
     gpuOk: "Encodage matériel NVENC disponible",
     gpuMissing: "Aucun encodeur matériel détecté",
     ffmpegMissing: "introuvable",

@@ -19,8 +19,9 @@ use utoipa::ToSchema;
 use super::plan::Profile;
 use crate::{
     db::{Db, now},
+    ffmpeg::FfmpegInfo,
     library::media_info::{self, MediaInfo, TrackKind},
-    playback::{normalize_language, subtitles, transcode},
+    playback::{gpu, normalize_language, subtitles, transcode},
 };
 
 /// Video codecs a profile can produce; `Copy` keeps the source stream (Max).
@@ -37,15 +38,18 @@ pub struct Encoders {
     pub hevc_nvenc: bool,
     pub av1_nvenc: bool,
     pub libsvtav1: bool,
+    /// Decode, scale and tone-map on the GPU (see `playback::gpu`).
+    pub gpu_filters: bool,
 }
 
 impl Encoders {
-    pub fn from_names(names: &[String]) -> Self {
-        let has = |n: &str| names.iter().any(|e| e == n);
+    pub fn from_info(info: &FfmpegInfo) -> Self {
+        let has = |n: &str| info.working_encoders.iter().any(|e| e == n);
         Self {
             hevc_nvenc: has("hevc_nvenc"),
             av1_nvenc: has("av1_nvenc"),
             libsvtav1: has("libsvtav1"),
+            gpu_filters: info.gpu_filters,
         }
     }
 }
@@ -103,9 +107,28 @@ pub struct EncodeJob {
     pub video_index: i64,
     pub source_height: Option<i64>,
     pub hdr: bool,
+    pub source: gpu::Source,
     pub audio_index: Option<i64>,
     pub audio_channels: Option<i64>,
     pub encoders: Encoders,
+}
+
+impl EncodeJob {
+    fn encoder(&self) -> &'static str {
+        match self.video {
+            VideoPlan::Av1 if self.encoders.av1_nvenc => "av1_nvenc",
+            VideoPlan::Av1 => "libsvtav1",
+            _ if self.encoders.hevc_nvenc => "hevc_nvenc",
+            _ => "libx265",
+        }
+    }
+
+    /// Frames go from the decoder to NVENC without leaving the GPU.
+    pub fn on_gpu(&self) -> bool {
+        self.video != VideoPlan::Copy
+            && self.encoders.gpu_filters
+            && self.encoder().ends_with("_nvenc")
+    }
 }
 
 fn target(profile: Profile) -> Option<(i64, u32)> {
@@ -118,9 +141,13 @@ fn target(profile: Profile) -> Option<(i64, u32)> {
 
 /// ffmpeg arguments writing `out` (MP4). Pure, for testing.
 pub fn ffmpeg_args(job: &EncodeJob, out: &Path) -> Vec<String> {
-    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i"]
+    let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y"]
         .map(String::from)
         .to_vec();
+    if job.on_gpu() {
+        args.extend(gpu::input_args(job.source));
+    }
+    args.push("-i".into());
     args.push(job.input.to_string_lossy().into_owned());
     args.extend(["-map".into(), format!("0:{}", job.video_index)]);
 
@@ -128,24 +155,27 @@ pub fn ffmpeg_args(job: &EncodeJob, out: &Path) -> Vec<String> {
         VideoPlan::Copy => {
             args.extend(["-c:v".into(), "copy".into()]);
         }
-        plan => {
-            let mut filters = Vec::new();
-            if job.hdr {
-                filters.push(transcode::TONEMAP.to_owned());
-            }
+        _ => {
             let (height, kbps) =
                 target(job.profile).unwrap_or((job.source_height.unwrap_or(1080), 8000));
-            if job.source_height.is_some_and(|h| h > height) {
-                filters.push(format!("scale=-2:{height}"));
-            }
-            filters.push("format=yuv420p".into());
-            args.extend(["-vf".into(), filters.join(",")]);
-            let encoder = match plan {
-                VideoPlan::Av1 if job.encoders.av1_nvenc => "av1_nvenc",
-                VideoPlan::Av1 => "libsvtav1",
-                _ if job.encoders.hevc_nvenc => "hevc_nvenc",
-                _ => "libx265",
+            let scale = job.source_height.is_some_and(|h| h > height);
+            let filters = if job.on_gpu() {
+                let size = format!("w=-2:h={height}");
+                gpu::chain(job.source, scale.then_some(size.as_str()), job.hdr)
+            } else {
+                // Scaling first: tone mapping the smaller picture is much cheaper.
+                let mut filters = Vec::new();
+                if scale {
+                    filters.push(format!("scale=-2:{height}"));
+                }
+                if job.hdr {
+                    filters.push(transcode::TONEMAP.to_owned());
+                }
+                filters.push("format=yuv420p".into());
+                filters.join(",")
             };
+            args.extend(["-vf".into(), filters]);
+            let encoder = job.encoder();
             args.extend(["-c:v".into(), encoder.into()]);
             match encoder {
                 "av1_nvenc" | "hevc_nvenc" => {
@@ -360,6 +390,7 @@ impl Encoder {
             video_index: video.index,
             source_height: video.height,
             hdr: video.hdr,
+            source: gpu::Source::of(video),
             audio_index: row.audio_index,
             audio_channels: audio.and_then(|a| a.channels),
             encoders,
@@ -371,40 +402,24 @@ impl Encoder {
         let partial = dir.join("video.partial.mp4");
         let out = dir.join("video.mp4");
         let duration_us = info.duration_ms.unwrap_or(0) * 1000;
-        tracing::info!(variant = id, profile = ?row.profile, codec = %row.codec, "encoding");
-
-        let mut child = Command::new(&self.ffmpeg)
-            .args(ffmpeg_args(&job, &partial))
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()?;
-        let stdout = child.stdout.take().expect("piped");
-        let mut lines = BufReader::new(stdout).lines();
-        let mut last_update = Instant::now();
-        while let Some(line) = lines.next_line().await? {
-            if let Some(us) = line
-                .strip_prefix("out_time_us=")
-                .and_then(|v| v.parse::<i64>().ok())
-                && duration_us > 0
-                && last_update.elapsed() > Duration::from_secs(2)
-            {
-                last_update = Instant::now();
-                let progress = (us as f64 / duration_us as f64).clamp(0.0, 0.99);
-                sqlx::query("UPDATE variants SET progress = ? WHERE id = ?")
-                    .bind(progress)
-                    .bind(id)
-                    .execute(&self.db)
-                    .await?;
-            }
-        }
-        let output = child.wait_with_output().await?;
-        anyhow::ensure!(
-            output.status.success(),
-            "ffmpeg: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
+        tracing::info!(
+            variant = id,
+            profile = ?row.profile,
+            codec = %row.codec,
+            gpu = job.on_gpu(),
+            "encoding"
         );
+
+        if let Err(err) = self.run(id, &job, &partial, duration_us).await {
+            if !job.on_gpu() {
+                return Err(err);
+            }
+            // A source the GPU chain can't take: the CPU filters handle anything.
+            tracing::warn!(variant = id, error = %format!("{err:#}"), "GPU encode failed, retrying on the CPU");
+            let mut cpu = job.clone();
+            cpu.encoders.gpu_filters = false;
+            self.run(id, &cpu, &partial, duration_us).await?;
+        }
         tokio::fs::rename(&partial, &out).await?;
 
         // Every text subtitle, embedded or external, as WebVTT next to the video.
@@ -463,6 +478,49 @@ impl Encoder {
         Ok(())
     }
 
+    /// Runs ffmpeg for `job`, reporting progress on the variant.
+    async fn run(
+        &self,
+        id: i64,
+        job: &EncodeJob,
+        partial: &Path,
+        duration_us: i64,
+    ) -> anyhow::Result<()> {
+        let mut child = Command::new(&self.ffmpeg)
+            .args(ffmpeg_args(job, partial))
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()?;
+        let stdout = child.stdout.take().expect("piped");
+        let mut lines = BufReader::new(stdout).lines();
+        let mut last_update = Instant::now();
+        while let Some(line) = lines.next_line().await? {
+            if let Some(us) = line
+                .strip_prefix("out_time_us=")
+                .and_then(|v| v.parse::<i64>().ok())
+                && duration_us > 0
+                && last_update.elapsed() > Duration::from_secs(2)
+            {
+                last_update = Instant::now();
+                let progress = (us as f64 / duration_us as f64).clamp(0.0, 0.99);
+                sqlx::query("UPDATE variants SET progress = ? WHERE id = ?")
+                    .bind(progress)
+                    .bind(id)
+                    .execute(&self.db)
+                    .await?;
+            }
+        }
+        let output = child.wait_with_output().await?;
+        anyhow::ensure!(
+            output.status.success(),
+            "ffmpeg: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+        Ok(())
+    }
+
     /// Deletes a variant's files and row.
     pub async fn delete(&self, id: i64) -> anyhow::Result<()> {
         let _ = tokio::fs::remove_dir_all(self.dir(id)).await;
@@ -517,12 +575,17 @@ mod tests {
             video_index: 0,
             source_height: Some(2160),
             hdr: false,
+            source: gpu::Source {
+                decode: true,
+                deep: true,
+            },
             audio_index: Some(2),
             audio_channels: Some(6),
             encoders: Encoders {
                 hevc_nvenc: true,
                 av1_nvenc: true,
                 libsvtav1: true,
+                gpu_filters: false,
             },
         }
     }
@@ -537,6 +600,7 @@ mod tests {
             hevc_nvenc: true,
             av1_nvenc: true,
             libsvtav1: true,
+            gpu_filters: true,
         };
         assert_eq!(
             video_plan(Profile::Max, "hevc", false, &all),
@@ -582,15 +646,48 @@ mod tests {
     }
 
     #[test]
-    fn saver_hevc_tonemaps_hdr_and_tags_hvc1() {
+    fn saver_hevc_scales_then_tonemaps_hdr_and_tags_hvc1() {
         let mut j = job(Profile::Saver, VideoPlan::Hevc);
         j.hdr = true;
         j.encoders = Encoders::default();
         let args = joined(&j);
-        assert!(args.contains("tonemap="));
-        assert!(args.contains("scale=-2:480"));
+        assert!(args.contains(&format!(
+            "-vf scale=-2:480,{},format=yuv420p",
+            transcode::TONEMAP
+        )));
         assert!(args.contains("-c:v libx265 -preset medium -b:v 700k"));
         assert!(args.contains("-tag:v hvc1"));
+        assert!(!args.contains("cuda"));
+    }
+
+    #[test]
+    fn gpu_filters_keep_frames_on_the_gpu() {
+        let mut j = job(Profile::Saver, VideoPlan::Av1);
+        j.hdr = true;
+        j.encoders.gpu_filters = true;
+        let args = joined(&j);
+        assert!(args.starts_with(
+            "-hide_banner -loglevel error -nostdin -y -init_hw_device cuda=cu:0 \
+             -filter_hw_device cu -hwaccel cuda -hwaccel_device cu -hwaccel_output_format cuda \
+             -i /media/m.mkv"
+        ));
+        assert!(args.contains(&format!(
+            "-vf scale_cuda=w=-2:h=480:format=p010le,{} -c:v av1_nvenc",
+            gpu::TONEMAP
+        )));
+    }
+
+    #[test]
+    fn gpu_filters_need_an_nvenc_encoder() {
+        let mut j = job(Profile::Saver, VideoPlan::Av1);
+        j.encoders = Encoders {
+            libsvtav1: true,
+            gpu_filters: true,
+            ..Encoders::default()
+        };
+        assert!(!j.on_gpu());
+        assert!(joined(&j).contains("-vf scale=-2:480,format=yuv420p -c:v libsvtav1"));
+        assert!(!job(Profile::Max, VideoPlan::Copy).on_gpu());
     }
 
     #[test]

@@ -42,11 +42,8 @@ async fn main() -> anyhow::Result<()> {
                 .try_read()
                 .ok()
                 .and_then(|p| {
-                    p.as_ref().map(|i| {
-                        batvision_server::downloads::encode::Encoders::from_names(
-                            &i.working_encoders,
-                        )
-                    })
+                    p.as_ref()
+                        .map(batvision_server::downloads::encode::Encoders::from_info)
                 })
                 .unwrap_or_default()
         })
@@ -60,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     let probe_state = state.clone();
     tokio::spawn(async move {
         let info = ffmpeg::probe(&probe_state.config.ffmpeg).await;
-        tracing::info!(version = ?info.version, encoders = ?info.working_encoders, "ffmpeg probe done");
+        tracing::info!(version = ?info.version, encoders = ?info.working_encoders, gpu_filters = info.gpu_filters, "ffmpeg probe done");
         *probe_state.ffmpeg.write().await = Some(info);
     });
 

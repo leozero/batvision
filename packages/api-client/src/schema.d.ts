@@ -1259,6 +1259,8 @@ export interface components {
             language?: string | null;
         };
         FfmpegInfo: {
+            /** @description Decoding, scaling and HDR tone mapping on the NVIDIA GPU work. */
+            gpu_filters: boolean;
             /** @description First line of `ffmpeg -version`, or `None` if ffmpeg could not be run. */
             version?: string | null;
             /** @description Encoders that completed a test encode. */

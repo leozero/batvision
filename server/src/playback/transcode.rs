@@ -11,7 +11,7 @@ use std::{
 
 use tokio::process::{Child, Command};
 
-use super::{Method, Plan};
+use super::{Method, Plan, gpu};
 
 pub const SEGMENT_SECONDS: u32 = 6;
 /// A session nobody fetched from for this long is stopped and deleted.
@@ -31,6 +31,15 @@ pub struct TranscodeJob {
     pub video_index: Option<i64>,
     pub start_ms: i64,
     pub encoder: VideoEncoder,
+    /// Set when the server's GPU filters work (with NVENC): decode, scale and tone-map there.
+    pub gpu: Option<gpu::Source>,
+    pub source_width: Option<i64>,
+}
+
+/// Output size for a source scaled to `height` (even width, like `scale=-2:h`).
+fn scaled_size(width: i64, height: i64, target: i64) -> (i64, i64) {
+    let w = (width as f64 * target as f64 / height as f64 / 2.0).round() as i64 * 2;
+    (w.max(2), target)
 }
 
 pub const TONEMAP: &str = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,\
@@ -52,16 +61,72 @@ pub fn ffmpeg_args(job: &TranscodeJob, source_height: Option<i64>, out_dir: &Pat
     let mut args: Vec<String> = ["-hide_banner", "-loglevel", "warning", "-nostdin", "-y"]
         .map(String::from)
         .to_vec();
+    let plan = &job.plan;
+    let video = job.video_index.map(|v| format!("0:{v}"));
+    let encode_video = plan.method == Method::Transcode;
+    // Burning subtitles in needs the output size up front (the overlay runs on the CPU).
+    let out_size = match (job.source_width, source_height) {
+        (Some(w), Some(h)) => Some(scaled_size(w, h, plan.max_height.unwrap_or(h).min(h))),
+        _ => None,
+    };
+    let gpu = job
+        .gpu
+        .filter(|_| encode_video && job.encoder == VideoEncoder::Nvenc)
+        .filter(|_| plan.burn_subtitle.is_none() || out_size.is_some());
+
+    if let Some(source) = gpu {
+        args.extend(gpu::input_args(source));
+    }
     if job.start_ms > 0 {
         args.extend(["-ss".into(), format!("{:.3}", job.start_ms as f64 / 1000.0)]);
     }
     args.extend(["-i".into(), job.input.to_string_lossy().into_owned()]);
 
-    let plan = &job.plan;
-    let video = job.video_index.map(|v| format!("0:{v}"));
-    let encode_video = plan.method == Method::Transcode;
-
     match (&video, encode_video) {
+        (Some(v), true) if let Some(source) = gpu => {
+            let graph = match (plan.burn_subtitle, out_size) {
+                (Some(sub), Some((w, h))) => {
+                    let size = format!("w={w}:h={h}");
+                    format!(
+                        "[{v}]{},hwdownload,format=yuv420p[main];\
+                         [0:{sub}]scale={w}:{h}[sub];[main][sub]overlay=eof_action=pass[vout]",
+                        gpu::chain(source, Some(&size), plan.tonemap)
+                    )
+                }
+                _ => {
+                    let size = plan.max_height.map(|h| format!("w=-2:h={h}"));
+                    format!(
+                        "[{v}]{}[vout]",
+                        gpu::chain(source, size.as_deref(), plan.tonemap)
+                    )
+                }
+            };
+            args.extend([
+                "-filter_complex".into(),
+                graph,
+                "-map".into(),
+                "[vout]".into(),
+            ]);
+            video_encoder_args(&mut args, job, plan, source_height);
+        }
+        (Some(v), true) if plan.burn_subtitle.is_none() => {
+            // Scaling first: tone mapping the smaller picture is much cheaper.
+            let mut filters = Vec::new();
+            if let Some(height) = plan.max_height {
+                filters.push(format!("scale=-2:{height}"));
+            }
+            if plan.tonemap {
+                filters.push(TONEMAP.to_owned());
+            }
+            filters.push("format=yuv420p".into());
+            args.extend([
+                "-filter_complex".into(),
+                format!("[{v}]{}[vout]", filters.join(",")),
+                "-map".into(),
+                "[vout]".into(),
+            ]);
+            video_encoder_args(&mut args, job, plan, source_height);
+        }
         (Some(v), true) => {
             let mut graph = String::new();
             let mut current = format!("[{v}]");
@@ -85,55 +150,67 @@ pub fn ffmpeg_args(job: &TranscodeJob, source_height: Option<i64>, out_dir: &Pat
                 "-map".into(),
                 "[vout]".into(),
             ]);
-
-            let height = plan.max_height.or(source_height).unwrap_or(1080);
-            let rate = max_bitrate_kbps(height);
-            let keyframes = format!("expr:gte(t,n_forced*{SEGMENT_SECONDS})");
-            match job.encoder {
-                VideoEncoder::Nvenc => args.extend(
-                    [
-                        "-c:v",
-                        "h264_nvenc",
-                        "-preset",
-                        "p4",
-                        "-tune",
-                        "hq",
-                        "-rc",
-                        "vbr",
-                        "-cq",
-                        "21",
-                        "-forced-idr",
-                        "1",
-                    ]
-                    .map(String::from),
-                ),
-                VideoEncoder::Software => args.extend(
-                    [
-                        "-c:v",
-                        "libx264",
-                        "-preset",
-                        "veryfast",
-                        "-crf",
-                        "21",
-                        "-sc_threshold",
-                        "0",
-                    ]
-                    .map(String::from),
-                ),
-            }
-            args.extend([
-                "-maxrate".into(),
-                format!("{rate}k"),
-                "-bufsize".into(),
-                format!("{}k", rate * 2),
-                "-force_key_frames".into(),
-                keyframes,
-            ]);
+            video_encoder_args(&mut args, job, plan, source_height);
         }
         (Some(v), false) => args.extend(["-map".into(), v.clone(), "-c:v".into(), "copy".into()]),
         (None, _) => {}
     }
+    audio_and_hls_args(&mut args, plan, out_dir);
+    args
+}
 
+fn video_encoder_args(
+    args: &mut Vec<String>,
+    job: &TranscodeJob,
+    plan: &Plan,
+    source_height: Option<i64>,
+) {
+    let height = plan.max_height.or(source_height).unwrap_or(1080);
+    let rate = max_bitrate_kbps(height);
+    let keyframes = format!("expr:gte(t,n_forced*{SEGMENT_SECONDS})");
+    match job.encoder {
+        VideoEncoder::Nvenc => args.extend(
+            [
+                "-c:v",
+                "h264_nvenc",
+                "-preset",
+                "p4",
+                "-tune",
+                "hq",
+                "-rc",
+                "vbr",
+                "-cq",
+                "21",
+                "-forced-idr",
+                "1",
+            ]
+            .map(String::from),
+        ),
+        VideoEncoder::Software => args.extend(
+            [
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "21",
+                "-sc_threshold",
+                "0",
+            ]
+            .map(String::from),
+        ),
+    }
+    args.extend([
+        "-maxrate".into(),
+        format!("{rate}k"),
+        "-bufsize".into(),
+        format!("{}k", rate * 2),
+        "-force_key_frames".into(),
+        keyframes,
+    ]);
+}
+
+fn audio_and_hls_args(args: &mut Vec<String>, plan: &Plan, out_dir: &Path) {
     if let Some(audio) = plan.audio_index {
         args.extend(["-map".into(), format!("0:{audio}")]);
         if plan.copy_audio {
@@ -164,7 +241,6 @@ pub fn ffmpeg_args(job: &TranscodeJob, source_height: Option<i64>, out_dir: &Pat
     );
     args.push(format!("{dir}/seg%05d.m4s"));
     args.push(format!("{dir}/index.m3u8"));
-    args
 }
 
 struct Session {
@@ -317,6 +393,8 @@ mod tests {
             video_index: Some(0),
             start_ms: 0,
             encoder: VideoEncoder::Software,
+            gpu: None,
+            source_width: Some(1920),
         }
     }
 
@@ -371,6 +449,65 @@ mod tests {
         let overlay = args.find("overlay").unwrap();
         assert!(tonemap < overlay);
         assert!(args.contains("-c:v libx264"));
+    }
+
+    #[test]
+    fn cpu_scales_before_tone_mapping() {
+        let mut j = job(Method::Transcode);
+        j.plan.tonemap = true;
+        j.plan.max_height = Some(720);
+        assert!(joined(&j).contains(&format!("[0:0]scale=-2:720,{TONEMAP},format=yuv420p[vout]")));
+    }
+
+    fn gpu_job() -> TranscodeJob {
+        let mut j = job(Method::Transcode);
+        j.encoder = VideoEncoder::Nvenc;
+        j.gpu = Some(gpu::Source {
+            decode: true,
+            deep: true,
+        });
+        j.plan.tonemap = true;
+        j.plan.max_height = Some(720);
+        j.start_ms = 5_000;
+        j
+    }
+
+    #[test]
+    fn gpu_decodes_scales_and_tone_maps() {
+        let args = joined(&gpu_job());
+        assert!(args.starts_with(
+            "-hide_banner -loglevel warning -nostdin -y -init_hw_device cuda=cu:0 \
+             -filter_hw_device cu -hwaccel cuda -hwaccel_device cu -hwaccel_output_format cuda \
+             -ss 5.000 -i /media/Movie.mkv"
+        ));
+        assert!(args.contains(&format!(
+            "-filter_complex [0:0]scale_cuda=w=-2:h=720:format=p010le,{}[vout]",
+            gpu::TONEMAP
+        )));
+        assert!(args.contains("-c:v h264_nvenc"));
+    }
+
+    #[test]
+    fn gpu_burns_subtitles_on_the_scaled_picture() {
+        let mut j = gpu_job();
+        j.plan.burn_subtitle = Some(6);
+        let args = joined(&j);
+        assert!(args.contains(&format!(
+            "[0:0]scale_cuda=w=1280:h=720:format=p010le,{},hwdownload,format=yuv420p[main];\
+             [0:6]scale=1280:720[sub];[main][sub]overlay=eof_action=pass[vout]",
+            gpu::TONEMAP
+        )));
+        // Without the source size, the CPU filters burn them in.
+        j.source_width = None;
+        assert!(!joined(&j).contains("cuda"));
+    }
+
+    #[test]
+    fn gpu_filters_need_nvenc() {
+        let mut j = gpu_job();
+        j.encoder = VideoEncoder::Software;
+        assert!(!joined(&j).contains("cuda"));
+        assert_eq!(scaled_size(3840, 1606, 720), (1722, 720));
     }
 
     #[test]

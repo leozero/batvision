@@ -1,6 +1,7 @@
 //! Playback decisions: which tracks to play, and whether the client can play the
 //! file as is or needs a remux or a transcode. Everything here is pure.
 
+pub mod gpu;
 pub mod signing;
 pub mod subtitles;
 pub mod transcode;

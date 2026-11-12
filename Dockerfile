@@ -52,6 +52,9 @@ ENV NVIDIA_VISIBLE_DEVICES=all \
     BATVISION_MEDIA_DIR=/media \
     BATVISION_FFMPEG=/usr/lib/jellyfin-ffmpeg/ffmpeg \
     BATVISION_FFPROBE=/usr/lib/jellyfin-ffmpeg/ffprobe
+# CUDA compiles the GPU filters for the card on first use: keep them, or every
+# ffmpeg start pays seconds of compilation.
+ENV CUDA_CACHE_PATH=/cache/cuda
 
 RUN mkdir -p /data /cache /media && chown 1000:1000 /data /cache
 USER 1000:1000

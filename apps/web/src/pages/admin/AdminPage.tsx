@@ -427,7 +427,11 @@ function SystemCard() {
         <dt className="text-muted">{t("admin.gpu")}</dt>
         <dd className="flex items-center gap-2">
           <Cpu className={hardware.length ? "size-4 text-success" : "size-4 text-faint"} />
-          {hardware.length ? t("admin.gpuOk") : t("admin.gpuMissing")}
+          {data?.ffmpeg?.gpu_filters
+            ? t("admin.gpuFull")
+            : hardware.length
+              ? t("admin.gpuOk")
+              : t("admin.gpuMissing")}
         </dd>
       </dl>
     </Card>

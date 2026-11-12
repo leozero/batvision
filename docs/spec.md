@@ -109,7 +109,7 @@ docs/
   1. direct play of the file;
   2. remuxing into another container, without re-encoding;
   3. transcoding the audio only;
-  4. full transcoding, as HLS with NVENC acceleration, burning in subtitles when needed.
+  4. full transcoding, as HLS with NVENC acceleration, burning in subtitles when needed. With an NVIDIA GPU, decoding, scaling and HDR tone mapping also run on it (D57).
 - **Subtitles:**
   - text subtitles (SRT/ASS, external or embedded) are converted and rendered by the client;
   - image subtitles (PGS/VobSub) are burned into the video when the user picks them.
@@ -180,7 +180,7 @@ Series subscriptions and manual downloads are explicit requests for one device: 
 | `saver`  | 480p, about 700 kb/s                        | AAC stereo    |
 
 - Output is always MP4 with **one audio track** (the chosen language), so it plays in any player.
-- **Codec for lighter profiles:** AV1 if the device decodes it in hardware, otherwise HEVC. HDR is tone-mapped.
+- **Codec for lighter profiles:** AV1 if the device decodes it in hardware, otherwise HEVC. HDR is tone-mapped, on the GPU when there is one (D57).
 - Default profile per device (desktop: `max`, Android: `mobile`), overridable per series or manual download.
 - **All text subtitles** (embedded and external) are delivered as separate WebVTT files.
 
