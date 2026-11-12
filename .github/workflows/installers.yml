@@ -93,15 +93,24 @@ jobs:
           BATVISION_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           # Phones only (arm64, armv7): x86 builds only serve emulators, and doubled the build.
-          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --build-cache
+          # APK for the GitHub release, AAB for the Play Store (D82): same native builds.
+          ./gradlew assembleRelease bundleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --build-cache
           version=$(node -p 'require("../app.json").expo.version')
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/batvision-$version-android.apk"
+          mv app/build/outputs/bundle/release/app-release.aab "app/build/outputs/bundle/release/batvision-$version.aab"
       - uses: actions/upload-artifact@v7
         with:
           name: batvision-android
           path: apps/mobile/android/app/build/outputs/apk/release/batvision-*-android.apk
           if-no-files-found: error
           retention-days: 30
+      # Not attached to the GitHub release (its pattern is batvision-*): for Play only.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: play-bundle
+          path: apps/mobile/android/app/build/outputs/bundle/release/batvision-*.aab
+          if-no-files-found: error
+          retention-days: 90
 
   release:
     name: GitHub release

@@ -1,0 +1,23 @@
+batvision is the app for your own media server. Run the free, open-source batvision server at home, point it at your movies and TV series, and watch them anywhere: streamed over the internet, or downloaded to your phone for when you're offline.
+
+This app needs a batvision server. It does not include or sell any content: you watch the files you own, from a server you or your family run.
+
+WATCH
+• Browse your movies and series with posters, summaries and ratings
+• Resume where you stopped, on any of your devices
+• Choose the audio track and subtitles; your choice follows you through the series
+• Picture quality adapts to your connection, or pick it yourself (Max, Medium, Low)
+• Next episode in one tap, picture-in-picture when you leave the app
+
+DOWNLOAD
+• Download movies and episodes to watch offline, in a lighter version made by your server for phones
+• Keep the next episodes of a series on your phone automatically, and watched ones are deleted for you
+• Choose where files go (phone or SD card), how much space they may use, and whether mobile data may be used, with a monthly cap
+• Downloads continue in the background, even with the app closed, and resume after an interruption
+• Offline, the app opens on what's downloaded; your progress goes back to the server when you're online again
+
+PRIVATE BY DESIGN
+• No account with us, no ads, no tracking: the app only talks to your server
+• Two-factor sign-in, and your device token is kept in the Android keystore
+
+batvision is open source (GPL): https://github.com/leozero/batvision

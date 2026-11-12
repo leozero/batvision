@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:e2e": "playwright test",
-    "build:apk": "expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease"
+    "build:apk": "expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease",
+    "graphics": "node scripts/store-graphics.mjs"
   },
   "dependencies": {
     "@batvision/api-client": "workspace:*",
