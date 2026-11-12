@@ -59,6 +59,11 @@ class Api(private val server: String, private val token: String) {
     send("POST", "/api/downloads/request", JSONObject().put("kind", kind).put("id", id))
   }
 
+  /** This device drops an item: the server removes what asks for it (D74). */
+  fun cancel(kind: String, id: Long) {
+    send("POST", "/api/downloads/cancel", JSONObject().put("kind", kind).put("id", id))
+  }
+
   fun confirm(variantId: Long) {
     send("POST", "/api/downloads/confirm", JSONObject().put("variant_id", variantId))
   }
@@ -123,6 +128,7 @@ class Api(private val server: String, private val token: String) {
         posterPath = o.str("poster_path"),
         durationMs = o.long("duration_ms"),
         error = o.str("error"),
+        source = o.str("source"),
       )
     }
   }

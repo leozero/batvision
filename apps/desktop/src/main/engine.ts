@@ -123,6 +123,7 @@ export class Engine extends EventEmitter {
       audioLanguage: entry?.audio_language ?? stored?.audioLanguage ?? null,
       watched: entry?.watched ?? stored?.played ?? false,
       overQuota: this.decision?.overQuota.has(key) ?? false,
+      source: entry?.source ?? null,
       error: this.failed.get(key) ?? entry?.error ?? null,
       meta: stored ? this.publicMeta(stored) : this.metaFromPlan(entry),
     };
@@ -193,6 +194,26 @@ export class Engine extends EventEmitter {
     if (paused) this.abort?.abort();
     else this.kick();
     this.emitState();
+  }
+
+  /**
+   * Drops an item (D74): the server forgets what asks for it first, so the next plan
+   * doesn't bring it back; then the transfer stops and the files go.
+   */
+  async cancel(kind: "movie" | "episode", id: number) {
+    await this.server.json("/api/downloads/cancel", { kind, id });
+    const key = itemKey(kind, id);
+    if (this.downloading?.key === key) {
+      this.abort?.abort();
+      // The download loop stops and lets go of the partial file.
+      await this.loop;
+    }
+    this.library.remove(key);
+    this.failed.delete(key);
+    this.plan = this.plan.filter((e) => itemKey(e.kind, e.id) !== key);
+    if (this.decision) this.decision = decide(this.plan, this.library.records(), this.quota);
+    this.emitState();
+    void this.sync();
   }
 
   setFolder(folder: string) {

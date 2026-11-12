@@ -1,10 +1,21 @@
+import {
+  directionLabelKey,
+  flipDirection,
+  naturalDirection,
+  SORT_ORDERS,
+  type SortDirection,
+  type SortOrder,
+} from "@batvision/core/sort";
 import { Link } from "expo-router";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { FlatList, Pressable, RefreshControl, Text, useWindowDimensions, View } from "react-native";
 import type { Schemas } from "../lib/api";
-import type { SortOrder } from "../lib/queries";
-import { EmptyState, Loading, Poster, Rating } from "./ui";
+import { COLORS, EmptyState, Loading, Poster, Rating } from "./ui";
+import { SearchButton } from "./Watchlist";
+
+export type Sorting = { sort: SortOrder; direction: SortDirection };
 
 export type CatalogItem = {
   key: string;
@@ -16,7 +27,6 @@ export type CatalogItem = {
   ratings?: Schemas["Rating"][];
 };
 
-const SORTS: SortOrder[] = ["added", "title", "year", "rating"];
 const SORT_LABEL: Record<SortOrder, string> = {
   added: "browse.sortAdded",
   title: "browse.sortTitle",
@@ -32,8 +42,8 @@ export function Catalog(props: {
   refreshing: boolean;
   onRefresh: () => void;
   onEnd: () => void;
-  sort: SortOrder;
-  onSort: (sort: SortOrder) => void;
+  sorting: Sorting;
+  onSort: (sorting: Sorting) => void;
   empty: string;
   header?: ReactNode;
 }) {
@@ -54,22 +64,49 @@ export function Catalog(props: {
       columnWrapperClassName="gap-3"
       ListHeaderComponent={
         <View className="gap-3 px-1 pt-4">
-          <Text className="text-2xl font-bold text-fg">{props.title}</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {SORTS.map((s) => (
-              <Pressable
-                key={s}
-                onPress={() => props.onSort(s)}
-                className={`rounded-full px-3 py-1.5 ${s === props.sort ? "bg-accent" : "bg-surface-2"}`}
-              >
-                <Text
-                  className={`text-xs font-semibold ${s === props.sort ? "text-accent-ink" : "text-muted"}`}
-                >
-                  {t(SORT_LABEL[s])}
-                </Text>
-              </Pressable>
-            ))}
+          <View className="flex-row items-center justify-between">
+            <Text className="text-2xl font-bold text-fg">{props.title}</Text>
+            <SearchButton />
           </View>
+          <View className="flex-row flex-wrap gap-2">
+            {SORT_ORDERS.map((s) => {
+              const active = s === props.sorting.sort;
+              return (
+                <Pressable
+                  key={s}
+                  testID={`sort-${s}`}
+                  accessibilityState={{ selected: active }}
+                  // A new sort starts in its natural direction (D75).
+                  onPress={() => props.onSort({ sort: s, direction: naturalDirection(s) })}
+                  className={`rounded-full px-3 py-1.5 ${active ? "bg-accent" : "bg-surface-2"}`}
+                >
+                  <Text
+                    className={`text-xs font-semibold ${active ? "text-accent-ink" : "text-muted"}`}
+                  >
+                    {t(SORT_LABEL[s])}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          <Pressable
+            testID="sort-direction"
+            accessibilityRole="button"
+            accessibilityHint={t("browse.reverse")}
+            onPress={() =>
+              props.onSort({ ...props.sorting, direction: flipDirection(props.sorting.direction) })
+            }
+            className="flex-row items-center gap-1.5 self-start rounded-full bg-surface-2 px-3 py-1.5 active:opacity-70"
+          >
+            {props.sorting.direction === "asc" ? (
+              <ArrowUpNarrowWide color={COLORS.fg} size={14} />
+            ) : (
+              <ArrowDownWideNarrow color={COLORS.fg} size={14} />
+            )}
+            <Text className="text-xs font-semibold text-fg">
+              {t(directionLabelKey(props.sorting.sort, props.sorting.direction))}
+            </Text>
+          </Pressable>
           {props.header}
         </View>
       }

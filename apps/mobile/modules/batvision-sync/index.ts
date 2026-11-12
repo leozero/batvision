@@ -34,6 +34,8 @@ declare class BatvisionSyncModule extends NativeModule<Events> {
   getState(): SyncState;
   syncNow(): void;
   setPaused(paused: boolean): void;
+  /** Drops an item, downloaded or not (D74). Rejects when the server can't be reached. */
+  cancel(kind: ItemKind, id: number): Promise<void>;
   localPlayback(kind: ItemKind, id: number): LocalPlayback | null;
   reportProgress(kind: ItemKind, id: number, positionMs: number, played: boolean): void;
   deviceInfo(): { model: string; manufacturer: string; av1: boolean };

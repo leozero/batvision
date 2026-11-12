@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { api, call, type Schemas } from "../lib/api";
 import { syncDesktop } from "../lib/desktop";
 import { languageName } from "../lib/format";
-import { downloadsQuery, invalidateLibrary, preferencesQuery } from "../lib/queries";
+import { devicesQuery, downloadsQuery, invalidateLibrary, preferencesQuery } from "../lib/queries";
 import { errorText } from "../pages/account/AccountPage";
 import { Button, Dialog, ErrorText, Field, Select } from "./ui";
 
@@ -65,6 +65,17 @@ function ProfileSelect({ value, onChange }: { value: string; onChange: (v: strin
   );
 }
 
+/** The device making the request (the desktop app itself, or a browser). */
+function useCurrentDeviceId() {
+  const { data } = useQuery(devicesQuery);
+  return data?.find((d) => d.current)?.id;
+}
+
+/** In the desktop app, this computer; in a browser, the most recently seen app. */
+function defaultDevice(devices: Schemas["DeviceDownloads"][], current: number | undefined) {
+  return (devices.find((d) => d.id === current) ?? devices[0])?.id;
+}
+
 function NoDevice() {
   const { t } = useTranslation();
   return (
@@ -88,6 +99,7 @@ export function WatchlistButton({ movie }: { movie: Schemas["MovieDetail"] }) {
   const refresh = () => {
     syncDesktop();
     invalidateLibrary(qc);
+    void qc.invalidateQueries({ queryKey: ["watchlist"] });
     void qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
   };
   const add = useMutation({
@@ -113,7 +125,7 @@ export function WatchlistButton({ movie }: { movie: Schemas["MovieDetail"] }) {
     return (
       <Button size="lg" variant="ghost" onClick={() => remove.mutate()} loading={remove.isPending}>
         <BookmarkCheck className="size-5 text-accent" />
-        {t("downloads.inWatchlist")}
+        {t("watchlist.inWatchlist")}
       </Button>
     );
   }
@@ -121,13 +133,13 @@ export function WatchlistButton({ movie }: { movie: Schemas["MovieDetail"] }) {
     <>
       <Button size="lg" variant="ghost" onClick={() => setOpen(true)}>
         <Bookmark className="size-5" />
-        {t("downloads.addToWatchlist")}
+        {t("watchlist.add")}
       </Button>
       <Dialog
         open={open}
         onOpenChange={setOpen}
-        title={t("downloads.addToWatchlistLong")}
-        description={t("downloads.watchlistHint")}
+        title={t("watchlist.addLong")}
+        description={t("watchlist.intro")}
       >
         <form
           className="flex flex-col gap-4"
@@ -139,11 +151,49 @@ export function WatchlistButton({ movie }: { movie: Schemas["MovieDetail"] }) {
           <AudioSelect languages={languages} value={audio ?? preferred} onChange={setAudio} />
           <ErrorText>{add.error ? errorText(t, add.error) : null}</ErrorText>
           <Button type="submit" variant="primary" loading={add.isPending}>
-            {t("downloads.addToWatchlistLong")}
+            {t("watchlist.addLong")}
           </Button>
         </form>
       </Dialog>
     </>
+  );
+}
+
+/** Adds a series to the watchlist: its next unwatched episodes download (D73). */
+export function SeriesWatchlistButton({ series }: { series: Schemas["SeriesDetail"] }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const toggle = useMutation({
+    mutationFn: () => {
+      const params = { params: { path: { series_id: series.id } } };
+      return call(
+        series.in_watchlist
+          ? api.DELETE("/api/watchlist/series/{series_id}", params)
+          : api.PUT("/api/watchlist/series/{series_id}", params),
+      );
+    },
+    onSuccess: () => {
+      syncDesktop();
+      invalidateLibrary(qc);
+      void qc.invalidateQueries({ queryKey: ["watchlist"] });
+      void qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
+    },
+  });
+  return (
+    <Button
+      size="lg"
+      variant="ghost"
+      onClick={() => toggle.mutate()}
+      loading={toggle.isPending}
+      aria-pressed={series.in_watchlist}
+    >
+      {series.in_watchlist ? (
+        <BookmarkCheck className="size-5 text-accent" />
+      ) : (
+        <Bookmark className="size-5" />
+      )}
+      {series.in_watchlist ? t("watchlist.inWatchlist") : t("watchlist.add")}
+    </Button>
   );
 }
 
@@ -153,13 +203,14 @@ export function DownloadMovieButton({ movie }: { movie: Schemas["MovieDetail"] }
   const qc = useQueryClient();
   const { data: overview } = useQuery(downloadsQuery);
   const devices = overview?.devices ?? [];
+  const current = useCurrentDeviceId();
   const languages = useMemo(() => audioLanguages(movie.file), [movie.file]);
   const preferred = useDefaultAudio(languages);
   const [open, setOpen] = useState(false);
   const [device, setDevice] = useState<number | null>(null);
   const [audio, setAudio] = useState<string | null>(null);
   const [profile, setProfile] = useState("");
-  const deviceId = device ?? devices[0]?.id;
+  const deviceId = device ?? defaultDevice(devices, current);
   const add = useMutation({
     mutationFn: () =>
       call(
@@ -245,6 +296,7 @@ export function DownloadSeriesButton({
   const qc = useQueryClient();
   const { data: overview } = useQuery(downloadsQuery);
   const devices = overview?.devices ?? [];
+  const current = useCurrentDeviceId();
   const languages = useMemo(() => audioLanguages(episodeFile), [episodeFile]);
   const preferred = useDefaultAudio(languages);
   const seasons = series.seasons;
@@ -255,7 +307,7 @@ export function DownloadSeriesButton({
   const [season, setSeason] = useState<number | null>(null);
   const [audio, setAudio] = useState<string | null>(null);
   const [profile, setProfile] = useState("");
-  const deviceId = device ?? devices[0]?.id;
+  const deviceId = device ?? defaultDevice(devices, current);
   const seasonNumber = season ?? seasons.find((s) => s.season_number > 0)?.season_number ?? 1;
   const subscribe = useMutation({
     mutationFn: () =>

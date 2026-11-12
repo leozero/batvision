@@ -52,6 +52,8 @@ class Engine private constructor(private val context: Context) {
   @Volatile var current: Current? = null
     private set
   @Volatile private var cancelDownload = false
+  /** Items dropped by hand: a download of one stops at its next check (D74). */
+  private val cancelled = java.util.Collections.synchronizedSet(mutableSetOf<String>())
   private var flushJob: Job? = null
   private val listeners = mutableSetOf<(Map<String, Any?>) -> Unit>()
   private var lastEmit = 0L
@@ -278,7 +280,7 @@ class Engine private constructor(private val context: Context) {
               val now = conditions()
               if (now.metered) store.addMobileBytes(month(), meteredBytes)
               meteredBytes = 0
-              if (store.paused || cancelDownload) throw StopDownload(null)
+              if (store.paused || cancelDownload || key in cancelled) throw StopDownload(null)
               NetworkRules.check(entry.profile, rules(), now, store.mobileBytes(month()))?.let { throw StopDownload(it) }
               current = Current(key, displayTitle(entry), received, total)
               onDownload(current)
@@ -351,6 +353,25 @@ class Engine private constructor(private val context: Context) {
   }
 
   // ---- Controls ---------------------------------------------------------------------------
+
+  /**
+   * Drops an item, downloaded or not (D74). The server forgets what asks for it first,
+   * so the next plan doesn't bring it back; a download in progress stops within a second
+   * and the files go. Throws when the server can't be reached.
+   */
+  suspend fun cancel(kind: String, id: Long) {
+    api().cancel(kind, id)
+    val key = itemKey(kind, id)
+    cancelled += key
+    // Wait for a download of it to let go of the partial file.
+    while (current?.key == key) delay(100)
+    library.remove(key)
+    failed.remove(key)
+    waits.remove(key)
+    plan = plan.filter { it.key != key }
+    cancelled -= key
+    emit()
+  }
 
   fun setPaused(paused: Boolean) {
     store.paused = paused
@@ -494,6 +515,7 @@ class Engine private constructor(private val context: Context) {
       "audioLanguage" to (entry?.audioLanguage ?: stored?.audioLanguage),
       "watched" to (entry?.watched ?: stored?.played ?: false),
       "overQuota" to (decision?.overQuota?.contains(key) ?: false),
+      "source" to entry?.source,
       "wait" to waits[key]?.name?.lowercase(),
       "error" to (failed[key] ?: entry?.error),
       "meta" to if (stored != null) metaMap(stored) else metaMap(StoredMeta(

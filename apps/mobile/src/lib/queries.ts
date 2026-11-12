@@ -1,3 +1,4 @@
+import type { SortDirection, SortOrder } from "@batvision/core/sort";
 import {
   infiniteQueryOptions,
   queryOptions,
@@ -7,7 +8,7 @@ import {
 import { BatvisionSync } from "../../modules/batvision-sync";
 import { ApiError, api, call, type Schemas } from "./api";
 
-export type SortOrder = "title" | "added" | "year" | "rating";
+export type { SortDirection, SortOrder } from "@batvision/core/sort";
 
 /** The signed-in user, or `null` when the token is no longer valid. */
 export const meQuery = queryOptions({
@@ -30,12 +31,14 @@ export const homeQuery = queryOptions({
 
 const PAGE = 60;
 
-export const moviesQuery = (sort: SortOrder) =>
+export const moviesQuery = (sort: SortOrder, order: SortDirection) =>
   infiniteQueryOptions({
-    queryKey: ["movies", sort],
+    queryKey: ["movies", sort, order],
     queryFn: ({ pageParam }) =>
       call(
-        api().GET("/api/movies", { params: { query: { sort, limit: PAGE, offset: pageParam } } }),
+        api().GET("/api/movies", {
+          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+        }),
       ),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
@@ -44,12 +47,14 @@ export const moviesQuery = (sort: SortOrder) =>
     },
   });
 
-export const seriesListQuery = (sort: SortOrder) =>
+export const seriesListQuery = (sort: SortOrder, order: SortDirection) =>
   infiniteQueryOptions({
-    queryKey: ["series", sort],
+    queryKey: ["series", sort, order],
     queryFn: ({ pageParam }) =>
       call(
-        api().GET("/api/series", { params: { query: { sort, limit: PAGE, offset: pageParam } } }),
+        api().GET("/api/series", {
+          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+        }),
       ),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
@@ -89,6 +94,16 @@ export const searchQuery = (q: string) =>
     queryFn: () => call(api().GET("/api/search", { params: { query: { q } } })),
     enabled: q.trim().length > 0,
   });
+
+export const watchlistQuery = queryOptions({
+  queryKey: ["watchlist"],
+  queryFn: () => call(api().GET("/api/watchlist")),
+});
+
+export const preferencesQuery = queryOptions({
+  queryKey: ["preferences"],
+  queryFn: () => call(api().GET("/api/me/preferences")),
+});
 
 export const downloadsQuery = queryOptions({
   queryKey: ["downloads"],
@@ -152,5 +167,52 @@ export function useSetPlayed() {
         api().PUT("/api/played/{kind}/{id}", { params: { path: { kind, id } }, body: { played } }),
       ),
     onSuccess: () => void qc.invalidateQueries(),
+  });
+}
+
+/** Adds or removes a movie or series; the engine picks the change up now (D73). */
+export function useWatchlist() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: {
+      kind: "movie" | "series";
+      id: number;
+      add: boolean;
+      audioLanguage?: string | null;
+    }) => {
+      if (v.kind === "series") {
+        const params = { params: { path: { series_id: v.id } } };
+        return call(
+          v.add
+            ? api().PUT("/api/watchlist/series/{series_id}", params)
+            : api().DELETE("/api/watchlist/series/{series_id}", params),
+        );
+      }
+      const params = { params: { path: { movie_id: v.id } } };
+      return call(
+        v.add
+          ? api().PUT("/api/watchlist/{movie_id}", {
+              ...params,
+              body: { audio_language: v.audioLanguage ?? null },
+            })
+          : api().DELETE("/api/watchlist/{movie_id}", params),
+      );
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries();
+      BatvisionSync.syncNow();
+    },
+  });
+}
+
+export function useSavePreferences() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Schemas["PreferencesUpdate"]) =>
+      call(api().PUT("/api/me/preferences", { body })),
+    onSuccess: (prefs) => {
+      qc.setQueryData(preferencesQuery.queryKey, prefs);
+      BatvisionSync.syncNow();
+    },
   });
 }

@@ -2,7 +2,9 @@ package fr.batvision.sync
 
 import android.media.MediaCodecList
 import android.os.Build
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.ModuleDefinition
 
 /** `BatvisionSync` in JavaScript: the session, the engine's state and its controls. */
@@ -52,6 +54,12 @@ class BatvisionSyncModule : Module() {
     Function("setPaused") { paused: Boolean ->
       engine.setPaused(paused)
       if (!paused) Scheduler.now(context)
+    }
+
+    /** Drops an item (D74); then a sync starts the next download. */
+    AsyncFunction("cancel") Coroutine { kind: String, id: Long ->
+      engine.cancel(kind, id)
+      Scheduler.now(context)
     }
 
     Function("localPlayback") { kind: String, id: Long -> engine.localPlayback(kind, id) }

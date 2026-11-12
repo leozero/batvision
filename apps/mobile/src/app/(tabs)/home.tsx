@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { UpdateBanner } from "../../components/UpdateBanner";
 import { EmptyState, Loading, Poster, Screen } from "../../components/ui";
+import { SearchButton } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { homeQuery } from "../../lib/queries";
 
@@ -16,11 +17,29 @@ type Card = {
   progress?: number;
 };
 
-function Row({ title, items }: { title: string; items: Card[] }) {
+function Row({
+  title,
+  items,
+  action,
+}: {
+  title: string;
+  items: Card[];
+  /** A link next to the title ("See all"). */
+  action?: { label: string; href: string; testID?: string };
+}) {
   if (items.length === 0) return null;
   return (
     <View className="gap-3">
-      <Text className="px-4 text-lg font-semibold text-fg">{title}</Text>
+      <View className="flex-row items-baseline justify-between px-4">
+        <Text className="text-lg font-semibold text-fg">{title}</Text>
+        {action ? (
+          <Link href={action.href as never} asChild>
+            <Pressable testID={action.testID} hitSlop={8}>
+              <Text className="text-sm text-accent">{action.label}</Text>
+            </Pressable>
+          </Link>
+        ) : null}
+      </View>
       <FlatList
         horizontal
         data={items}
@@ -78,8 +97,9 @@ export default function HomeScreen() {
           <RefreshControl refreshing={home.isRefetching} onRefresh={() => void home.refetch()} />
         }
       >
-        <View className="px-4 pt-4">
+        <View className="flex-row items-center justify-between px-4 pt-4">
           <Text className="text-3xl font-bold text-accent">batvision</Text>
+          <SearchButton />
         </View>
         <UpdateBanner />
         {empty ? <EmptyState title={t("home.emptyTitle")} /> : null}
@@ -92,6 +112,17 @@ export default function HomeScreen() {
           title={t("home.recentMovies")}
           items={(data?.recent_movies ?? []).map((m) => ({
             key: `movie-${m.id}`,
+            href: `/movie/${m.id}`,
+            title: m.title,
+            subtitle: m.year ? String(m.year) : null,
+            poster: imageUrl(m.poster_path, "w342"),
+          }))}
+        />
+        <Row
+          title={t("home.topRatedMovies")}
+          action={{ label: t("home.seeAll"), href: "/movies?sort=rating", testID: "top-rated-all" }}
+          items={(data?.top_rated_movies ?? []).map((m) => ({
+            key: `top-${m.id}`,
             href: `/movie/${m.id}`,
             title: m.title,
             subtitle: m.year ? String(m.year) : null,

@@ -1,0 +1,43 @@
+# Watchlist tab, account episodes setting, and the device settings sheets (D73, D68).
+appId: fr.batvision.android
+---
+- stopApp
+- launchApp
+- tapOn:
+    id: tab-movies
+- tapOn: Test Movie
+- tapOn:
+    id: watchlist
+- back
+- tapOn:
+    id: tab-watchlist
+- assertVisible:
+    id: watchlist-movie-${MOVIE_ID}
+# Automatic downloads are off on this phone: the banner turns them on.
+- tapOn:
+    id: enable-auto
+- extendedWaitUntil:
+    notVisible:
+      id: auto-off
+    timeout: 15000
+- tapOn:
+    id: watchlist-episodes
+- tapOn:
+    id: choice-3
+# Device settings: mobile data, picked in a sheet with an explanation per option.
+- tapOn:
+    id: tab-downloads
+- scrollUntilVisible:
+    element:
+      id: setting-mobile-data
+- tapOn:
+    id: setting-mobile-data
+- tapOn:
+    id: choice-light
+- scrollUntilVisible:
+    element:
+      id: setting-mobile-cap
+- tapOn:
+    id: setting-mobile-cap
+- tapOn:
+    id: choice-5

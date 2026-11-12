@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { ScrollView, Text, View } from "react-native";
 import { Hero, LocalMark, WatchedMark } from "../../components/Detail";
 import { Button, COLORS, ErrorText, Loading, Muted, Rating, Screen } from "../../components/ui";
+import { MovieWatchlistButton } from "../../components/Watchlist";
 import { imageUrl } from "../../lib/api";
 import { movieQuery, useManualDownload, useSetPlayed } from "../../lib/queries";
 import { session } from "../../lib/session";
@@ -50,6 +51,7 @@ export default function MovieScreen() {
           >
             {resume ? t("common.resume") : t("common.play")}
           </Button>
+          <MovieWatchlistButton movie={m} />
           {!local ? (
             <Button
               testID="download"

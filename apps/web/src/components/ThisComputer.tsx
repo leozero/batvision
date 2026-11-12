@@ -1,6 +1,7 @@
 import type { DesktopSettings, LocalItem } from "@batvision/bridge";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { TFunction } from "i18next";
 import {
   CheckCircle2,
   Clock,
@@ -11,6 +12,7 @@ import {
   Play,
   RefreshCw,
   WifiOff,
+  X,
   XCircle,
 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
@@ -20,7 +22,7 @@ import { desktop, useDownloadsState, useLocalItem } from "../lib/desktop";
 import { episodeCode } from "../lib/format";
 import { downloadsQuery } from "../lib/queries";
 import { Card } from "../pages/account/AccountPage";
-import { Badge, Button, ProgressBar } from "./ui";
+import { Badge, Button, Dialog, ErrorText, IconButton, ProgressBar } from "./ui";
 
 /** "Downloaded" on a detail page, when this computer has the item. */
 export function DownloadedMark({ kind, id }: { kind: "movie" | "episode"; id: number }) {
@@ -76,6 +78,64 @@ function ItemState({ item, paused }: { item: LocalItem; paused: boolean }) {
   if (paused && item.serverStatus === "ready")
     return line(<Pause className="size-3.5" />, t("desktop.state.paused"));
   return line(<Clock className="size-3.5" />, t("desktop.state.waiting"));
+}
+
+/** What cancelling removes, said before doing it (D74). */
+export function cancelEffect(t: TFunction, item: LocalItem) {
+  const source = item.source ?? "manual";
+  return t(`downloads.effect.${source}`, { title: item.meta.title });
+}
+
+/** Cancels a download in progress, or deletes a finished one, after confirming. */
+function CancelButton({ item }: { item: LocalItem }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const done = item.status === "done";
+  const confirm = async () => {
+    setBusy(true);
+    setError(false);
+    try {
+      await desktop?.cancel(item.kind, item.id);
+      setOpen(false);
+      void qc.invalidateQueries();
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!desktop?.cancel) return null;
+  return (
+    <>
+      <IconButton
+        label={done ? t("downloads.delete") : t("downloads.cancel")}
+        data-testid={`cancel-${item.key}`}
+        className="size-9"
+        onClick={() => setOpen(true)}
+      >
+        <X className="size-4" />
+      </IconButton>
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        title={done ? t("downloads.deleteTitle") : t("downloads.cancelTitle")}
+        description={cancelEffect(t, item)}
+      >
+        <ErrorText>{error ? t("downloads.cancelFailed") : null}</ErrorText>
+        <div className="mt-2 flex justify-end gap-2">
+          <Button variant="ghost" onClick={() => setOpen(false)}>
+            {t("downloads.keep")}
+          </Button>
+          <Button variant="danger" loading={busy} onClick={() => void confirm()}>
+            {done ? t("downloads.delete") : t("downloads.cancel")}
+          </Button>
+        </div>
+      </Dialog>
+    </>
+  );
 }
 
 /** Desktop app only: what this computer holds, and its download settings. */
@@ -172,6 +232,7 @@ export function ThisComputerCard() {
                     <Play className="size-4 fill-current" />
                   </Link>
                 ) : null}
+                <CancelButton item={item} />
               </li>
             ))}
           </ul>

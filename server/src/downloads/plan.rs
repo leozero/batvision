@@ -35,7 +35,8 @@ pub enum Source {
     Season,
     /// Requested by hand.
     Manual,
-    /// A watchlist movie (devices with automatic downloads only).
+    /// A watchlist movie, or the next episodes of a watchlist series (devices with
+    /// automatic downloads only).
     Watchlist,
 }
 
@@ -53,9 +54,16 @@ pub struct Subscription {
     pub audio_language: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatchlistTarget {
+    Movie(i64),
+    /// Its next `Inputs::watchlist_episodes` unwatched episodes (D73).
+    Series(i64),
+}
+
 #[derive(Debug, Clone)]
 pub struct WatchlistEntry {
-    pub movie_id: i64,
+    pub target: WatchlistTarget,
     pub audio_language: Option<String>,
     pub added_at: i64,
 }
@@ -89,8 +97,10 @@ pub struct Inputs {
     pub device_profile: Option<Profile>,
     pub subscriptions: Vec<Subscription>,
     pub watchlist: Vec<WatchlistEntry>,
+    /// Unwatched episodes to keep for each watchlist series (account setting, D73).
+    pub watchlist_episodes: usize,
     pub manual: Vec<ManualEntry>,
-    /// Episodes of each subscribed series, in viewing order (specials last).
+    /// Episodes of each subscribed or watchlist series, in viewing order (specials last).
     pub series_episodes: HashMap<i64, Vec<EpisodeRef>>,
     pub states: HashMap<(PlayableKind, i64), ItemState>,
 }
@@ -125,6 +135,36 @@ impl Inputs {
         } else {
             Err(())
         }
+    }
+
+    fn episodes(&self, series_id: i64) -> &[EpisodeRef] {
+        self.series_episodes
+            .get(&series_id)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    /// The next `count` unwatched episodes after the last one watched (or the one in
+    /// progress), in viewing order.
+    fn next_unwatched<'a>(&self, episodes: &'a [EpisodeRef], count: usize) -> Vec<&'a EpisodeRef> {
+        let ep = PlayableKind::Episode;
+        let anchor = episodes
+            .iter()
+            .enumerate()
+            .filter_map(|(i, e)| self.state(ep, e.id).last_played_at.map(|at| (at, i)))
+            .max()
+            .map(|(_, i)| i);
+        let start = match anchor {
+            // Watched to the end: continue after it. In progress or stopped: it's next.
+            Some(i) if self.state(ep, episodes[i].id).played => i + 1,
+            Some(i) => i,
+            None => 0,
+        };
+        episodes[start.min(episodes.len())..]
+            .iter()
+            .filter(|e| !self.state(ep, e.id).played)
+            .take(count)
+            .collect()
     }
 }
 
@@ -167,28 +207,8 @@ pub fn expected_set(inputs: &Inputs) -> Vec<ExpectedItem> {
         let Mode::Rolling { count } = sub.mode else {
             continue;
         };
-        let episodes = inputs
-            .series_episodes
-            .get(&sub.series_id)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
-        let anchor = episodes
-            .iter()
-            .enumerate()
-            .filter_map(|(i, e)| inputs.state(ep, e.id).last_played_at.map(|at| (at, i)))
-            .max()
-            .map(|(_, i)| i);
-        let start = match anchor {
-            // Watched to the end: continue after it. In progress or stopped: it's next.
-            Some(i) if inputs.state(ep, episodes[i].id).played => i + 1,
-            Some(i) => i,
-            None => 0,
-        };
-        let next = episodes[start.min(episodes.len())..]
-            .iter()
-            .filter(|e| !inputs.state(ep, e.id).played)
-            .take(count);
-        for e in next {
+        let episodes = inputs.episodes(sub.series_id);
+        for e in inputs.next_unwatched(episodes, count) {
             push(
                 ep,
                 e.id,
@@ -221,11 +241,7 @@ pub fn expected_set(inputs: &Inputs) -> Vec<ExpectedItem> {
         let Mode::Season { number } = sub.mode else {
             continue;
         };
-        let episodes = inputs
-            .series_episodes
-            .get(&sub.series_id)
-            .map(Vec::as_slice)
-            .unwrap_or(&[]);
+        let episodes = inputs.episodes(sub.series_id);
         for e in episodes.iter().filter(|e| e.season == number) {
             if let Ok(window) = inputs.watched_window(ep, e.id) {
                 push(
@@ -258,22 +274,62 @@ pub fn expected_set(inputs: &Inputs) -> Vec<ExpectedItem> {
         }
     }
 
-    // 4. Watchlist, on devices with automatic downloads, oldest additions first.
+    // 4. Watchlist, on devices with automatic downloads, oldest additions first. A
+    // series brings its next unwatched episodes, like a rolling subscription (D73).
     if inputs.auto_download {
         let mut entries: Vec<&WatchlistEntry> = inputs.watchlist.iter().collect();
-        entries.sort_by_key(|w| (w.added_at, w.movie_id));
+        entries.sort_by_key(|w| {
+            let id = match w.target {
+                WatchlistTarget::Movie(id) | WatchlistTarget::Series(id) => id,
+            };
+            (w.added_at, id)
+        });
         for w in entries {
-            if let Ok(window) = inputs.watched_window(PlayableKind::Movie, w.movie_id) {
-                push(
-                    PlayableKind::Movie,
-                    w.movie_id,
-                    None,
-                    &w.audio_language,
-                    Source::Watchlist,
-                    window,
-                    &mut wanted,
-                    &mut watched,
-                );
+            match w.target {
+                WatchlistTarget::Movie(id) => {
+                    if let Ok(window) = inputs.watched_window(PlayableKind::Movie, id) {
+                        push(
+                            PlayableKind::Movie,
+                            id,
+                            None,
+                            &w.audio_language,
+                            Source::Watchlist,
+                            window,
+                            &mut wanted,
+                            &mut watched,
+                        );
+                    }
+                }
+                WatchlistTarget::Series(series_id) => {
+                    let episodes = inputs.episodes(series_id);
+                    let count = inputs.watchlist_episodes.max(1);
+                    for e in inputs.next_unwatched(episodes, count) {
+                        push(
+                            ep,
+                            e.id,
+                            None,
+                            &w.audio_language,
+                            Source::Watchlist,
+                            None,
+                            &mut wanted,
+                            &mut watched,
+                        );
+                    }
+                    for e in episodes {
+                        if let Ok(Some(until)) = inputs.watched_window(ep, e.id) {
+                            push(
+                                ep,
+                                e.id,
+                                None,
+                                &w.audio_language,
+                                Source::Watchlist,
+                                Some(until),
+                                &mut wanted,
+                                &mut watched,
+                            );
+                        }
+                    }
+                }
             }
         }
     }
@@ -431,12 +487,12 @@ mod tests {
         let mut inputs = base();
         inputs.watchlist = vec![
             WatchlistEntry {
-                movie_id: 7,
+                target: WatchlistTarget::Movie(7),
                 audio_language: Some("fre".into()),
                 added_at: 20,
             },
             WatchlistEntry {
-                movie_id: 5,
+                target: WatchlistTarget::Movie(5),
                 audio_language: None,
                 added_at: 10,
             },
@@ -454,7 +510,7 @@ mod tests {
         let mut inputs = base();
         inputs.auto_download = true;
         inputs.watchlist = vec![WatchlistEntry {
-            movie_id: 5,
+            target: WatchlistTarget::Movie(5),
             audio_language: None,
             added_at: 0,
         }];
@@ -462,6 +518,85 @@ mod tests {
         assert!(expected_set(&inputs)[0].watched);
         played(&mut inputs, PlayableKind::Movie, 5, 25);
         assert!(expected_set(&inputs).is_empty());
+    }
+
+    fn watchlist_series(added_at: i64) -> WatchlistEntry {
+        WatchlistEntry {
+            target: WatchlistTarget::Series(1),
+            audio_language: Some("jpn".into()),
+            added_at,
+        }
+    }
+
+    #[test]
+    fn watchlist_series_brings_the_next_episodes() {
+        let mut inputs = base();
+        inputs.watchlist_episodes = 2;
+        inputs.watchlist = vec![watchlist_series(0)];
+        assert!(expected_set(&inputs).is_empty(), "auto off");
+        inputs.auto_download = true;
+        played(&mut inputs, PlayableKind::Episode, 11, 30);
+        played(&mut inputs, PlayableKind::Episode, 12, 2);
+        let set = expected_set(&inputs);
+        assert_eq!(
+            ids(&set),
+            vec![13, 14, 12],
+            "next two, then the one watched 2 h ago"
+        );
+        assert!(set.iter().all(|i| i.source == Source::Watchlist));
+        assert_eq!(set[0].profile, Profile::Mobile, "the device's profile");
+        assert_eq!(set[0].audio_language.as_deref(), Some("jpn"));
+    }
+
+    #[test]
+    fn watchlist_series_with_nothing_left_waits_for_new_episodes() {
+        let mut inputs = base();
+        inputs.auto_download = true;
+        inputs.watchlist_episodes = 2;
+        inputs.watchlist = vec![watchlist_series(0)];
+        played(&mut inputs, PlayableKind::Episode, 1, 30);
+        assert!(expected_set(&inputs).is_empty());
+        // A new special appears after the last one watched.
+        inputs
+            .series_episodes
+            .get_mut(&1)
+            .unwrap()
+            .push(EpisodeRef { id: 2, season: 0 });
+        assert_eq!(ids(&expected_set(&inputs)), vec![2]);
+    }
+
+    #[test]
+    fn watchlist_mixes_movies_and_series_by_date_added() {
+        let mut inputs = base();
+        inputs.auto_download = true;
+        inputs.watchlist_episodes = 1;
+        inputs.watchlist = vec![
+            WatchlistEntry {
+                target: WatchlistTarget::Movie(5),
+                audio_language: None,
+                added_at: 20,
+            },
+            watchlist_series(10),
+            WatchlistEntry {
+                target: WatchlistTarget::Movie(7),
+                audio_language: None,
+                added_at: 5,
+            },
+        ];
+        assert_eq!(ids(&expected_set(&inputs)), vec![7, 11, 5]);
+    }
+
+    #[test]
+    fn a_subscription_wins_over_the_watchlist_for_the_same_episode() {
+        let mut inputs = base();
+        inputs.auto_download = true;
+        inputs.watchlist_episodes = 3;
+        inputs.watchlist = vec![watchlist_series(0)];
+        inputs.subscriptions.push(rolling(1));
+        let set = expected_set(&inputs);
+        assert_eq!(ids(&set), vec![11, 12, 13], "each episode once");
+        assert_eq!(set[0].source, Source::Rolling);
+        assert_eq!(set[1].source, Source::Watchlist);
     }
 
     #[test]
@@ -500,7 +635,7 @@ mod tests {
         inputs.auto_download = true;
         inputs.subscriptions.push(rolling(1));
         inputs.watchlist = vec![WatchlistEntry {
-            movie_id: 5,
+            target: WatchlistTarget::Movie(5),
             audio_language: None,
             added_at: 0,
         }];

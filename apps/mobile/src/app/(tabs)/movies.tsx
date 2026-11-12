@@ -1,15 +1,22 @@
+import { parseSort } from "@batvision/core/sort";
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Catalog } from "../../components/Catalog";
+import { Catalog, type Sorting } from "../../components/Catalog";
 import { Screen } from "../../components/ui";
 import { imageUrl } from "../../lib/api";
-import { moviesQuery, type SortOrder } from "../../lib/queries";
+import { moviesQuery } from "../../lib/queries";
 
 export default function Movies() {
   const { t } = useTranslation();
-  const [sort, setSort] = useState<SortOrder>("added");
-  const q = useInfiniteQuery(moviesQuery(sort));
+  // "See all" on the top-rated rail opens this tab sorted by rating.
+  const { sort: linked } = useLocalSearchParams<{ sort?: string }>();
+  const [sorting, setSorting] = useState<Sorting>(() => parseSort(linked, null));
+  useEffect(() => {
+    if (linked) setSorting(parseSort(linked, null));
+  }, [linked]);
+  const q = useInfiniteQuery(moviesQuery(sorting.sort, sorting.direction));
   const items = (q.data?.pages ?? [])
     .flatMap((p) => p.items)
     .map((m) => ({
@@ -30,8 +37,8 @@ export default function Movies() {
         refreshing={q.isRefetching}
         onRefresh={() => void q.refetch()}
         onEnd={() => q.hasNextPage && !q.isFetchingNextPage && void q.fetchNextPage()}
-        sort={sort}
-        onSort={setSort}
+        sorting={sorting}
+        onSort={setSorting}
         empty={t("browse.noMovies")}
       />
     </Screen>

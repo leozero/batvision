@@ -457,14 +457,23 @@ pub async fn libraries(
 #[derive(Debug, Clone, Copy, Deserialize, ToSchema, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SortOrder {
+    /// A to Z by default.
     #[default]
     Title,
-    /// Most recently added first.
+    /// Most recently added first by default.
     Added,
-    /// Most recent first.
+    /// Most recent first by default; items without a year last.
     Year,
-    /// Best rated first; unrated items last.
+    /// Best rated first by default; unrated items last.
     Rating,
+}
+
+/// Sort direction (D75). Omitted: the sort's natural one (`asc` for title, else `desc`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum SortDirection {
+    Asc,
+    Desc,
 }
 
 impl SortOrder {
@@ -484,12 +493,25 @@ pub struct BrowseQuery {
     #[serde(default)]
     #[param(inline)]
     pub sort: SortOrder,
+    #[param(inline)]
+    pub order: Option<SortDirection>,
     /// Default 50, max 200.
     pub limit: Option<i64>,
     pub offset: Option<i64>,
 }
 
 impl BrowseQuery {
+    /// 1 for ascending, -1 for descending.
+    fn sign(&self) -> i64 {
+        let natural = match self.sort {
+            SortOrder::Title => SortDirection::Asc,
+            _ => SortDirection::Desc,
+        };
+        match self.order.unwrap_or(natural) {
+            SortDirection::Asc => 1,
+            SortDirection::Desc => -1,
+        }
+    }
     fn limit(&self) -> i64 {
         self.limit.unwrap_or(50).clamp(1, 200)
     }
@@ -561,11 +583,13 @@ pub async fn query_movies(
            FROM movies m
            WHERE m.missing_since IS NULL AND (?3 IS NULL OR m.library_id = ?3)
              AND (?8 IS NULL OR m.id IN (SELECT value FROM json_each(?8))))
+         -- ?9: 1 ascending, -1 descending. Items without a year or rating stay last.
          ORDER BY
-           CASE WHEN ?4 = 'added' THEN added_at ELSE 0 END DESC,
-           CASE WHEN ?4 = 'year' THEN COALESCE(year, 0) ELSE 0 END DESC,
+           CASE WHEN ?4 = 'year' THEN year IS NULL ELSE 0 END,
            CASE WHEN ?4 = 'rating' THEN rating_sort IS NULL ELSE 0 END,
-           CASE WHEN ?4 = 'rating' THEN COALESCE(rating_sort, 0) ELSE 0 END DESC,
+           CASE ?4 WHEN 'added' THEN added_at * ?9 WHEN 'year' THEN COALESCE(year, 0) * ?9
+             WHEN 'rating' THEN COALESCE(rating_sort, 0) * ?9 ELSE 0 END,
+           CASE WHEN ?4 = 'title' AND ?9 < 0 THEN title END COLLATE NOCASE DESC,
            title COLLATE NOCASE
          LIMIT ?5 OFFSET ?6",
     ))
@@ -577,6 +601,7 @@ pub async fn query_movies(
     .bind(q.offset())
     .bind(user.id)
     .bind(&ids)
+    .bind(q.sign())
     .fetch_all(&state.db)
     .await?;
     let total = sqlx::query_scalar(
@@ -780,11 +805,13 @@ pub async fn query_series(
            FROM series s
            WHERE s.missing_since IS NULL AND (?3 IS NULL OR s.library_id = ?3)
              AND (?8 IS NULL OR s.id IN (SELECT value FROM json_each(?8))))
+         -- ?9: 1 ascending, -1 descending. Items without a year or rating stay last.
          ORDER BY
-           CASE WHEN ?4 = 'added' THEN added_at ELSE 0 END DESC,
-           CASE WHEN ?4 = 'year' THEN COALESCE(year, 0) ELSE 0 END DESC,
+           CASE WHEN ?4 = 'year' THEN year IS NULL ELSE 0 END,
            CASE WHEN ?4 = 'rating' THEN rating_sort IS NULL ELSE 0 END,
-           CASE WHEN ?4 = 'rating' THEN COALESCE(rating_sort, 0) ELSE 0 END DESC,
+           CASE ?4 WHEN 'added' THEN added_at * ?9 WHEN 'year' THEN COALESCE(year, 0) * ?9
+             WHEN 'rating' THEN COALESCE(rating_sort, 0) * ?9 ELSE 0 END,
+           CASE WHEN ?4 = 'title' AND ?9 < 0 THEN title END COLLATE NOCASE DESC,
            title COLLATE NOCASE
          LIMIT ?5 OFFSET ?6",
     ))
@@ -796,6 +823,7 @@ pub async fn query_series(
     .bind(q.offset())
     .bind(user.id)
     .bind(&ids)
+    .bind(q.sign())
     .fetch_all(&state.db)
     .await?;
     let total = sqlx::query_scalar(
@@ -831,6 +859,8 @@ pub struct SeriesDetail {
     pub poster_path: Option<String>,
     pub backdrop_path: Option<String>,
     pub tmdb_id: Option<i64>,
+    /// In the caller's watchlist: its next episodes download automatically (D73).
+    pub in_watchlist: bool,
     #[schema(value_type = Vec<Rating>)]
     pub ratings: Ratings,
     #[sqlx(skip)]
@@ -861,7 +891,9 @@ pub async fn series(
              (SELECT overview FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?2)
            ) AS overview,
            COALESCE(CAST(substr(s.first_air_date, 1, 4) AS INTEGER), s.parsed_year) AS year,
-           s.first_air_date, s.poster_path, s.backdrop_path, s.tmdb_id, ",
+           s.first_air_date, s.poster_path, s.backdrop_path, s.tmdb_id,
+           EXISTS (SELECT 1 FROM watchlist_series w WHERE w.user_id = ?4 AND w.series_id = s.id)
+             AS in_watchlist, ",
         ratings_sql!("series", "s.id"),
         " AS ratings
          FROM series s WHERE s.id = ?3 AND s.missing_since IS NULL",
@@ -869,6 +901,7 @@ pub async fn series(
     .bind(lang)
     .bind(default)
     .bind(id)
+    .bind(current.user.id)
     .fetch_optional(&state.db)
     .await?
     .ok_or(ApiError::NotFound)?;

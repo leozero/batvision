@@ -24,6 +24,8 @@ data class PlanEntry(
   val posterPath: String? = null,
   val durationMs: Long? = null,
   val error: String? = null,
+  /** `manual`, `rolling`, `season` or `watchlist`: what cancelling removes (D74). */
+  val source: String? = null,
 ) {
   val key get() = itemKey(kind, id)
 }

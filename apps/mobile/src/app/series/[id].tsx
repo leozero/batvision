@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Hero, LocalMark, WatchedMark } from "../../components/Detail";
 import { Button, COLORS, Loading, Muted, ProgressBar, Rating, Screen } from "../../components/ui";
+import { SeriesWatchlistButton } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { seasonQuery, seriesQuery, useManualDownload, useSubscribe } from "../../lib/queries";
 import { session } from "../../lib/session";
@@ -131,6 +132,7 @@ export default function SeriesScreen() {
               {playLabel}
             </Button>
           ) : null}
+          <SeriesWatchlistButton series={s} />
           <View className="gap-2">
             <Text className="text-sm font-semibold text-muted">{t("mobile.downloadHere")}</Text>
             <View className="flex-row gap-2">

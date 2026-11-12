@@ -100,6 +100,7 @@ use crate::{
         routes::downloads::plan,
         routes::downloads::request,
         routes::downloads::confirm,
+        routes::downloads::cancel,
         routes::downloads::file,
         routes::downloads::progress_batch,
         routes::downloads::overview,
@@ -107,6 +108,8 @@ use crate::{
         routes::downloads::get_watchlist,
         routes::downloads::add_to_watchlist,
         routes::downloads::remove_from_watchlist,
+        routes::downloads::add_series_to_watchlist,
+        routes::downloads::remove_series_from_watchlist,
         routes::downloads::subscribe,
         routes::downloads::unsubscribe,
         routes::downloads::add_manual,
@@ -282,6 +285,7 @@ pub fn app(state: AppState) -> Router {
         .route("/downloads/plan", post(downloads::plan))
         .route("/downloads/request", post(downloads::request))
         .route("/downloads/confirm", post(downloads::confirm))
+        .route("/downloads/cancel", post(downloads::cancel))
         .route("/downloads/file/{token}", get(downloads::file))
         .route("/progress/batch", post(downloads::progress_batch))
         .route("/downloads/overview", get(downloads::overview))
@@ -294,6 +298,11 @@ pub fn app(state: AppState) -> Router {
             "/watchlist/{movie_id}",
             axum::routing::put(downloads::add_to_watchlist)
                 .delete(downloads::remove_from_watchlist),
+        )
+        .route(
+            "/watchlist/series/{series_id}",
+            axum::routing::put(downloads::add_series_to_watchlist)
+                .delete(downloads::remove_series_from_watchlist),
         )
         .route("/downloads/subscriptions", post(downloads::subscribe))
         .route(

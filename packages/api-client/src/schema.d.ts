@@ -333,6 +333,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/downloads/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * This device drops an item, downloaded or not (D74): removes whatever asks for it,
+         *     and its pending request. The device deletes its copy (or partial file) itself.
+         */
+        post: operations["cancel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/downloads/confirm": {
         parameters: {
             query?: never;
@@ -1013,6 +1033,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/watchlist/series/{series_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Adds a series: its next unwatched episodes download on devices with automatic
+         *     downloads, in the series' audio language (D73).
+         */
+        put: operations["add_series_to_watchlist"];
+        post?: never;
+        delete: operations["remove_series_from_watchlist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/watchlist/{movie_id}": {
         parameters: {
             query?: never;
@@ -1063,6 +1103,13 @@ export interface components {
         };
         BatchResult: {
             applied: number;
+        };
+        Cancelled: {
+            /**
+             * @description What no longer asks for the item: a manual download, a subscription of this
+             *     device, a watchlist entry (every device). Empty if nothing did.
+             */
+            removed: components["schemas"]["Source"][];
         };
         /** @description What a client says it can play. */
         Capabilities: {
@@ -1288,6 +1335,8 @@ export interface components {
             next_up: components["schemas"]["HomeItem"][];
             recent_movies: components["schemas"]["MovieSummary"][];
             recent_series: components["schemas"]["SeriesSummary"][];
+            /** @description Best TMDB ratings with enough votes to mean something (D76). */
+            top_rated_movies: components["schemas"]["MovieSummary"][];
         };
         /** @description A movie or an episode, ready to show as a card. */
         HomeItem: {
@@ -1576,6 +1625,21 @@ export interface components {
             audio_language?: string | null;
             subtitle_language?: string | null;
             subtitle_mode: components["schemas"]["SubtitleMode"];
+            /**
+             * Format: int64
+             * @description Unwatched episodes kept for each watchlist series, 1 to 10 (D73).
+             */
+            watchlist_episodes: number;
+        };
+        PreferencesUpdate: {
+            audio_language?: string | null;
+            subtitle_language?: string | null;
+            subtitle_mode: components["schemas"]["SubtitleMode"];
+            /**
+             * Format: int64
+             * @description Omitted: unchanged.
+             */
+            watchlist_episodes?: number | null;
         };
         /** @enum {string} */
         Profile: "max" | "mobile" | "saver";
@@ -1721,6 +1785,8 @@ export interface components {
             first_air_date?: string | null;
             /** Format: int64 */
             id: number;
+            /** @description In the caller's watchlist: its next episodes download automatically (D73). */
+            in_watchlist: boolean;
             /** Format: int64 */
             library_id: number;
             overview?: string | null;
@@ -1917,14 +1983,20 @@ export interface components {
         WatchlistItem: {
             /** Format: int64 */
             added_at: number;
+            /** @description Movies: the audio language chosen when adding. Series: `None` (D73). */
             audio_language?: string | null;
             /** Format: int64 */
-            movie_id: number;
+            id: number;
+            kind: components["schemas"]["WatchlistKind"];
+            /** @description Movie watched, or every episode of the series watched. */
+            played: boolean;
             poster_path?: string | null;
             title: string;
             /** Format: int64 */
             year?: number | null;
         };
+        /** @enum {string} */
+        WatchlistKind: "movie" | "series";
     };
     responses: never;
     parameters: never;
@@ -2591,6 +2663,29 @@ export interface operations {
             };
         };
     };
+    cancel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemRef"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Cancelled"];
+                };
+            };
+        };
+    };
     confirm: {
         parameters: {
             query?: never;
@@ -3152,7 +3247,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["Preferences"];
+                "application/json": components["schemas"]["PreferencesUpdate"];
             };
         };
         responses: {
@@ -3317,6 +3412,7 @@ export interface operations {
             query?: {
                 library_id?: number | null;
                 sort?: "title" | "added" | "year" | "rating";
+                order?: ("asc" | "desc") | null;
                 /** @description Default 50, max 200. */
                 limit?: number | null;
                 offset?: number | null;
@@ -3530,6 +3626,7 @@ export interface operations {
             query?: {
                 library_id?: number | null;
                 sort?: "title" | "added" | "year" | "rating";
+                order?: ("asc" | "desc") | null;
                 /** @description Default 50, max 200. */
                 limit?: number | null;
                 offset?: number | null;
@@ -3752,6 +3849,52 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["WatchlistItem"][];
                 };
+            };
+        };
+    };
+    add_series_to_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_series_from_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                series_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -31,6 +31,8 @@ export interface PlanEntry {
   poster_path?: string | null;
   duration_ms?: number | null;
   error?: string | null;
+  /** `manual`, `rolling`, `season` or `watchlist`. */
+  source?: string;
 }
 
 /** What is on disk for an item. */

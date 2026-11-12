@@ -72,6 +72,7 @@ export function AccountPage() {
         </TabPanel>
         <TabPanel value="playback" className="space-y-6">
           <PlaybackCard />
+          <WatchlistCard />
         </TabPanel>
         <TabPanel value="security" className="space-y-6">
           <TwoFactorCard />
@@ -119,7 +120,8 @@ function PlaybackCard() {
   const qc = useQueryClient();
   const { data: prefs } = useQuery(preferencesQuery);
   const save = useMutation({
-    mutationFn: (body: Schemas["Preferences"]) => call(api.PUT("/api/me/preferences", { body })),
+    mutationFn: (body: Schemas["PreferencesUpdate"]) =>
+      call(api.PUT("/api/me/preferences", { body })),
     onSuccess: (p) => qc.setQueryData(preferencesQuery.queryKey, p),
   });
   if (!prefs) return null;
@@ -174,6 +176,36 @@ function PlaybackCard() {
         </Field>
       </div>
       <p className="mt-4 text-xs text-faint">{t("account.seriesMemoryHint")}</p>
+    </Card>
+  );
+}
+
+/** How many episodes of each watchlist series stay downloaded (D73). */
+function WatchlistCard() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data: prefs } = useQuery(preferencesQuery);
+  const save = useMutation({
+    mutationFn: (body: Schemas["PreferencesUpdate"]) =>
+      call(api.PUT("/api/me/preferences", { body })),
+    onSuccess: (p) => qc.setQueryData(preferencesQuery.queryKey, p),
+  });
+  if (!prefs) return null;
+  return (
+    <Card title={t("account.watchlistEpisodes")} description={t("account.watchlistEpisodesHint")}>
+      <Field label={t("watchlist.episodesSetting")}>
+        <Select
+          data-testid="watchlist-episodes"
+          value={prefs.watchlist_episodes}
+          onChange={(e) => save.mutate({ ...prefs, watchlist_episodes: Number(e.target.value) })}
+        >
+          {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+            <option key={n} value={n}>
+              {t("downloads.nextEpisodes", { count: n })}
+            </option>
+          ))}
+        </Select>
+      </Field>
     </Card>
   );
 }

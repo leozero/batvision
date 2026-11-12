@@ -69,6 +69,26 @@ export function HomePage() {
             ))}
           </Row>
         ) : null}
+        {data.top_rated_movies.length > 0 ? (
+          <Row
+            title={t("home.topRatedMovies")}
+            action={
+              <Link
+                to="/movies"
+                search={{ sort: "rating" }}
+                className="text-sm text-muted transition-colors hover:text-accent"
+              >
+                {t("home.seeAll")}
+              </Link>
+            }
+          >
+            {data.top_rated_movies.map((movie, i) => (
+              <div key={movie.id} className="w-36 shrink-0 sm:w-44">
+                <PosterCard item={movie} kind="movie" index={i} />
+              </div>
+            ))}
+          </Row>
+        ) : null}
         {data.recent_series.length > 0 ? (
           <Row title={t("home.recentSeries")}>
             {data.recent_series.map((series, i) => (

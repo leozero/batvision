@@ -5,7 +5,7 @@ import { Check, ChevronDown, Eye, EyeOff, MoreHorizontal, Play } from "lucide-re
 import { AnimatePresence, motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
-import { DownloadSeriesButton } from "../components/downloads";
+import { DownloadSeriesButton, SeriesWatchlistButton } from "../components/downloads";
 import { Img } from "../components/media";
 import { pickRating, Rating } from "../components/rating";
 import { DownloadedMark } from "../components/ThisComputer";
@@ -210,6 +210,7 @@ export function SeriesDetailPage() {
               {allPlayed ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
               {allPlayed ? t("detail.markUnwatched") : t("detail.markSeriesWatched")}
             </Button>
+            <SeriesWatchlistButton series={series} />
             <DownloadSeriesButton series={series} episodeFile={sample?.file} />
             <IdentifyButton kind="series" id={seriesId} title={series.title} year={series.year} />
           </>

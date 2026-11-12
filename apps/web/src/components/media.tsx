@@ -183,7 +183,16 @@ export function WideCard({ item, index = 0 }: { item: Schemas["HomeItem"]; index
 }
 
 /** Horizontal row with scroll arrows (desktop) and swipe (touch). */
-export function Row({ title, children }: { title: string; children: ReactNode }) {
+export function Row({
+  title,
+  action,
+  children,
+}: {
+  title: string;
+  /** A link next to the title ("See all"). */
+  action?: ReactNode;
+  children: ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ start: true, end: false });
   const update = () => {
@@ -199,7 +208,10 @@ export function Row({ title, children }: { title: string; children: ReactNode })
     ref.current?.scrollBy({ left: dir * ref.current.clientWidth * 0.85, behavior: "smooth" });
   return (
     <section className="group/row relative">
-      <h2 className="mb-3 px-4 text-lg font-semibold tracking-tight sm:px-10">{title}</h2>
+      <div className="mb-3 flex items-baseline gap-4 px-4 sm:px-10">
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+        {action}
+      </div>
       <div className="relative">
         <div
           ref={ref}

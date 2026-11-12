@@ -17,6 +17,7 @@ const bridge: DesktopBridge = {
   },
   syncNow: () => invoke("syncNow"),
   setPaused: (paused) => invoke("setPaused", paused),
+  cancel: (kind, id) => invoke("cancel", kind, id),
   setAv1: (av1) => invoke("setAv1", av1),
   localPlayback: (kind, id) => invoke("localPlayback", kind, id),
   reportProgress: (report) => invoke("reportProgress", report),

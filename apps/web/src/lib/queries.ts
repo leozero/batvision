@@ -1,3 +1,4 @@
+import type { SortDirection, SortOrder } from "@batvision/core/sort";
 import {
   infiniteQueryOptions,
   keepPreviousData,
@@ -8,7 +9,7 @@ import {
 import { ApiError, api, call, type Schemas } from "./api";
 
 export type User = Schemas["User"];
-export type SortOrder = "title" | "added" | "year" | "rating";
+export type { SortDirection, SortOrder };
 
 /** The signed-in user, or `null` when signed out. */
 export const meQuery = queryOptions({
@@ -36,11 +37,15 @@ export const homeQuery = queryOptions({
 
 const PAGE = 60;
 
-export const moviesQuery = (sort: SortOrder) =>
+export const moviesQuery = (sort: SortOrder, order: SortDirection) =>
   infiniteQueryOptions({
-    queryKey: ["movies", sort],
+    queryKey: ["movies", sort, order],
     queryFn: ({ pageParam }) =>
-      call(api.GET("/api/movies", { params: { query: { sort, limit: PAGE, offset: pageParam } } })),
+      call(
+        api.GET("/api/movies", {
+          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+        }),
+      ),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
       const loaded = pages.reduce((n, p) => n + p.items.length, 0);
@@ -48,11 +53,15 @@ export const moviesQuery = (sort: SortOrder) =>
     },
   });
 
-export const seriesListQuery = (sort: SortOrder) =>
+export const seriesListQuery = (sort: SortOrder, order: SortDirection) =>
   infiniteQueryOptions({
-    queryKey: ["series", sort],
+    queryKey: ["series", sort, order],
     queryFn: ({ pageParam }) =>
-      call(api.GET("/api/series", { params: { query: { sort, limit: PAGE, offset: pageParam } } })),
+      call(
+        api.GET("/api/series", {
+          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+        }),
+      ),
     initialPageParam: 0,
     getNextPageParam: (last, pages) => {
       const loaded = pages.reduce((n, p) => n + p.items.length, 0);
@@ -92,6 +101,11 @@ export const searchQuery = (q: string) =>
     enabled: q.trim().length >= 2,
     placeholderData: keepPreviousData,
   });
+
+export const watchlistQuery = queryOptions({
+  queryKey: ["watchlist"],
+  queryFn: () => call(api.GET("/api/watchlist")),
+});
 
 export const preferencesQuery = queryOptions({
   queryKey: ["preferences"],

@@ -157,12 +157,18 @@ pub struct Home {
     pub next_up: Vec<HomeItem>,
     pub recent_movies: Vec<MovieSummary>,
     pub recent_series: Vec<SeriesSummary>,
+    /// Best TMDB ratings with enough votes to mean something (D76).
+    pub top_rated_movies: Vec<MovieSummary>,
 }
+
+/// Votes a movie needs to enter the top-rated rail: fewer lets obscure titles in (D76).
+pub const TOP_RATED_MIN_VOTES: i64 = 50;
 
 fn recent(sort: SortOrder) -> BrowseQuery {
     BrowseQuery {
         library_id: None,
         sort,
+        order: None,
         limit: Some(20),
         offset: None,
     }
@@ -189,6 +195,21 @@ pub async fn home(State(state): State<AppState>, current: CurrentDevice) -> ApiR
     let recent_series = library::query_series(&state, user, &recent(SortOrder::Added), None)
         .await?
         .items;
+    let top_ids: Vec<i64> = sqlx::query_scalar(
+        "SELECT r.item_id FROM ratings r JOIN movies m ON m.id = r.item_id AND m.missing_since IS NULL
+         WHERE r.item_kind = 'movie' AND r.source = 'tmdb' AND r.votes >= ?
+         ORDER BY r.value / r.scale DESC, r.votes DESC LIMIT 20",
+    )
+    .bind(TOP_RATED_MIN_VOTES)
+    .fetch_all(&state.db)
+    .await?;
+    let top_rated_movies = if top_ids.is_empty() {
+        Vec::new()
+    } else {
+        library::query_movies(&state, user, &recent(SortOrder::Rating), Some(&top_ids))
+            .await?
+            .items
+    };
 
     let hero = match continue_watching.first().or(next_up.first()) {
         Some(item) => Some(match item.kind {
@@ -207,6 +228,7 @@ pub async fn home(State(state): State<AppState>, current: CurrentDevice) -> ApiR
         next_up,
         recent_movies,
         recent_series,
+        top_rated_movies,
     }))
 }
 
@@ -269,6 +291,7 @@ pub async fn search(
     let all = BrowseQuery {
         library_id: None,
         sort: SortOrder::Title,
+        order: None,
         limit: Some(60),
         offset: None,
     };
@@ -289,11 +312,23 @@ pub struct Preferences {
     pub audio_language: Option<String>,
     pub subtitle_language: Option<String>,
     pub subtitle_mode: SubtitleMode,
+    /// Unwatched episodes kept for each watchlist series, 1 to 10 (D73).
+    pub watchlist_episodes: i64,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct PreferencesUpdate {
+    pub audio_language: Option<String>,
+    pub subtitle_language: Option<String>,
+    pub subtitle_mode: SubtitleMode,
+    /// Omitted: unchanged.
+    pub watchlist_episodes: Option<i64>,
 }
 
 pub async fn load_preferences(state: &AppState, user_id: i64) -> ApiResult<Preferences> {
     Ok(sqlx::query_as(
-        "SELECT audio_language, subtitle_language, subtitle_mode FROM users WHERE id = ?",
+        "SELECT audio_language, subtitle_language, subtitle_mode, watchlist_episodes
+         FROM users WHERE id = ?",
     )
     .bind(user_id)
     .fetch_one(&state.db)
@@ -315,12 +350,21 @@ fn valid_language_code(code: &Option<String>) -> bool {
 }
 
 #[utoipa::path(put, path = "/api/me/preferences", tag = "me", security(("bearer" = [])),
-    request_body = Preferences, responses((status = 200, body = Preferences)))]
+    request_body = PreferencesUpdate, responses((status = 200, body = Preferences)))]
 pub async fn put_preferences(
     State(state): State<AppState>,
     current: CurrentDevice,
-    Json(prefs): Json<Preferences>,
+    Json(prefs): Json<PreferencesUpdate>,
 ) -> ApiResult<Json<Preferences>> {
+    if prefs
+        .watchlist_episodes
+        .is_some_and(|n| !(1..=10).contains(&n))
+    {
+        return Err(ApiError::bad_request(
+            "invalid_count",
+            "watchlist_episodes must be between 1 and 10",
+        ));
+    }
     if !valid_language_code(&prefs.audio_language) || !valid_language_code(&prefs.subtitle_language)
     {
         return Err(ApiError::bad_request(
@@ -329,11 +373,13 @@ pub async fn put_preferences(
         ));
     }
     sqlx::query(
-        "UPDATE users SET audio_language = ?, subtitle_language = ?, subtitle_mode = ? WHERE id = ?",
+        "UPDATE users SET audio_language = ?, subtitle_language = ?, subtitle_mode = ?,
+           watchlist_episodes = COALESCE(?, watchlist_episodes) WHERE id = ?",
     )
     .bind(&prefs.audio_language)
     .bind(&prefs.subtitle_language)
     .bind(prefs.subtitle_mode)
+    .bind(prefs.watchlist_episodes)
     .bind(current.user.id)
     .execute(&state.db)
     .await?;

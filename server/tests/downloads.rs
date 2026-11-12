@@ -401,6 +401,265 @@ async fn rolling_subscription_follows_progress() {
     assert_eq!(remaining, vec![] as Vec<i64>);
 }
 
+async fn dark_episodes(f: &Fixture) -> (i64, Vec<i64>) {
+    for e in ["01", "02", "03", "04"] {
+        touch(
+            f.media.path(),
+            &format!("Shows/Dark (2017)/Season 01/Dark S01E{e}.mkv"),
+        );
+    }
+    f.library("series", "Shows").await;
+    let series = f.first_id("/api/series").await;
+    let (_, episodes) = f
+        .app
+        .get(&format!("/api/series/{series}/seasons/1"), Some(&f.phone))
+        .await;
+    let ep = episodes
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_i64().unwrap())
+        .collect();
+    (series, ep)
+}
+
+#[tokio::test]
+async fn watchlist_series_downloads_the_next_episodes() {
+    let f = fixture().await;
+    let (series, ep) = dark_episodes(&f).await;
+    touch(f.media.path(), "Movies/Heat (1995)/Heat.mkv");
+    f.library("movies", "Movies").await;
+    let movie = f.first_id("/api/movies").await;
+
+    let (status, _) = f
+        .app
+        .request(
+            Method::PUT,
+            &format!("/api/watchlist/series/{series}"),
+            Some(&f.phone),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, _) = f
+        .app
+        .request(
+            Method::PUT,
+            "/api/watchlist/series/9999",
+            Some(&f.phone),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    f.app
+        .request(
+            Method::PUT,
+            &format!("/api/watchlist/{movie}"),
+            Some(&f.phone),
+            Some(json!({})),
+        )
+        .await;
+    let (_, detail) = f
+        .app
+        .get(&format!("/api/series/{series}"), Some(&f.phone))
+        .await;
+    assert_eq!(detail["in_watchlist"], true);
+
+    // Most recent additions first, movies and series together.
+    let (_, list) = f.app.get("/api/watchlist", Some(&f.phone)).await;
+    let kinds: Vec<&str> = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds.len(), 2);
+    assert!(kinds.contains(&"series") && kinds.contains(&"movie"));
+    let dark = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["kind"] == "series")
+        .unwrap();
+    assert_eq!(
+        (dark["title"].as_str(), dark["played"].as_bool()),
+        (Some("Dark"), Some(false))
+    );
+
+    assert!(
+        ids(&f.plan().await).is_empty(),
+        "automatic downloads are off"
+    );
+    f.set_auto(true).await;
+    // Both were added in the same second: make the series the older one.
+    sqlx::query("UPDATE watchlist_series SET added_at = added_at - 10")
+        .execute(&f.app.state.db)
+        .await
+        .unwrap();
+    let plan = f.plan().await;
+    assert_eq!(
+        ids(&plan),
+        vec![ep[0], ep[1], movie],
+        "2 episodes by default, by date added"
+    );
+    assert_eq!(plan["items"][0]["source"], "watchlist");
+
+    // The account setting changes how many.
+    let (_, prefs) = f.app.get("/api/me/preferences", Some(&f.phone)).await;
+    assert_eq!(prefs["watchlist_episodes"], 2);
+    let (status, _) = f
+        .app
+        .request(
+            Method::PUT,
+            "/api/me/preferences",
+            Some(&f.phone),
+            Some(json!({ "audio_language": null, "subtitle_language": null,
+                         "subtitle_mode": "foreign", "watchlist_episodes": 11 })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, prefs) = f
+        .app
+        .request(
+            Method::PUT,
+            "/api/me/preferences",
+            Some(&f.phone),
+            Some(json!({ "audio_language": null, "subtitle_language": null,
+                         "subtitle_mode": "foreign", "watchlist_episodes": 3 })),
+        )
+        .await;
+    assert_eq!(
+        (status, &prefs["watchlist_episodes"]),
+        (StatusCode::OK, &json!(3))
+    );
+    // Older clients don't send it: unchanged.
+    let (_, prefs) = f
+        .app
+        .request(
+            Method::PUT,
+            "/api/me/preferences",
+            Some(&f.phone),
+            Some(json!({ "audio_language": null, "subtitle_language": null, "subtitle_mode": "foreign" })),
+        )
+        .await;
+    assert_eq!(prefs["watchlist_episodes"], 3);
+    assert_eq!(ids(&f.plan().await), vec![ep[0], ep[1], ep[2], movie]);
+
+    // E1 watched: the window moves on.
+    f.app
+        .post(
+            "/api/progress/batch",
+            Some(&f.phone),
+            json!([{ "kind": "episode", "id": ep[0], "position_ms": 0, "played": true,
+                       "at": chrono_now() - 2 * 86_400 }]),
+        )
+        .await;
+    assert_eq!(ids(&f.plan().await), vec![ep[1], ep[2], ep[3], movie]);
+
+    let (status, _) = f
+        .app
+        .request(
+            Method::DELETE,
+            &format!("/api/watchlist/series/{series}"),
+            Some(&f.phone),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(ids(&f.plan().await), vec![movie]);
+}
+
+async fn cancel(f: &Fixture, kind: &str, id: i64) -> Vec<String> {
+    let (status, body) = f
+        .app
+        .post(
+            "/api/downloads/cancel",
+            Some(&f.phone),
+            json!({ "kind": kind, "id": id }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    body["removed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s.as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[tokio::test]
+async fn cancel_removes_what_asks_for_the_item() {
+    let f = fixture().await;
+    let (series, ep) = dark_episodes(&f).await;
+    touch(f.media.path(), "Movies/Heat (1995)/Heat.mkv");
+    f.library("movies", "Movies").await;
+    let movie = f.first_id("/api/movies").await;
+    f.set_auto(true).await;
+
+    // A movie both in the watchlist and requested by hand: both go.
+    f.app
+        .request(
+            Method::PUT,
+            &format!("/api/watchlist/{movie}"),
+            Some(&f.phone),
+            Some(json!({})),
+        )
+        .await;
+    f.app
+        .post(
+            "/api/downloads/manual",
+            Some(&f.phone),
+            json!({ "device_id": f.phone_id, "kind": "movie", "id": movie }),
+        )
+        .await;
+    assert_eq!(ids(&f.plan().await), vec![movie]);
+    assert_eq!(
+        cancel(&f, "movie", movie).await,
+        vec!["manual", "watchlist"]
+    );
+    assert!(ids(&f.plan().await).is_empty());
+    let (_, list) = f.app.get("/api/watchlist", Some(&f.phone)).await;
+    assert_eq!(list, json!([]));
+
+    // An episode of a rolling subscription: the subscription goes.
+    f.app
+        .post(
+            "/api/downloads/subscriptions",
+            Some(&f.phone),
+            json!({ "device_id": f.phone_id, "series_id": series, "mode": "rolling", "count": 2 }),
+        )
+        .await;
+    assert_eq!(ids(&f.plan().await), vec![ep[0], ep[1]]);
+    assert_eq!(cancel(&f, "episode", ep[1]).await, vec!["rolling"]);
+    let (_, overview) = f.app.get("/api/downloads/overview", Some(&f.phone)).await;
+    assert_eq!(overview["devices"][0]["subscriptions"], json!([]));
+
+    // A season subscription and the watchlist series together.
+    f.app
+        .post(
+            "/api/downloads/subscriptions",
+            Some(&f.phone),
+            json!({ "device_id": f.phone_id, "series_id": series, "mode": "season", "season_number": 1 }),
+        )
+        .await;
+    f.app
+        .request(
+            Method::PUT,
+            &format!("/api/watchlist/series/{series}"),
+            Some(&f.phone),
+            None,
+        )
+        .await;
+    assert_eq!(
+        cancel(&f, "episode", ep[0]).await,
+        vec!["season", "watchlist"]
+    );
+    assert!(ids(&f.plan().await).is_empty());
+
+    // Nothing asks for it any more: nothing to remove.
+    assert!(cancel(&f, "episode", ep[0]).await.is_empty());
+}
+
 #[tokio::test]
 async fn season_subscription_needs_an_existing_season() {
     let f = fixture().await;

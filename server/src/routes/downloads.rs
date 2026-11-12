@@ -18,7 +18,7 @@ use crate::{
     db::now,
     downloads::{
         encode::VariantSubtitle,
-        plan::Profile,
+        plan::{self, Profile},
         service::{self, DeviceSettings, PlanItem},
     },
     error::{ApiError, ApiResult},
@@ -107,6 +107,27 @@ pub async fn confirm(
 ) -> ApiResult<StatusCode> {
     service::confirm(&state, current.device_id, req.variant_id).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct Cancelled {
+    /// What no longer asks for the item: a manual download, a subscription of this
+    /// device, a watchlist entry (every device). Empty if nothing did.
+    pub removed: Vec<plan::Source>,
+}
+
+/// This device drops an item, downloaded or not (D74): removes whatever asks for it,
+/// and its pending request. The device deletes its copy (or partial file) itself.
+#[utoipa::path(post, path = "/api/downloads/cancel", tag = "downloads", security(("bearer" = [])),
+    request_body = ItemRef, responses((status = 200, body = Cancelled)))]
+pub async fn cancel(
+    State(state): State<AppState>,
+    current: CurrentDevice,
+    Json(item): Json<ItemRef>,
+) -> ApiResult<Json<Cancelled>> {
+    let removed =
+        service::cancel(&state, &current.user, current.device_id, item.kind, item.id).await?;
+    Ok(Json(Cancelled { removed }))
 }
 
 /// An encoded file (video or subtitle), with Range support to resume downloads.
@@ -206,14 +227,26 @@ pub struct DeviceDownloads {
     pub manual: Vec<ManualInfo>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema, sqlx::Type)]
+#[serde(rename_all = "lowercase")]
+#[sqlx(type_name = "TEXT", rename_all = "lowercase")]
+pub enum WatchlistKind {
+    Movie,
+    Series,
+}
+
 #[derive(Serialize, ToSchema, sqlx::FromRow)]
 pub struct WatchlistItem {
-    pub movie_id: i64,
+    pub kind: WatchlistKind,
+    pub id: i64,
     pub title: String,
     pub year: Option<i64>,
     pub poster_path: Option<String>,
+    /// Movies: the audio language chosen when adding. Series: `None` (D73).
     pub audio_language: Option<String>,
     pub added_at: i64,
+    /// Movie watched, or every episode of the series watched.
+    pub played: bool,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -223,20 +256,37 @@ pub struct DownloadsOverview {
     pub watchlist: Vec<WatchlistItem>,
 }
 
+/// The watchlist, most recent additions first.
 async fn watchlist_items(
     state: &AppState,
     user: &crate::auth::User,
 ) -> ApiResult<Vec<WatchlistItem>> {
     Ok(sqlx::query_as(
-        "SELECT w.movie_id,
+        "SELECT 'movie' AS kind, w.movie_id AS id,
            COALESCE(
              (SELECT title FROM translations WHERE item_kind = 'movie' AND item_id = m.id AND language = ?1),
              (SELECT title FROM translations WHERE item_kind = 'movie' AND item_id = m.id AND language = ?2),
              m.parsed_title) AS title,
            COALESCE(CAST(substr(m.release_date, 1, 4) AS INTEGER), m.parsed_year) AS year,
-           m.poster_path, w.audio_language, w.added_at
+           m.poster_path, w.audio_language, w.added_at AS added_at,
+           COALESCE((SELECT played FROM user_item_data u WHERE u.user_id = ?3
+             AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played
          FROM watchlist w JOIN movies m ON m.id = w.movie_id
-         WHERE w.user_id = ?3 AND m.missing_since IS NULL ORDER BY w.added_at",
+         WHERE w.user_id = ?3 AND m.missing_since IS NULL
+         UNION ALL
+         SELECT 'series', w.series_id,
+           COALESCE(
+             (SELECT title FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?1),
+             (SELECT title FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?2),
+             s.parsed_title),
+           COALESCE(CAST(substr(s.first_air_date, 1, 4) AS INTEGER), s.parsed_year),
+           s.poster_path, NULL, w.added_at,
+           NOT EXISTS (SELECT 1 FROM episodes e WHERE e.series_id = s.id AND e.missing_since IS NULL
+             AND NOT EXISTS (SELECT 1 FROM user_item_data u WHERE u.user_id = ?3
+               AND u.item_kind = 'episode' AND u.item_id = e.id AND u.played = 1))
+         FROM watchlist_series w JOIN series s ON s.id = w.series_id
+         WHERE w.user_id = ?3 AND s.missing_since IS NULL
+         ORDER BY added_at DESC, id DESC",
     )
     .bind(&user.language)
     .bind(&state.config.default_language)
@@ -389,6 +439,52 @@ pub async fn remove_from_watchlist(
     sqlx::query("DELETE FROM watchlist WHERE user_id = ? AND movie_id = ?")
         .bind(current.user.id)
         .bind(movie_id)
+        .execute(&state.db)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// Adds a series: its next unwatched episodes download on devices with automatic
+/// downloads, in the series' audio language (D73).
+#[utoipa::path(put, path = "/api/watchlist/series/{series_id}", tag = "downloads",
+    security(("bearer" = [])), params(("series_id" = i64, Path)),
+    responses((status = 204), (status = 404, body = crate::error::ErrorBody)))]
+pub async fn add_series_to_watchlist(
+    State(state): State<AppState>,
+    current: CurrentDevice,
+    Path(series_id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    let exists: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM series WHERE id = ? AND missing_since IS NULL)",
+    )
+    .bind(series_id)
+    .fetch_one(&state.db)
+    .await?;
+    if !exists {
+        return Err(ApiError::NotFound);
+    }
+    sqlx::query(
+        "INSERT INTO watchlist_series (user_id, series_id, added_at) VALUES (?, ?, ?)
+         ON CONFLICT (user_id, series_id) DO NOTHING",
+    )
+    .bind(current.user.id)
+    .bind(series_id)
+    .bind(now())
+    .execute(&state.db)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(delete, path = "/api/watchlist/series/{series_id}", tag = "downloads",
+    security(("bearer" = [])), params(("series_id" = i64, Path)), responses((status = 204)))]
+pub async fn remove_series_from_watchlist(
+    State(state): State<AppState>,
+    current: CurrentDevice,
+    Path(series_id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    sqlx::query("DELETE FROM watchlist_series WHERE user_id = ? AND series_id = ?")
+        .bind(current.user.id)
+        .bind(series_id)
         .execute(&state.db)
         .await?;
     Ok(StatusCode::NO_CONTENT)

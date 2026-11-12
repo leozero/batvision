@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { type APIRequestContext, expect, type Page, test } from "@playwright/test";
 import { SETUP_TOKEN } from "../playwright.config";
 import { totp } from "./totp";
 
@@ -124,6 +124,38 @@ test("TMDB ratings show on cards, detail pages, seasons and episodes", async () 
   await expect(episodes.nth(1).getByTestId("rating")).toHaveCount(0);
 });
 
+test("browse pages sort both ways", async () => {
+  await page.goto("/movies");
+  await page.getByLabel("Trier").selectOption("rating");
+  const cards = page.getByRole("main").getByRole("link");
+  const direction = page.getByTestId("sort-direction");
+  await expect(direction).toHaveText("Mieux notés d'abord");
+  await expect(cards.first()).toContainText("Heat");
+  await direction.click();
+  await expect(direction).toHaveText("Moins bien notés d'abord");
+  await expect(cards.first()).toContainText("Ronin");
+
+  // Another sort starts in its own natural direction, and both are remembered.
+  await page.getByLabel("Trier").selectOption("title");
+  await expect(direction).toHaveText("A → Z");
+  await expect(cards.first()).toContainText("Heat");
+  await direction.click();
+  await expect(direction).toHaveText("Z → A");
+  await page.reload();
+  await expect(direction).toHaveText("Z → A");
+  await expect(cards.first()).toContainText("Ronin");
+});
+
+test("home shows the top-rated movies, with a link to all of them", async () => {
+  await page.goto("/");
+  const rail = page.locator("section", { hasText: "Films les mieux notés" });
+  await expect(rail.getByRole("link", { name: /^Heat/ })).toBeVisible();
+  await rail.getByRole("link", { name: "Tout voir" }).click();
+  await expect(page).toHaveURL(/\/movies$/);
+  await expect(page.getByLabel("Trier")).toHaveValue("rating");
+  await expect(page.getByTestId("sort-direction")).toHaveText("Mieux notés d'abord");
+});
+
 test("the player switches picture quality and remembers it on the device", async () => {
   await page.goto("/movies");
   await page.getByRole("link", { name: /^Heat/ }).first().click();
@@ -227,10 +259,14 @@ test("sign out returns to the sign-in page", async () => {
   await expect(page).toHaveURL(/\/login/);
 });
 
+let alice: Page;
+let phoneToken = "";
+let phone: APIRequestContext;
+
 test("watchlist and series downloads show up for a download device", async ({ browser }) => {
   // Sign in an "Android phone" through the API: browsers can't download.
-  const phone = await browser.newContext();
-  const login = await phone.request.post("/api/auth/login", {
+  phone = (await browser.newContext()).request;
+  const login = await phone.post("/api/auth/login", {
     data: {
       username: "alice",
       password: "alice-password-123",
@@ -238,9 +274,10 @@ test("watchlist and series downloads show up for a download device", async ({ br
     },
   });
   expect(login.ok()).toBeTruthy();
-  const token = (await login.json()).token as string;
+  phoneToken = (await login.json()).token as string;
+  const token = phoneToken;
 
-  const alice = await (await browser.newContext({ locale: "fr-FR" })).newPage();
+  alice = await (await browser.newContext({ locale: "fr-FR" })).newPage();
   await alice.goto("/login");
   await alice.getByLabel("Identifiant").fill("alice");
   await alice.getByLabel("Mot de passe").fill("alice-password-123");
@@ -264,14 +301,79 @@ test("watchlist and series downloads show up for a download device", async ({ br
   await alice.goto("/downloads");
   await expect(alice.getByRole("heading", { name: "Pixel e2e" })).toBeVisible();
   await expect(alice.getByText("Les 2 prochains épisodes")).toBeVisible();
-  await expect(alice.getByText("Heat").first()).toBeVisible();
 
   // The phone sees the same expected set.
-  const plan = await phone.request.post("/api/downloads/plan", {
+  const plan = await phone.post("/api/downloads/plan", {
     data: {},
     headers: { authorization: `Bearer ${token}` },
   });
   const items = (await plan.json()).items as { kind: string; source: string }[];
   expect(items.filter((i) => i.kind === "episode")).toHaveLength(2);
   expect(items.every((i) => i.source === "rolling")).toBeTruthy();
+});
+
+test("the watchlist page holds movies and series, and cancelling removes them", async () => {
+  // Dark joins Heat in the watchlist.
+  await alice.goto("/series");
+  await alice.getByRole("link", { name: /^Dark/ }).first().click();
+  await alice.getByRole("button", { name: "Watchlist" }).click();
+  await expect(alice.getByRole("button", { name: "Dans la watchlist" })).toBeVisible();
+
+  await alice.getByRole("navigation").getByRole("link", { name: "Watchlist" }).click();
+  await expect(alice.getByRole("heading", { name: "Watchlist" })).toBeVisible();
+  const main = alice.getByRole("main");
+  await expect(main.getByRole("link", { name: /^Heat/ })).toBeVisible();
+  await expect(main.getByRole("link", { name: /^Dark/ })).toBeVisible();
+  await expect(alice.getByText("Séries : les 2 prochains épisodes non vus")).toBeVisible();
+  await expect(alice.getByTestId("auto-devices")).toHaveText(/Aucun de vos appareils/);
+  await alice.getByRole("tab", { name: "Séries" }).click();
+  await expect(main.getByRole("link", { name: /^Heat/ })).toHaveCount(0);
+  await expect(main.getByRole("link", { name: /^Dark/ })).toBeVisible();
+
+  // One episode per series, from the account preferences.
+  await alice.getByTestId("episodes-setting").click();
+  await alice.getByTestId("watchlist-episodes").selectOption("1");
+  await expect(alice.getByTestId("watchlist-episodes")).toHaveValue("1");
+
+  // The phone turns automatic downloads on and gets Heat and the next episode.
+  const auth = { authorization: `Bearer ${phoneToken}` };
+  const plan = async () =>
+    (await (await phone.post("/api/downloads/plan", { data: {}, headers: auth })).json()) as {
+      settings: Record<string, unknown>;
+      items: { kind: string; id: number; source: string }[];
+    };
+  const before = await plan();
+  const devices = (await (await phone.get("/api/me/devices", { headers: auth })).json()) as {
+    id: number;
+    current: boolean;
+  }[];
+  const phoneId = devices.find((d) => d.current)?.id;
+  const settings = await phone.put(`/api/downloads/devices/${phoneId}/settings`, {
+    data: { ...before.settings, auto_download: true },
+    headers: auth,
+  });
+  expect(settings.ok()).toBeTruthy();
+  const after = await plan();
+  const heat = after.items.find((i) => i.kind === "movie" && i.source === "watchlist");
+  expect(heat).toBeTruthy();
+
+  await alice.goto("/watchlist");
+  await expect(alice.getByText("Séries : le prochain épisode non vu")).toBeVisible();
+  await expect(alice.getByTestId("auto-devices")).toHaveText(
+    "Téléchargée automatiquement sur 1 appareil.",
+  );
+
+  // Cancelling Heat on the phone takes it out of the watchlist.
+  const cancelled = await phone.post("/api/downloads/cancel", {
+    data: { kind: "movie", id: heat?.id },
+    headers: auth,
+  });
+  expect((await cancelled.json()).removed).toEqual(["watchlist"]);
+  await alice.reload();
+  await expect(alice.getByRole("main").getByRole("link", { name: /^Heat/ })).toHaveCount(0);
+
+  // Removing Dark from the page empties it.
+  await alice.getByRole("main").getByRole("link", { name: /^Dark/ }).hover();
+  await alice.getByRole("button", { name: "Retirer Dark" }).click();
+  await expect(alice.getByText("Votre watchlist est vide")).toBeVisible();
 });

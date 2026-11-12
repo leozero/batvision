@@ -218,3 +218,37 @@ test("progress made offline reaches the server when it's back", async () => {
     )
     .toBeGreaterThan(60_000);
 });
+
+test("deleting a download, or cancelling one, frees this computer", async () => {
+  await page.goto("app://batvision/downloads");
+  const card = page.locator("section", { hasText: "Sur cet ordinateur" });
+  await expect(card.getByText("Test Movie")).toBeVisible();
+  await card.getByRole("button", { name: "Supprimer" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("Supprimer ce téléchargement ?")).toBeVisible();
+  await expect(dialog.getByText("Le fichier est supprimé de cet appareil.")).toBeVisible();
+  await dialog.getByRole("button", { name: "Supprimer" }).click();
+  await expect(card.getByText(/Rien de prévu sur cet ordinateur/)).toBeVisible();
+  const folder = join(videos, "Batvision");
+  const library = JSON.parse(readFileSync(join(folder, "batvision.json"), "utf8"));
+  expect(library.items).toEqual([]);
+
+  // Asked again, then cancelled before it's done (or deleted if it was quick).
+  await page.getByRole("link", { name: "Films" }).click();
+  await page.getByRole("link", { name: /Test Movie/ }).click();
+  await page.getByRole("button", { name: "Télécharger", exact: true }).click();
+  // Another device was seen more recently: this computer is still the one offered.
+  const target = page.getByRole("dialog").locator("select").first();
+  await expect(target.locator("option:checked")).toContainText("·");
+  await page.getByRole("dialog").getByRole("button", { name: "Télécharger" }).click();
+  // Leaving before the request answers would skip the sync it triggers.
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await page.goto("app://batvision/downloads");
+  await expect(card.getByText("Test Movie")).toBeVisible();
+  await card.getByRole("button", { name: /Annuler le téléchargement|Supprimer/ }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: /Annuler le téléchargement|Supprimer/ })
+    .click();
+  await expect(card.getByText(/Rien de prévu sur cet ordinateur/)).toBeVisible();
+});

@@ -71,6 +71,9 @@ export interface LocalItem {
   watched: boolean;
   /** Doesn't fit in the quota: kept on the server's list, not downloaded. */
   overQuota: boolean;
+  /** Why the server expects it: `manual`, `rolling`, `season`, `watchlist`; `null` when
+   * the last plan didn't mention it. Says what cancelling removes (D74). */
+  source: string | null;
   error: string | null;
   meta: LocalMeta;
 }
@@ -135,6 +138,9 @@ export interface DesktopBridge {
   onDownloads(listener: (state: DownloadsState) => void): () => void;
   syncNow(): Promise<void>;
   setPaused(paused: boolean): Promise<void>;
+  /** Drops an item, downloaded or not (D74): the server forgets what asks for it, the
+   * transfer stops and the files go. Rejects when the server can't be reached. */
+  cancel(kind: ItemKind, id: number): Promise<void>;
   /** Hardware AV1 decoding, detected by the renderer. */
   setAv1(av1: boolean): Promise<void>;
 

@@ -90,7 +90,7 @@ docs/
 | **User**                | An account, with the `admin` or `user` role.                                                                                                      |
 | **Device**              | A client installation signed in as a user. It has its own revocable token.                                                                        |
 | **Capabilities**        | What a device says it can play: containers, video and audio codecs (with or without hardware decoding), maximum resolution, subtitles it renders. |
-| **Watchlist**           | A list of **movies only**, per user, stored on the server.                                                                                        |
+| **Watchlist**           | Movies and series to watch, per user, stored on the server (D73). Its own page on the web, its own tab on Android.                                |
 | **Series subscription** | A download request made from a series page, for a given user and device. Two modes: `rolling(X)` or `season(n)`.                                  |
 | **Expected set**        | The items a device should have on its disk, computed by the server.                                                                               |
 | **Encoding profile**    | `max`, `mobile` or `saver`.                                                                                                                       |
@@ -106,6 +106,8 @@ docs/
 - **Metadata and images come from TMDB**, in each user's language (French by default), with English as a fallback. Images are cached in `data`.
 - Matched items are **fetched from TMDB again every 30 days**, a few per scan, oldest first.
 - **Ratings** (D59): TMDB's average out of 10 for movies, series, seasons and episodes, hidden when fewer than 5 people voted (a season counts its episodes' votes). The API returns a list per source, so other sources can be added later. They show on posters, detail pages, the season picker and episode rows, and the movie and series pages can sort by rating.
+- **Sorting** (D75): the movie and series pages sort by date added, title, year or rating. Each sort has a natural direction (A to Z for titles, newest or best first for the others) that a button reverses; items without a year or rating stay last either way. The choice is remembered per page.
+- **Top-rated movies** (D76): a home page rail with the 20 best-rated movies having at least 50 TMDB votes (fewer lets obscure titles in), watched ones included, and a link to the movies page sorted by rating.
 
 ## 5. Playback
 
@@ -160,18 +162,22 @@ All the logic deciding what to download and what to delete lives in **one place*
 
 | Source              | Rule                                                                                                                                      |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Watchlist (movies)  | Every watchlist movie is expected on devices with automatic downloads enabled (off by default). **A watched movie leaves after 24 h.**    |
+| Watchlist movies    | Every watchlist movie is expected on devices with automatic downloads enabled (off by default). **A watched movie leaves after 24 h.**    |
+| Watchlist series    | The next X unwatched episodes, as `rolling(X)`, on devices with automatic downloads. X is an account setting, 1 to 10, 2 by default.      |
 | Series `rolling(X)` | The next X unwatched episodes. The set refills as episodes are watched and new ones air, until the series ends or the subscription stops. |
 | Series `season(n)`  | Every episode of season n, once. It never moves on to the next season.                                                                    |
 | Manual download     | A movie or episode added by hand for one device.                                                                                          |
 
 Series subscriptions and manual downloads are explicit requests for one device: they apply even with automatic downloads off. The audio track is chosen when requesting (default: the user's preferred audio language).
 
+A series in the watchlist (D73) is not a subscription: it belongs to the account, applies to every device with automatic downloads, and uses the account's X. Its audio language is the one remembered for the series (D20), else the preferred one; its quality is the device's. It stays in the watchlist once everything is watched, so new episodes download when they arrive. When a subscription and the watchlist want the same episode, it downloads once, under the subscription. Watchlist entries are taken oldest first, movies and series together.
+
 ### 7.3 Deletion and quota
 
 - **A watched item is deleted after 24 h** (configurable), whatever its source.
 - **Per-device quota.** When exceeded, watched items go first, then the oldest ones.
 - If several users on the same device want the same file, it is stored **only once**.
+- **Cancel and delete** (D74): on the desktop and Android apps, each item can be cancelled before it's done, or deleted after. The transfer stops, the files (partial or not) go, and the server removes every source asking for that item on this device: the manual download, the subscription (a whole series or season), or the watchlist entry (on every device). A confirmation says which before doing it.
 
 ### 7.4 Network
 
@@ -239,7 +245,9 @@ Series subscriptions and manual downloads are explicit requests for one device: 
 
 ### 7.10 Android client
 
-- Native React Native screens (Expo, expo-router, NativeWind): home, movies, series, search, details, player, downloads and device settings, sign-in. Administration and account security stay on the web (D61, D62).
+- Native React Native screens (Expo, expo-router, NativeWind): home, movies, series, search, details, player, watchlist, downloads and device settings, sign-in. Administration and account security stay on the web (D61, D62).
+  - Tabs: Home, Movies, Series, Watchlist, Downloads; search is the magnifier at the top of Home, Movies and Series.
+  - Device settings are rows showing the current value; each opens a sheet listing the options with a line explaining each one (quality, space, mobile data and its cap, storage).
 - First launch: server address, then sign-in (password + 2FA). The device token is kept in the Android keystore (expo-secure-store). One account per install (D67).
 - **Download engine in Kotlin** (D63), a local Expo module running on WorkManager so it works with the app closed: upload offline progress, fetch the plan, request, download with resume (HTTP Range), confirm, delete. It honours the device's network rules (Wi-Fi, mobile data mode and cap, charging) and shows a progress notification with Pause while downloading.
 - Files go to the app's own folder on the phone or the SD card (setting `storage`), moved when it changes; 20 GB quota by default (D70). Downloaded items' metadata and images are kept next to them for the offline library.

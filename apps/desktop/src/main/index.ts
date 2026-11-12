@@ -110,6 +110,9 @@ app.whenReady().then(() => {
     engine.setPaused(Boolean(paused));
     updateTray();
   });
+  ipcMain.handle("bv:cancel", (_e, kind: "movie" | "episode", id: number) =>
+    engine.cancel(kind === "episode" ? "episode" : "movie", Number(id)),
+  );
   ipcMain.handle("bv:setAv1", (_e, av1: boolean) => {
     if (config.av1 !== Boolean(av1)) config.av1 = Boolean(av1);
   });

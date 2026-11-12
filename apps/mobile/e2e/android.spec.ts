@@ -147,3 +147,25 @@ test("offline progress reaches the server when it's back", async () => {
     })
     .toBeGreaterThan(60_000);
 });
+
+test("the watchlist tab and the settings sheets reach the server", async () => {
+  test.setTimeout(200_000);
+  maestro("watchlist.yaml");
+  const overview = await api("/api/downloads/overview", userToken);
+  const phone = overview.devices.find((d: { platform: string }) => d.platform === "android");
+  expect(phone.settings.auto_download).toBe(true);
+  expect(phone.settings.mobile_data).toBe("light");
+  expect(phone.settings.mobile_cap_bytes).toBe(5_000_000_000);
+  expect((await api("/api/me/preferences", userToken)).watchlist_episodes).toBe(3);
+  expect(overview.watchlist.map((w: { id: number }) => w.id)).toEqual([movieId]);
+});
+
+test("deleting the movie on the phone removes what asked for it", async () => {
+  test.setTimeout(200_000);
+  maestro("cancel.yaml");
+  const overview = await api("/api/downloads/overview", userToken);
+  const phone = overview.devices.find((d: { platform: string }) => d.platform === "android");
+  expect(phone.manual).toEqual([]);
+  expect(overview.watchlist).toEqual([]);
+  expect(phone.items).toEqual([]);
+});

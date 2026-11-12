@@ -1,3 +1,4 @@
+import { SORT_ORDERS, type SortOrder } from "@batvision/core/sort";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
@@ -6,6 +7,7 @@ import {
   Outlet,
   redirect,
 } from "@tanstack/react-router";
+import { useEffect } from "react";
 import { AppLayout } from "./components/Layout";
 import { desktop, hasServer, isUnreachable } from "./lib/desktop";
 import { meQuery, setupQuery } from "./lib/queries";
@@ -20,6 +22,7 @@ import { MovieDetailPage } from "./pages/MovieDetailPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SeriesDetailPage } from "./pages/SeriesDetailPage";
+import { WatchlistPage } from "./pages/WatchlistPage";
 import { PlayerPage } from "./player/PlayerPage";
 
 type Context = { queryClient: QueryClient };
@@ -109,7 +112,21 @@ const app = createRoute({
 const shell = createRoute({ getParentRoute: () => app, id: "shell", component: AppLayout });
 
 const home = createRoute({ getParentRoute: () => shell, path: "/", component: HomePage });
-const movies = createRoute({ getParentRoute: () => shell, path: "/movies", component: MoviesPage });
+const movies = createRoute({
+  getParentRoute: () => shell,
+  path: "/movies",
+  // A link can pick the sort ("See all" on the top-rated rail); it's then remembered.
+  validateSearch: (s: Record<string, unknown>): { sort?: SortOrder } =>
+    SORT_ORDERS.includes(s.sort as SortOrder) ? { sort: s.sort as SortOrder } : {},
+  component: function Movies() {
+    const { sort } = movies.useSearch();
+    const navigate = movies.useNavigate();
+    useEffect(() => {
+      if (sort) void navigate({ search: {}, replace: true });
+    }, [sort, navigate]);
+    return <MoviesPage initialSort={sort} />;
+  },
+});
 const movie = createRoute({
   getParentRoute: () => shell,
   path: "/movies/$id",
@@ -133,6 +150,11 @@ const search = createRoute({
   validateSearch: (s: Record<string, unknown>): { q?: string } =>
     typeof s.q === "string" ? { q: s.q } : {},
   component: SearchPage,
+});
+const watchlist = createRoute({
+  getParentRoute: () => shell,
+  path: "/watchlist",
+  component: WatchlistPage,
 });
 const downloads = createRoute({
   getParentRoute: () => shell,
@@ -175,7 +197,18 @@ const routeTree = root.addChildren([
   offlineWatch,
   publicLayout.addChildren([login, setup, invite]),
   app.addChildren([
-    shell.addChildren([home, movies, movie, seriesList, series, search, downloads, account, admin]),
+    shell.addChildren([
+      home,
+      movies,
+      movie,
+      seriesList,
+      series,
+      search,
+      watchlist,
+      downloads,
+      account,
+      admin,
+    ]),
     watch,
   ]),
 ]);

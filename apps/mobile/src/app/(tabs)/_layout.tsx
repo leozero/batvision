@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Redirect, Tabs } from "expo-router";
-import { Download, Film, Home, Search, Tv } from "lucide-react-native";
+import { Bookmark, Download, Film, Home, Tv } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { COLORS, Loading } from "../../components/ui";
 import { Unreachable } from "../../lib/api";
@@ -54,13 +54,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="search"
+        name="watchlist"
         options={{
-          tabBarButtonTestID: "tab-search",
-          title: t("nav.search"),
-          tabBarIcon: ({ color }) => <Search color={color} size={22} />,
+          tabBarButtonTestID: "tab-watchlist",
+          title: t("nav.watchlist"),
+          tabBarIcon: ({ color }) => <Bookmark color={color} size={22} />,
         }}
       />
+      {/* Reached from the magnifier at the top of Home, Movies and Series. */}
+      <Tabs.Screen name="search" options={{ href: null, title: t("nav.search") }} />
       <Tabs.Screen
         name="downloads"
         options={{

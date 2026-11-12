@@ -1,11 +1,12 @@
 import { formatBytes } from "@batvision/core/bytes";
 import { episodeCode } from "@batvision/core/format";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import {
   CheckCircle2,
   Clock,
   Loader2,
+  MoreVertical,
   Pause,
   Play,
   RefreshCw,
@@ -14,11 +15,13 @@ import {
 } from "lucide-react-native";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
+import { type Choice, ChoiceList, SettingRow, Sheet, SwitchRow } from "../../components/Sheet";
 import {
   Badge,
   Button,
   COLORS,
+  ErrorText,
   Field,
   Input,
   Muted,
@@ -114,9 +117,54 @@ function ItemState({ item, paused }: { item: SyncItem; paused: boolean }) {
   );
 }
 
+/** Cancels a download, or deletes a finished one, saying what goes with it (D74). */
+function ItemActions({ item, onClose }: { item: SyncItem | null; onClose: () => void }) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const close = () => {
+    setError(false);
+    onClose();
+  };
+  const done = item?.status === "done";
+  const run = async () => {
+    if (!item) return;
+    setBusy(true);
+    setError(false);
+    try {
+      await BatvisionSync.cancel(item.kind, item.id);
+      void qc.invalidateQueries();
+      close();
+    } catch {
+      setError(true);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet
+      open={item !== null}
+      onClose={close}
+      testID="item-actions"
+      title={done ? t("downloads.deleteTitle") : t("downloads.cancelTitle")}
+      description={
+        item ? t(`downloads.effect.${item.source ?? "manual"}`, { title: item.meta.title }) : ""
+      }
+    >
+      <ErrorText>{error ? t("downloads.cancelFailed") : null}</ErrorText>
+      <Button testID="confirm-cancel" variant="danger" loading={busy} onPress={() => void run()}>
+        {done ? t("downloads.delete") : t("downloads.cancel")}
+      </Button>
+      <Button onPress={close}>{t("downloads.keep")}</Button>
+    </Sheet>
+  );
+}
+
 function ThisPhone() {
   const { t, i18n } = useTranslation();
   const state = useSyncState();
+  const [action, setAction] = useState<SyncItem | null>(null);
   const used = formatBytes(state.usedBytes, i18n.language);
   return (
     <View className="gap-4 rounded-card border border-line bg-surface p-4">
@@ -214,153 +262,218 @@ function ThisPhone() {
                 ) : null}
               </View>
               {item.status === "done" ? <Play color={COLORS.fg} size={18} /> : null}
+              <Pressable
+                testID={`more-${item.key}`}
+                accessibilityRole="button"
+                accessibilityLabel={t("mobile.more")}
+                hitSlop={8}
+                onPress={() => setAction(item)}
+                className="size-9 items-center justify-center rounded-full active:bg-surface-2"
+              >
+                <MoreVertical color={COLORS.muted} size={18} />
+              </Pressable>
             </Pressable>
           ))}
         </View>
       ) : (
         <Muted>{t("downloads.nothingExpected")}</Muted>
       )}
+      <ItemActions item={action} onClose={() => setAction(null)} />
     </View>
   );
 }
 
-function Choice<T extends string>({
+type SettingSheet = "profile" | "quota" | "mobile_data" | "mobile_cap" | "storage" | null;
+
+/** Space in GB: a few common values, none ("unlimited"), or one typed in. */
+function GigabytesChoice({
   value,
-  options,
+  presets,
+  noneLabel,
   onChange,
 }: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
+  value: number | null | undefined;
+  presets: number[];
+  noneLabel: string;
+  onChange: (bytes: number | null) => void;
 }) {
-  return (
-    <View className="flex-row flex-wrap gap-2">
-      {options.map((o) => (
-        <Pressable
-          key={o.value}
-          testID={`choice-${o.value}`}
-          onPress={() => onChange(o.value)}
-          className={`rounded-full px-3 py-2 ${o.value === value ? "bg-accent" : "bg-surface-2"}`}
-        >
-          <Text
-            className={`text-xs font-semibold ${o.value === value ? "text-accent-ink" : "text-muted"}`}
-          >
-            {o.label}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-function Toggle({
-  label,
-  value,
-  onChange,
-  testID,
-}: {
-  label: string;
-  value: boolean;
-  onChange: (v: boolean) => void;
-  testID?: string;
-}) {
-  return (
-    <View className="flex-row items-center justify-between gap-4 rounded-xl bg-surface-2 px-4 py-3">
-      <Text className="flex-1 text-sm font-medium text-fg">{label}</Text>
-      <Switch
-        testID={testID}
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ true: COLORS.accent }}
-      />
-    </View>
-  );
-}
-
-/** This phone's settings, stored on the server (D76) so the web can change them too. */
-function Settings({ device }: { device: Schemas["DeviceDownloads"] }) {
   const { t } = useTranslation();
+  const current = value ? Math.round(value / GB) : null;
+  const preset = current === null || presets.includes(current);
+  const [custom, setCustom] = useState(preset ? "" : String(current));
+  const options: Choice<string>[] = [
+    ...presets.map((n) => ({ value: String(n), label: t("mobile.gigabytes", { count: n }) })),
+    { value: "none", label: noneLabel },
+  ];
+  return (
+    <View className="gap-3">
+      <ChoiceList
+        value={current === null ? "none" : preset ? String(current) : ""}
+        options={options}
+        onChange={(v) => onChange(v === "none" ? null : Number(v) * GB)}
+      />
+      <Field label={t("mobile.otherValue")}>
+        <View className="flex-row gap-2">
+          <View className="flex-1">
+            <Input
+              testID="gigabytes"
+              keyboardType="number-pad"
+              value={custom}
+              placeholder={t("mobile.gigabytesInput")}
+              onChangeText={setCustom}
+            />
+          </View>
+          <Button
+            testID="gigabytes-apply"
+            variant="primary"
+            disabled={!Number(custom)}
+            onPress={() => onChange(Number(custom) * GB)}
+          >
+            {t("mobile.apply")}
+          </Button>
+        </View>
+      </Field>
+    </View>
+  );
+}
+
+/** This phone's settings, stored on the server so the web can change them too. */
+function Settings({ device }: { device: Schemas["DeviceDownloads"] }) {
+  const { t, i18n } = useTranslation();
   const sync = useSyncState();
   const save = useSaveSettings(device.id);
   const [s, setS] = useState(device.settings);
+  const [sheet, setSheet] = useState<SettingSheet>(null);
   useEffect(() => setS(device.settings), [device.settings]);
   const update = (patch: Partial<Schemas["DeviceSettings"]>) => {
     const next = { ...s, ...patch };
     setS(next);
     save.mutate(next);
+    setSheet(null);
   };
-  const gb = (bytes: number | null | undefined) => (bytes ? String(Math.round(bytes / GB)) : "");
+  const size = (bytes: number | null | undefined, none: string) =>
+    bytes ? formatBytes(bytes, i18n.language) : none;
+  const profiles = (["max", "mobile", "saver"] as const).map((p) => ({
+    value: p,
+    label: t(`downloads.profile.${p}`),
+    hint: t(`downloads.profileHint.${p}`),
+  }));
+  const mobileModes = (["off", "light", "all"] as const).map((m) => ({
+    value: m,
+    label: t(`downloads.mobileDataMode.${m}`),
+    hint: t(`downloads.mobileDataHint.${m}`),
+  }));
+  const storages = [
+    {
+      value: "internal" as const,
+      label: t("mobile.storagePhone"),
+      hint: t("mobile.storageHint.internal"),
+    },
+    { value: "sd" as const, label: t("mobile.storageSd"), hint: t("mobile.storageHint.sd") },
+  ];
+  const close = () => setSheet(null);
   return (
-    <View className="gap-4 rounded-card border border-line bg-surface p-4">
+    <View className="gap-3 rounded-card border border-line bg-surface p-4">
       <Text className="text-lg font-semibold text-fg">{t("mobile.settings")}</Text>
-      <Toggle
+      <SwitchRow
         testID="auto-download"
         label={t("downloads.auto")}
+        hint={t("downloads.autoHint")}
         value={s.auto_download}
         onChange={(v) => update({ auto_download: v })}
       />
-      <Field label={t("downloads.quality")}>
-        <Choice
-          value={s.profile}
-          onChange={(profile) => update({ profile })}
-          options={(["max", "mobile", "saver"] as const).map((p) => ({
-            value: p,
-            label: t(`downloads.profile.${p}`),
-          }))}
-        />
-      </Field>
-      <Field label={t("downloads.quota")}>
-        <Input
-          testID="quota"
-          keyboardType="number-pad"
-          defaultValue={gb(s.quota_bytes)}
-          placeholder="∞"
-          onEndEditing={(e) =>
-            update({ quota_bytes: e.nativeEvent.text ? Number(e.nativeEvent.text) * GB : null })
-          }
-        />
-      </Field>
-      <Field label={t("downloads.mobileData")}>
-        <Choice
-          value={s.mobile_data}
-          onChange={(mobile_data) => update({ mobile_data })}
-          options={(["off", "light", "all"] as const).map((m) => ({
-            value: m,
-            label: t(`downloads.mobileDataMode.${m}`),
-          }))}
-        />
-      </Field>
+      <SettingRow
+        testID="setting-profile"
+        label={t("downloads.quality")}
+        value={t(`downloads.profile.${s.profile}`)}
+        hint={t(`downloads.profileHint.${s.profile}`)}
+        onPress={() => setSheet("profile")}
+      />
+      <SettingRow
+        testID="setting-quota"
+        label={t("mobile.quotaLabel")}
+        value={size(s.quota_bytes, t("mobile.unlimited"))}
+        hint={t("mobile.quotaHint")}
+        onPress={() => setSheet("quota")}
+      />
+      <SettingRow
+        testID="setting-mobile-data"
+        label={t("downloads.mobileData")}
+        value={t(`downloads.mobileDataMode.${s.mobile_data}`)}
+        hint={t(`downloads.mobileDataHint.${s.mobile_data}`)}
+        onPress={() => setSheet("mobile_data")}
+      />
       {s.mobile_data !== "off" ? (
-        <Field label={t("downloads.mobileCap")}>
-          <Input
-            testID="mobile-cap"
-            keyboardType="number-pad"
-            defaultValue={gb(s.mobile_cap_bytes)}
-            placeholder="2"
-            onEndEditing={(e) =>
-              update({
-                mobile_cap_bytes: e.nativeEvent.text ? Number(e.nativeEvent.text) * GB : null,
-              })
-            }
-          />
-        </Field>
+        <SettingRow
+          testID="setting-mobile-cap"
+          label={t("mobile.capLabel")}
+          value={size(s.mobile_cap_bytes, t("mobile.noCap"))}
+          hint={t("mobile.capHint")}
+          onPress={() => setSheet("mobile_cap")}
+        />
       ) : null}
-      <Toggle
+      <SwitchRow
         label={t("downloads.chargingOnly")}
+        hint={t("downloads.chargingOnlyHint")}
         value={s.charging_only}
         onChange={(v) => update({ charging_only: v })}
       />
-      <Field label={t("downloads.storage")}>
-        <Choice
-          value={s.storage}
-          onChange={(storage) => update({ storage })}
-          options={[
-            { value: "internal" as const, label: t("mobile.storagePhone") },
-            { value: "sd" as const, label: t("mobile.storageSd") },
-          ]}
+      <SettingRow
+        testID="setting-storage"
+        label={t("downloads.storage")}
+        value={s.storage === "sd" ? t("mobile.storageSd") : t("mobile.storagePhone")}
+        hint={s.storage === "sd" && !sync.sdAvailable ? t("mobile.sdMissing") : undefined}
+        onPress={() => setSheet("storage")}
+      />
+
+      <Sheet open={sheet === "profile"} onClose={close} title={t("downloads.quality")}>
+        <ChoiceList
+          value={s.profile}
+          options={profiles}
+          onChange={(profile) => update({ profile })}
         />
-        {s.storage === "sd" && !sync.sdAvailable ? <Muted>{t("mobile.sdMissing")}</Muted> : null}
-      </Field>
+      </Sheet>
+      <Sheet
+        open={sheet === "quota"}
+        onClose={close}
+        title={t("mobile.quotaLabel")}
+        description={t("mobile.quotaHint")}
+      >
+        <GigabytesChoice
+          value={s.quota_bytes}
+          presets={[10, 20, 50, 100]}
+          noneLabel={t("mobile.unlimited")}
+          onChange={(quota_bytes) => update({ quota_bytes })}
+        />
+      </Sheet>
+      <Sheet open={sheet === "mobile_data"} onClose={close} title={t("downloads.mobileData")}>
+        <ChoiceList
+          value={s.mobile_data}
+          options={mobileModes}
+          onChange={(mobile_data) => update({ mobile_data })}
+        />
+      </Sheet>
+      <Sheet
+        open={sheet === "mobile_cap"}
+        onClose={close}
+        title={t("mobile.capLabel")}
+        description={t("mobile.capHint")}
+      >
+        <GigabytesChoice
+          value={s.mobile_cap_bytes}
+          presets={[1, 2, 5, 10]}
+          noneLabel={t("mobile.noCap")}
+          onChange={(mobile_cap_bytes) => update({ mobile_cap_bytes })}
+        />
+      </Sheet>
+      <Sheet open={sheet === "storage"} onClose={close} title={t("downloads.storage")}>
+        <ChoiceList
+          value={s.storage}
+          options={storages}
+          onChange={(storage) => update({ storage })}
+        />
+        {!sync.sdAvailable ? <Muted>{t("mobile.sdMissing")}</Muted> : null}
+      </Sheet>
     </View>
   );
 }

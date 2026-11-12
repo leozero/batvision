@@ -551,6 +551,84 @@ async fn sorting_by_recently_added() {
     );
 }
 
+async fn rate(f: &Fixture, title: &str, value: f64, votes: i64) {
+    sqlx::query(
+        "INSERT INTO ratings (item_kind, item_id, source, value, scale, votes, updated_at)
+         SELECT 'movie', id, 'tmdb', ?, 10, ?, 0 FROM movies WHERE parsed_title = ?",
+    )
+    .bind(value)
+    .bind(votes)
+    .bind(title)
+    .execute(&f.app.state.db)
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn sorting_both_ways_keeps_missing_values_last() {
+    let f = fixture(false).await;
+    touch(f.media.path(), "Films/Alpha (2000)/a.mkv");
+    touch(f.media.path(), "Films/Mike (1990)/m.mkv");
+    touch(f.media.path(), "Films/Zulu (2010)/z.mkv");
+    touch(f.media.path(), "Films/Bravo/b.mkv");
+    f.create_library("Films", "movies", "Films").await;
+    rate(&f, "Alpha", 6.0, 100).await;
+    rate(&f, "Zulu", 8.0, 100).await;
+    rate(&f, "Mike", 9.0, 3).await; // too few votes: unrated
+
+    assert_eq!(
+        Fixture::titles(&f.get("/api/movies?sort=title").await),
+        ["Alpha", "Bravo", "Mike", "Zulu"]
+    );
+    assert_eq!(
+        Fixture::titles(&f.get("/api/movies?sort=title&order=desc").await),
+        ["Zulu", "Mike", "Bravo", "Alpha"]
+    );
+    assert_eq!(
+        Fixture::titles(&f.get("/api/movies?sort=year").await),
+        ["Zulu", "Alpha", "Mike", "Bravo"]
+    );
+    assert_eq!(
+        Fixture::titles(&f.get("/api/movies?sort=year&order=asc").await),
+        ["Mike", "Alpha", "Zulu", "Bravo"],
+        "no year: last both ways"
+    );
+    assert_eq!(
+        Fixture::titles(&f.get("/api/movies?sort=rating").await),
+        ["Zulu", "Alpha", "Bravo", "Mike"]
+    );
+    assert_eq!(
+        Fixture::titles(&f.get("/api/movies?sort=rating&order=asc").await),
+        ["Alpha", "Zulu", "Bravo", "Mike"],
+        "unrated: last both ways"
+    );
+    let (status, _) = f
+        .app
+        .get("/api/movies?order=sideways", Some(&f.admin))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn home_has_the_top_rated_movies() {
+    let f = fixture(false).await;
+    for name in ["Alpha", "Bravo", "Charlie", "Delta"] {
+        touch(f.media.path(), &format!("Films/{name} (2000)/f.mkv"));
+    }
+    f.create_library("Films", "movies", "Films").await;
+    rate(&f, "Alpha", 9.5, 12).await; // not enough votes for the rail
+    rate(&f, "Bravo", 7.0, 60).await;
+    rate(&f, "Charlie", 8.0, 900).await;
+    let home = f.get("/api/home").await;
+    let top: Vec<&str> = home["top_rated_movies"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["title"].as_str().unwrap())
+        .collect();
+    assert_eq!(top, ["Charlie", "Bravo"]);
+}
+
 #[tokio::test]
 async fn images_are_proxied_cached_and_restricted_to_the_library() {
     let f = fixture(true).await;

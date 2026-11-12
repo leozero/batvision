@@ -1,0 +1,15 @@
+# Deleting the downloaded movie from the Downloads tab (D74).
+appId: fr.batvision.android
+---
+- stopApp
+- launchApp
+- tapOn:
+    id: tab-downloads
+- tapOn:
+    id: more-movie-${MOVIE_ID}
+- tapOn:
+    id: confirm-cancel
+- extendedWaitUntil:
+    notVisible:
+      id: local-movie-${MOVIE_ID}
+    timeout: 30000

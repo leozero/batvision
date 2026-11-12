@@ -1,7 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
-  Bookmark,
   CheckCircle2,
   Clock,
   Download,
@@ -34,7 +32,6 @@ import { formatBytes } from "../lib/bytes";
 import { desktop, syncDesktop } from "../lib/desktop";
 import { episodeCode, languageName } from "../lib/format";
 import { downloadsQuery } from "../lib/queries";
-import { Card } from "./account/AccountPage";
 
 const PLATFORM_ICON: Record<string, typeof Laptop> = {
   desktop: Laptop,
@@ -337,16 +334,7 @@ function DeviceCard({ device, index }: { device: Schemas["DeviceDownloads"]; ind
 
 export function DownloadsPage() {
   const { t } = useTranslation();
-  const qc = useQueryClient();
   const { data, isPending } = useQuery(downloadsQuery);
-  const removeFromWatchlist = useMutation({
-    mutationFn: (movie_id: number) =>
-      call(api.DELETE("/api/watchlist/{movie_id}", { params: { path: { movie_id } } })),
-    onSuccess: () => {
-      syncDesktop();
-      return qc.invalidateQueries();
-    },
-  });
 
   return (
     <Page className="mx-auto max-w-4xl px-4 pt-8 sm:px-6">
@@ -358,36 +346,6 @@ export function DownloadsPage() {
       ) : (
         <div className="space-y-6">
           {desktop ? <ThisComputerCard /> : null}
-          <Card title={t("downloads.watchlist")} description={t("downloads.watchlistHint")}>
-            {data?.watchlist.length ? (
-              <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-4">
-                {data.watchlist.map((w) => (
-                  <li key={w.movie_id} className="group relative">
-                    <Link to="/movies/$id" params={{ id: String(w.movie_id) }}>
-                      <Img
-                        src={imageUrl(w.poster_path, "w342")}
-                        alt={w.title}
-                        className="aspect-[2/3] w-full rounded-lg object-cover"
-                        fallback={<Bookmark className="size-6 text-faint" />}
-                      />
-                      <p className="mt-1.5 truncate text-xs font-medium">{w.title}</p>
-                    </Link>
-                    <button
-                      type="button"
-                      aria-label={t("downloads.remove")}
-                      onClick={() => removeFromWatchlist.mutate(w.movie_id)}
-                      className="absolute right-1.5 top-1.5 flex size-7 cursor-pointer items-center justify-center rounded-full bg-black/70 opacity-0 transition group-hover:opacity-100"
-                    >
-                      <Trash2 className="size-3.5" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted">{t("downloads.watchlistEmpty")}</p>
-            )}
-          </Card>
-
           {data?.devices.length ? (
             data.devices.map((device, i) => (
               <DeviceCard key={device.id} device={device} index={i} />

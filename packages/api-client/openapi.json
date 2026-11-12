@@ -901,6 +901,41 @@
         }
       }
     },
+    "/api/downloads/cancel": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "This device drops an item, downloaded or not (D74): removes whatever asks for it,\nand its pending request. The device deletes its copy (or partial file) itself.",
+        "operationId": "cancel",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cancelled"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/downloads/confirm": {
       "post": {
         "tags": [
@@ -1621,7 +1656,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Preferences"
+                "$ref": "#/components/schemas/PreferencesUpdate"
               }
             }
           },
@@ -1869,6 +1904,26 @@
                 "added",
                 "year",
                 "rating"
+              ]
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "description": "Sort direction (D75). Omitted: the sort's natural one (`asc` for title, else `desc`).",
+                  "enum": [
+                    "asc",
+                    "desc"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
               ]
             }
           },
@@ -2236,6 +2291,26 @@
             }
           },
           {
+            "name": "order",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "string",
+                  "description": "Sort direction (D75). Omitted: the sort's natural one (`asc` for title, else `desc`).",
+                  "enum": [
+                    "asc",
+                    "desc"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "description": "Default 50, max 200.",
@@ -2538,6 +2613,68 @@
         ]
       }
     },
+    "/api/watchlist/series/{series_id}": {
+      "put": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "Adds a series: its next unwatched episodes download on devices with automatic\ndownloads, in the series' audio language (D73).",
+        "operationId": "add_series_to_watchlist",
+        "parameters": [
+          {
+            "name": "series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "remove_series_from_watchlist",
+        "parameters": [
+          {
+            "name": "series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/watchlist/{movie_id}": {
       "put": {
         "tags": [
@@ -2727,6 +2864,21 @@
           "applied": {
             "type": "integer",
             "minimum": 0
+          }
+        }
+      },
+      "Cancelled": {
+        "type": "object",
+        "required": [
+          "removed"
+        ],
+        "properties": {
+          "removed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "description": "What no longer asks for the item: a manual download, a subscription of this\ndevice, a watchlist entry (every device). Empty if nothing did."
           }
         }
       },
@@ -3471,7 +3623,8 @@
           "continue_watching",
           "next_up",
           "recent_movies",
-          "recent_series"
+          "recent_series",
+          "top_rated_movies"
         ],
         "properties": {
           "continue_watching": {
@@ -3508,6 +3661,13 @@
             "items": {
               "$ref": "#/components/schemas/SeriesSummary"
             }
+          },
+          "top_rated_movies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MovieSummary"
+            },
+            "description": "Best TMDB ratings with enough votes to mean something (D76)."
           }
         }
       },
@@ -4505,7 +4665,8 @@
       "Preferences": {
         "type": "object",
         "required": [
-          "subtitle_mode"
+          "subtitle_mode",
+          "watchlist_episodes"
         ],
         "properties": {
           "audio_language": {
@@ -4523,6 +4684,42 @@
           },
           "subtitle_mode": {
             "$ref": "#/components/schemas/SubtitleMode"
+          },
+          "watchlist_episodes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Unwatched episodes kept for each watchlist series, 1 to 10 (D73)."
+          }
+        }
+      },
+      "PreferencesUpdate": {
+        "type": "object",
+        "required": [
+          "subtitle_mode"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtitle_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "subtitle_mode": {
+            "$ref": "#/components/schemas/SubtitleMode"
+          },
+          "watchlist_episodes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Omitted: unchanged."
           }
         }
       },
@@ -4972,6 +5169,7 @@
           "id",
           "library_id",
           "title",
+          "in_watchlist",
           "ratings",
           "seasons"
         ],
@@ -4991,6 +5189,10 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "in_watchlist": {
+            "type": "boolean",
+            "description": "In the caller's watchlist: its next episodes download automatically (D73)."
           },
           "library_id": {
             "type": "integer",
@@ -5654,9 +5856,11 @@
       "WatchlistItem": {
         "type": "object",
         "required": [
-          "movie_id",
+          "kind",
+          "id",
           "title",
-          "added_at"
+          "added_at",
+          "played"
         ],
         "properties": {
           "added_at": {
@@ -5667,11 +5871,19 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Movies: the audio language chosen when adding. Series: `None` (D73)."
           },
-          "movie_id": {
+          "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/WatchlistKind"
+          },
+          "played": {
+            "type": "boolean",
+            "description": "Movie watched, or every episode of the series watched."
           },
           "poster_path": {
             "type": [
@@ -5690,6 +5902,13 @@
             "format": "int64"
           }
         }
+      },
+      "WatchlistKind": {
+        "type": "string",
+        "enum": [
+          "movie",
+          "series"
+        ]
       }
     },
     "securitySchemes": {

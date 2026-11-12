@@ -10,7 +10,7 @@ use super::{
     encode::{self, Encoders, VariantSubtitle},
     plan::{
         self, EpisodeRef, ExpectedItem, Inputs, ItemState, ManualEntry, Mode, Profile,
-        Subscription, WatchlistEntry,
+        Subscription, WatchlistEntry, WatchlistTarget,
     },
 };
 use crate::{
@@ -169,6 +169,28 @@ type SubscriptionRow = (
     Option<String>,
 );
 
+/// Episodes of a series in viewing order (specials last), loaded once.
+async fn load_episodes(state: &AppState, inputs: &mut Inputs, series_id: i64) -> ApiResult<()> {
+    if inputs.series_episodes.contains_key(&series_id) {
+        return Ok(());
+    }
+    let episodes: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT id, season_number FROM episodes WHERE series_id = ? AND missing_since IS NULL
+         ORDER BY season_number = 0, season_number, episode_number",
+    )
+    .bind(series_id)
+    .fetch_all(&state.db)
+    .await?;
+    inputs.series_episodes.insert(
+        series_id,
+        episodes
+            .into_iter()
+            .map(|(id, season)| EpisodeRef { id, season })
+            .collect(),
+    );
+    Ok(())
+}
+
 /// Everything the expected-set computation needs for this device.
 pub async fn load_inputs(
     state: &AppState,
@@ -206,39 +228,49 @@ pub async fn load_inputs(
             profile,
             audio_language,
         });
-        if let std::collections::hash_map::Entry::Vacant(slot) =
-            inputs.series_episodes.entry(series_id)
-        {
-            let episodes: Vec<(i64, i64)> = sqlx::query_as(
-                "SELECT id, season_number FROM episodes WHERE series_id = ? AND missing_since IS NULL
-                 ORDER BY season_number = 0, season_number, episode_number",
-            )
-            .bind(series_id)
-            .fetch_all(&state.db)
-            .await?;
-            slot.insert(
-                episodes
-                    .into_iter()
-                    .map(|(id, season)| EpisodeRef { id, season })
-                    .collect(),
-            );
-        }
+        load_episodes(state, &mut inputs, series_id).await?;
     }
 
-    inputs.watchlist = sqlx::query_as::<_, (i64, Option<String>, i64)>(
+    // Watchlist movies, then series with the series' audio choice (D20, D73).
+    let movies = sqlx::query_as::<_, (i64, Option<String>, i64)>(
         "SELECT w.movie_id, w.audio_language, w.added_at FROM watchlist w
          JOIN movies m ON m.id = w.movie_id AND m.missing_since IS NULL WHERE w.user_id = ?",
     )
     .bind(user_id)
     .fetch_all(&state.db)
-    .await?
-    .into_iter()
-    .map(|(movie_id, audio_language, added_at)| WatchlistEntry {
-        movie_id,
-        audio_language,
-        added_at,
-    })
-    .collect();
+    .await?;
+    let series = sqlx::query_as::<_, (i64, Option<String>, i64)>(
+        "SELECT w.series_id,
+           (SELECT p.audio_language FROM series_track_preferences p
+            WHERE p.user_id = w.user_id AND p.series_id = w.series_id),
+           w.added_at
+         FROM watchlist_series w JOIN series s ON s.id = w.series_id AND s.missing_since IS NULL
+         WHERE w.user_id = ?",
+    )
+    .bind(user_id)
+    .fetch_all(&state.db)
+    .await?;
+    inputs.watchlist = movies
+        .into_iter()
+        .map(|(id, audio_language, added_at)| WatchlistEntry {
+            target: WatchlistTarget::Movie(id),
+            audio_language,
+            added_at,
+        })
+        .collect();
+    for (series_id, audio_language, added_at) in series {
+        load_episodes(state, &mut inputs, series_id).await?;
+        inputs.watchlist.push(WatchlistEntry {
+            target: WatchlistTarget::Series(series_id),
+            audio_language,
+            added_at,
+        });
+    }
+    let count: i64 = sqlx::query_scalar("SELECT watchlist_episodes FROM users WHERE id = ?")
+        .bind(user_id)
+        .fetch_one(&state.db)
+        .await?;
+    inputs.watchlist_episodes = count.clamp(1, 10) as usize;
 
     inputs.manual = sqlx::query_as::<_, (String, i64, Option<Profile>, Option<String>)>(
         "SELECT item_kind, item_id, profile, audio_language FROM manual_downloads
@@ -613,5 +645,117 @@ pub async fn confirm(state: &AppState, device_id: i64, variant_id: i64) -> ApiRe
     if !pending {
         state.encoder.delete(variant_id).await?;
     }
+    Ok(())
+}
+
+/// The device drops an item (D74): removes each source that asks for it on this
+/// device (manual download, subscription, watchlist entry) until none does, then
+/// withdraws the device's pending request. A queued encode nobody else waits for goes.
+pub async fn cancel(
+    state: &AppState,
+    user: &crate::auth::User,
+    device_id: i64,
+    kind: PlayableKind,
+    id: i64,
+) -> ApiResult<Vec<plan::Source>> {
+    let platform = download_device(state, user.id, device_id).await?;
+    let (settings, _) = load_settings(state, device_id, platform).await?;
+    let mut removed = Vec::new();
+    // Each pass removes one source; an item has at most four (manual, rolling, season,
+    // watchlist), so the bound is never reached unless a source can't be removed.
+    for _ in 0..4 {
+        let inputs = load_inputs(state, user.id, device_id, &settings).await?;
+        let Some(item) = plan::expected_set(&inputs)
+            .into_iter()
+            .find(|i| i.kind == kind && i.id == id)
+        else {
+            break;
+        };
+        remove_source(state, user.id, device_id, kind, id, item.source).await?;
+        removed.push(item.source);
+    }
+
+    sqlx::query(
+        "DELETE FROM variant_requests WHERE device_id = ? AND confirmed_at IS NULL
+         AND variant_id IN (SELECT v.id FROM variants v JOIN media_files mf ON mf.id = v.media_file_id
+                            WHERE mf.item_kind = ? AND mf.item_id = ?)",
+    )
+    .bind(device_id)
+    .bind(kind.as_str())
+    .bind(id)
+    .execute(&state.db)
+    .await?;
+    let orphans: Vec<i64> = sqlx::query_scalar(
+        "SELECT v.id FROM variants v JOIN media_files mf ON mf.id = v.media_file_id
+         WHERE mf.item_kind = ? AND mf.item_id = ? AND v.status = 'queued'
+           AND NOT EXISTS (SELECT 1 FROM variant_requests r WHERE r.variant_id = v.id)",
+    )
+    .bind(kind.as_str())
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
+    for variant in orphans {
+        state.encoder.delete(variant).await?;
+    }
+    sqlx::query(
+        "DELETE FROM device_downloads WHERE device_id = ? AND item_kind = ? AND item_id = ?",
+    )
+    .bind(device_id)
+    .bind(kind.as_str())
+    .bind(id)
+    .execute(&state.db)
+    .await?;
+    Ok(removed)
+}
+
+async fn remove_source(
+    state: &AppState,
+    user_id: i64,
+    device_id: i64,
+    kind: PlayableKind,
+    id: i64,
+    source: plan::Source,
+) -> ApiResult<()> {
+    use plan::Source;
+    let episode: Option<(i64, i64)> = if kind == PlayableKind::Episode {
+        sqlx::query_as("SELECT series_id, season_number FROM episodes WHERE id = ?")
+            .bind(id)
+            .fetch_optional(&state.db)
+            .await?
+    } else {
+        None
+    };
+    let query = match (source, episode) {
+        (Source::Manual, _) => sqlx::query(
+            "DELETE FROM manual_downloads WHERE device_id = ? AND item_kind = ? AND item_id = ?",
+        )
+        .bind(device_id)
+        .bind(kind.as_str())
+        .bind(id),
+        (Source::Rolling, Some((series_id, _))) => sqlx::query(
+            "DELETE FROM series_subscriptions WHERE device_id = ? AND series_id = ? AND mode = 'rolling'",
+        )
+        .bind(device_id)
+        .bind(series_id),
+        (Source::Season, Some((series_id, season))) => sqlx::query(
+            "DELETE FROM series_subscriptions WHERE device_id = ? AND series_id = ?
+             AND mode = 'season' AND season_number = ?",
+        )
+        .bind(device_id)
+        .bind(series_id)
+        .bind(season),
+        (Source::Watchlist, Some((series_id, _))) => {
+            sqlx::query("DELETE FROM watchlist_series WHERE user_id = ? AND series_id = ?")
+                .bind(user_id)
+                .bind(series_id)
+        }
+        (Source::Watchlist, None) => {
+            sqlx::query("DELETE FROM watchlist WHERE user_id = ? AND movie_id = ?")
+                .bind(user_id)
+                .bind(id)
+        }
+        (Source::Rolling | Source::Season, None) => return Ok(()),
+    };
+    query.execute(&state.db).await?;
     Ok(())
 }
