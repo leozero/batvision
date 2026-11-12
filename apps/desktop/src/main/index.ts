@@ -17,6 +17,7 @@ import { Config } from "./config";
 import { Engine } from "./engine";
 import { APP_URL, handleProtocol, registerScheme } from "./protocol";
 import { fetchWithTimeout, normalizeServer, ServerClient } from "./server";
+import { Updater } from "./updater";
 
 // Tests run several instances side by side, each with its own data.
 if (process.env.BATVISION_USER_DATA)
@@ -46,6 +47,7 @@ app.whenReady().then(() => {
   const config = new Config();
   const server = new ServerClient(config, () => signedOut());
   const engine = new Engine(config, server);
+  const updater = new Updater();
   let reachable = true;
 
   const signedOut = () => {
@@ -135,8 +137,19 @@ app.whenReady().then(() => {
     return settings();
   });
   ipcMain.handle("bv:openFolder", () => shell.openPath(engine.library.folder));
+  ipcMain.handle("bv:update", () => updater.state());
+  ipcMain.handle("bv:installUpdate", () => installUpdate());
 
   engine.on("state", (state) => window?.webContents.send("bv:downloads", state));
+  updater.on("state", (state) => {
+    window?.webContents.send("bv:update", state);
+    updateTray();
+  });
+
+  const installUpdate = () => {
+    if (updater.state().status === "ready") quitting = true;
+    updater.install();
+  };
 
   // ---- Window and tray -----------------------------------------------------------------
   const show = () => {
@@ -188,9 +201,17 @@ app.whenReady().then(() => {
 
   function updateTray() {
     if (!tray) return;
+    const update = updater.state();
+    const updateItems: Electron.MenuItemConstructorOptions[] =
+      update.status === "ready"
+        ? [{ label: `Redémarrer pour passer à la version ${update.version}`, click: installUpdate }]
+        : update.status === "available"
+          ? [{ label: `Télécharger la version ${update.version}`, click: installUpdate }]
+          : [];
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: "Ouvrir batvision", click: show },
+        ...updateItems,
         { type: "separator" },
         {
           label: "Synchroniser maintenant",
@@ -244,6 +265,7 @@ app.whenReady().then(() => {
 
   if (!process.argv.includes("--hidden")) createWindow();
   engine.start();
+  updater.start();
 });
 
 // Closing every window doesn't quit: the tray keeps the app alive.

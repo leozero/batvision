@@ -222,6 +222,8 @@ export const fr = {
     },
   },
   desktop: {
+    updateReady: "La version {{version}} est prête : cliquez pour redémarrer et l'installer.",
+    updateAvailable: "La version {{version}} est disponible : cliquez pour la télécharger.",
     connectTitle: "Votre serveur",
     connectIntro: "Saisissez l'adresse de votre serveur batvision.",
     serverAddress: "Adresse du serveur",

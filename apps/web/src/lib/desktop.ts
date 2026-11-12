@@ -4,6 +4,7 @@ import type {
   DownloadsState,
   ItemKind,
   LocalItem,
+  UpdateState,
 } from "@batvision/bridge";
 import { queryOptions } from "@tanstack/react-query";
 import { useSyncExternalStore } from "react";
@@ -64,6 +65,34 @@ function subscribeDownloads(listener: () => void) {
 /** Live downloads state from the desktop app (`undefined` in a browser). */
 export function useDownloadsState(): DownloadsState | undefined {
   return useSyncExternalStore(subscribeDownloads, () => downloadsState);
+}
+
+let updateState: UpdateState | undefined;
+const updateListeners = new Set<() => void>();
+let stopUpdates: (() => void) | null = null;
+
+function subscribeUpdate(listener: () => void) {
+  updateListeners.add(listener);
+  if (desktop && !stopUpdates) {
+    const set = (state: UpdateState) => {
+      updateState = state;
+      for (const l of updateListeners) l();
+    };
+    stopUpdates = desktop.onUpdate(set);
+    void desktop.update().then(set);
+  }
+  return () => {
+    updateListeners.delete(listener);
+    if (updateListeners.size === 0 && stopUpdates) {
+      stopUpdates();
+      stopUpdates = null;
+    }
+  };
+}
+
+/** A newer desktop app version (`undefined` in a browser). */
+export function useUpdateState(): UpdateState | undefined {
+  return useSyncExternalStore(subscribeUpdate, () => updateState);
 }
 
 /** The local copy of an item, from the live state. */

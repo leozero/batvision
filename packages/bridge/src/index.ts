@@ -113,6 +113,16 @@ export interface DesktopSettings {
   launchAtLogin: boolean;
 }
 
+/** A newer version of the desktop app. */
+export type UpdateState =
+  | { status: "none" }
+  /** Windows, Linux: downloading in the background. */
+  | { status: "downloading"; version: string; percent: number }
+  /** Windows, Linux: downloaded, installed on restart or when the app quits. */
+  | { status: "ready"; version: string }
+  /** macOS (unsigned builds can't update themselves): download it from the release page. */
+  | { status: "available"; version: string; url: string };
+
 export interface DesktopBridge {
   info(): Promise<DesktopInfo>;
   /** Checks that a batvision server answers there, then remembers it. */
@@ -138,6 +148,12 @@ export interface DesktopBridge {
   /** Opens a folder picker and moves the downloads there. */
   chooseFolder(): Promise<DesktopSettings>;
   openFolder(): Promise<void>;
+
+  update(): Promise<UpdateState>;
+  /** Called on every change; returns an unsubscribe function. */
+  onUpdate(listener: (state: UpdateState) => void): () => void;
+  /** `ready`: restarts into the new version. `available`: opens its release page. */
+  installUpdate(): Promise<void>;
 }
 
 declare global {

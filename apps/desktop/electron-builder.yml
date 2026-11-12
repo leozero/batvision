@@ -35,4 +35,8 @@ linux:
   target:
     - target: AppImage
       arch: [x64]
-publish: null
+# Where electron-updater looks for new versions (D58). CI uploads the files itself.
+publish:
+  provider: github
+  owner: leozero
+  repo: batvision

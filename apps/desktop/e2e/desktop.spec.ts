@@ -1,4 +1,6 @@
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -20,6 +22,8 @@ let server: TestServer;
 let app: ElectronApplication;
 let page: Page;
 let totpSecret = "";
+/** Stands in for the GitHub API: the latest release is a newer version. */
+let releases: Server;
 
 /** Screenshots of the key screens, when `BATVISION_SHOTS` names a folder. */
 async function shot(name: string) {
@@ -34,6 +38,17 @@ const videos = join(data, "videos");
 test.beforeAll(async () => {
   server = new TestServer();
   await server.start();
+  releases = createServer((_req, res) => {
+    res.setHeader("content-type", "application/json");
+    res.end(
+      JSON.stringify({
+        tag_name: "v99.0.0",
+        html_url: "https://github.com/leozero/batvision/releases/tag/v99.0.0",
+      }),
+    );
+  });
+  await new Promise<void>((done) => releases.listen(0, "127.0.0.1", done));
+  const releasesUrl = `http://127.0.0.1:${(releases.address() as AddressInfo).port}/latest`;
   app = await electron.launch({
     args: [
       resolve(__dirname, ".."),
@@ -46,6 +61,7 @@ test.beforeAll(async () => {
       BATVISION_USER_DATA: join(data, "user-data"),
       BATVISION_VIDEOS_DIR: videos,
       BATVISION_SYNC_WAITING_MS: "1000",
+      BATVISION_UPDATE_URL: releasesUrl,
     },
   });
   page = await app.firstWindow();
@@ -55,6 +71,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   await app?.close();
   await server?.stop();
+  releases?.close();
 });
 
 test("first launch asks for the server address", async () => {
@@ -111,7 +128,7 @@ test("the admin adds a library", async () => {
 
 test("downloading a movie encodes, downloads and marks it", async () => {
   await page.getByRole("link", { name: /Test Movie/ }).click();
-  await page.getByRole("button", { name: "Télécharger" }).click();
+  await page.getByRole("button", { name: "Télécharger", exact: true }).click();
   const dialog = page.getByRole("dialog");
   // This computer is offered as the target device.
   await expect(dialog.locator("select").first()).toContainText("·");
@@ -133,6 +150,15 @@ test("the downloads page shows what this computer holds", async () => {
   await expect(card.getByText("Test Movie")).toBeVisible();
   await expect(card.getByText("Téléchargé")).toBeVisible();
   await shot("downloads");
+});
+
+test("a newer release offers to download it", async () => {
+  await expect(
+    page.getByRole("button", {
+      name: "La version 99.0.0 est disponible : cliquez pour la télécharger.",
+    }),
+  ).toBeVisible();
+  await shot("update");
 });
 
 test("without the server, the offline library plays the local copy", async () => {

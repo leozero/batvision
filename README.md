@@ -47,7 +47,7 @@ pnpm --filter @batvision/web build && pnpm --filter @batvision/desktop build
 pnpm --filter @batvision/desktop start
 ```
 
-On first launch it asks for the server address (`http://127.0.0.1:8420` for a local server). Downloads go to `Videos/Batvision` by default. Installers for macOS, Windows and Linux (unsigned for now) are on the [releases page](https://github.com/leozero/batvision/releases), or built locally with `pnpm --filter @batvision/desktop dist`. To publish a release, set the version in `apps/desktop/package.json` and push a matching `v*` tag.
+On first launch it asks for the server address (`http://127.0.0.1:8420` for a local server). Downloads go to `Videos/Batvision` by default. Installers for macOS, Windows and Linux (unsigned for now) are on the [releases page](https://github.com/leozero/batvision/releases), or built locally with `pnpm --filter @batvision/desktop dist`. To publish a release, set the version in `apps/desktop/package.json` and push a matching `v*` tag: installed apps pick it up (Windows and Linux update themselves, macOS shows a download banner).
 
 ### Tests
 

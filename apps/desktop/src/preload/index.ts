@@ -1,4 +1,4 @@
-import type { DesktopBridge, DownloadsState } from "@batvision/bridge";
+import type { DesktopBridge, DownloadsState, UpdateState } from "@batvision/bridge";
 import { contextBridge, ipcRenderer } from "electron";
 
 const invoke = (channel: string, ...args: unknown[]) =>
@@ -24,6 +24,13 @@ const bridge: DesktopBridge = {
   setLaunchAtLogin: (enabled) => invoke("setLaunchAtLogin", enabled),
   chooseFolder: () => invoke("chooseFolder"),
   openFolder: () => invoke("openFolder"),
+  update: () => invoke("update"),
+  onUpdate: (listener) => {
+    const handler = (_event: unknown, state: UpdateState) => listener(state);
+    ipcRenderer.on("bv:update", handler);
+    return () => ipcRenderer.removeListener("bv:update", handler);
+  },
+  installUpdate: () => invoke("installUpdate"),
 };
 
 contextBridge.exposeInMainWorld("batvision", bridge);

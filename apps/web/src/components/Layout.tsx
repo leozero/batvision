@@ -1,10 +1,20 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { LogOut, Search, Settings, ShieldAlert, ShieldCheck, User as UserIcon } from "lucide-react";
+import {
+  Download,
+  LogOut,
+  RefreshCw,
+  Search,
+  Settings,
+  ShieldAlert,
+  ShieldCheck,
+  User as UserIcon,
+} from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
+import { desktop, useUpdateState } from "../lib/desktop";
 import { meQuery } from "../lib/queries";
 import { Logo } from "./Logo";
 import { cx, IconButton, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "./ui";
@@ -143,6 +153,8 @@ export function AppLayout() {
         ) : null}
       </AnimatePresence>
 
+      <UpdateBanner />
+
       <AnimatePresence mode="wait">
         <motion.div
           key={pathname.split("/")[1] ?? ""}
@@ -157,5 +169,39 @@ export function AppLayout() {
         batvision
       </footer>
     </div>
+  );
+}
+
+/** Desktop app only: a newer version is ready to install or to download. */
+function UpdateBanner() {
+  const { t } = useTranslation();
+  const update = useUpdateState();
+  const show = update?.status === "ready" || update?.status === "available";
+  return (
+    <AnimatePresence>
+      {show ? (
+        <motion.div
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          className="relative z-30 overflow-hidden"
+        >
+          <button
+            type="button"
+            onClick={() => void desktop?.installUpdate()}
+            className="flex w-full cursor-pointer items-center justify-center gap-2 bg-accent/15 px-4 py-2.5 text-sm text-accent transition hover:bg-accent/20"
+          >
+            {update.status === "ready" ? (
+              <RefreshCw className="size-4" />
+            ) : (
+              <Download className="size-4" />
+            )}
+            {update.status === "ready"
+              ? t("desktop.updateReady", { version: update.version })
+              : t("desktop.updateAvailable", { version: update.version })}
+          </button>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   );
 }

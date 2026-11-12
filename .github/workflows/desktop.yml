@@ -29,7 +29,8 @@ jobs:
       matrix:
         include:
           - { name: macOS, os: macos-latest, artifact: "release/*.dmg" }
-          - { name: Windows, os: windows-latest, artifact: "release/*.exe" }
+          # latest*.yml and the block maps let installed apps update themselves (D58).
+          - { name: Windows, os: windows-latest, artifact: "release/*.exe*" }
           - { name: Linux, os: ubuntu-latest, artifact: "release/*.AppImage" }
     runs-on: ${{ matrix.os }}
     steps:
@@ -45,7 +46,9 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: batvision-desktop-${{ matrix.name }}
-          path: apps/desktop/${{ matrix.artifact }}
+          path: |
+            apps/desktop/${{ matrix.artifact }}
+            apps/desktop/release/latest*.yml
           if-no-files-found: error
           retention-days: 30
 

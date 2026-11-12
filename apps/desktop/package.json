@@ -1,7 +1,7 @@
 {
   "name": "@batvision/desktop",
   "productName": "batvision",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "batvision desktop app: library, playback and offline downloads",
@@ -27,5 +27,8 @@
     "typescript": "^5.9.3",
     "vite": "^8.3.7",
     "vitest": "^5.1.0"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
   }
 }

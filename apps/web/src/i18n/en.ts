@@ -226,6 +226,8 @@ export const en: Shape<typeof fr> = {
     },
   },
   desktop: {
+    updateReady: "Version {{version}} is ready: click to restart and install it.",
+    updateAvailable: "Version {{version}} is available: click to download it.",
     connectTitle: "Your server",
     connectIntro: "Enter the address of your batvision server.",
     serverAddress: "Server address",

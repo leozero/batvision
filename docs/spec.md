@@ -226,7 +226,8 @@ Series subscriptions and manual downloads are explicit requests for one device: 
 - Closing the window keeps the app in the tray; "Quit" stops it. Sync on open, when the network returns and every 30 minutes. Launch at login is off by default.
 - One download at a time, pause/resume, interrupted downloads resume (HTTP Range). No network restriction.
 - One signed-in account per install.
-- Builds: macOS (arm64, x64), Windows, Linux AppImage, unsigned until milestone 7, no auto-update yet.
+- Builds: macOS (arm64, x64), Windows, Linux AppImage, unsigned until milestone 7, published as GitHub releases.
+- Updates (D58): Windows and Linux download new releases in the background and install them on quit or from the banner; macOS shows a banner linking to the release.
 
 ## 8. Milestones
 
