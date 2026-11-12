@@ -33,21 +33,6 @@ async fn main() -> anyhow::Result<()> {
         batvision_server::playback::signing::MediaSigner::load_or_create(&config.data_dir)?;
     state.transcodes.clean();
     state.transcodes.clone().spawn_reaper();
-    let probe = state.ffmpeg.clone();
-    state
-        .encoder
-        .clone()
-        .start(move || {
-            probe
-                .try_read()
-                .ok()
-                .and_then(|p| {
-                    p.as_ref()
-                        .map(batvision_server::downloads::encode::Encoders::from_info)
-                })
-                .unwrap_or_default()
-        })
-        .await?;
     if let Some(token) = state.init_setup_token().await? {
         tracing::warn!(
             "no account exists yet: create the first administrator with setup token {token}"
@@ -59,6 +44,26 @@ async fn main() -> anyhow::Result<()> {
         let info = ffmpeg::probe(&probe_state.config.ffmpeg).await;
         tracing::info!(version = ?info.version, encoders = ?info.working_encoders, gpu_filters = info.gpu_filters, "ffmpeg probe done");
         *probe_state.ffmpeg.write().await = Some(info);
+        // Encodes start once the encoders are known: an encode resumed before the probe
+        // would run without the GPU, or with a CPU encoder the host may not have.
+        let probe = probe_state.ffmpeg.clone();
+        let started = probe_state
+            .encoder
+            .clone()
+            .start(move || {
+                probe
+                    .try_read()
+                    .ok()
+                    .and_then(|p| {
+                        p.as_ref()
+                            .map(batvision_server::downloads::encode::Encoders::from_info)
+                    })
+                    .unwrap_or_default()
+            })
+            .await;
+        if let Err(err) = started {
+            tracing::error!(error = %format!("{err:#}"), "encode queue did not start");
+        }
     });
 
     if state.tmdb.is_none() {

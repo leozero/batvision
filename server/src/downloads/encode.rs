@@ -184,14 +184,16 @@ pub fn ffmpeg_args(job: &EncodeJob, out: &Path) -> Vec<String> {
                 "libsvtav1" => args.extend(["-preset", "8"].map(String::from)),
                 _ => args.extend(["-preset", "medium"].map(String::from)),
             }
-            args.extend([
-                "-b:v".into(),
-                format!("{kbps}k"),
-                "-maxrate".into(),
-                format!("{}k", kbps * 3 / 2),
-                "-bufsize".into(),
-                format!("{}k", kbps * 3),
-            ]);
+            args.extend(["-b:v".into(), format!("{kbps}k")]);
+            // SVT-AV1 caps the bitrate only in CRF mode: its VBR rejects -maxrate.
+            if encoder != "libsvtav1" {
+                args.extend([
+                    "-maxrate".into(),
+                    format!("{}k", kbps * 3 / 2),
+                    "-bufsize".into(),
+                    format!("{}k", kbps * 3),
+                ]);
+            }
         }
     }
     // Apple players need the hvc1 tag for HEVC in MP4.
@@ -686,7 +688,14 @@ mod tests {
             ..Encoders::default()
         };
         assert!(!j.on_gpu());
-        assert!(joined(&j).contains("-vf scale=-2:480,format=yuv420p -c:v libsvtav1"));
+        let args = joined(&j);
+        assert!(
+            args.contains("-vf scale=-2:480,format=yuv420p -c:v libsvtav1 -preset 8 -b:v 700k")
+        );
+        assert!(
+            !args.contains("-maxrate"),
+            "SVT-AV1's VBR rejects a max bitrate"
+        );
         assert!(!job(Profile::Max, VideoPlan::Copy).on_gpu());
     }
 
