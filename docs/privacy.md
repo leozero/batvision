@@ -10,7 +10,7 @@ BatVision is a client for a **self-hosted** media server: you (or someone you tr
 
 ## What the apps store and where it goes
 
-- **On your device:** the address of your BatVision server, your device's sign-in token (encrypted with the Android keystore on Android, the system keychain on desktop), the movies and episodes you download, their pictures and subtitles, your playback positions and your download settings.
+- **On your device:** the address of your BatVision server, your device's sign-in token (encrypted with the Android keystore on Android, kept in the keychain on iOS and iPadOS and the system keychain on desktop), the movies and episodes you download, their pictures and subtitles, your playback positions and your download settings.
 - **To your own BatVision server only:** your username, password and two-factor code when you sign in, your playback progress, and the downloads you request. This server is chosen and operated by you or your household; its administrator can see your account and viewing history there.
 - **To GitHub:** to tell you about new versions, the apps read the public list of BatVision releases on `api.github.com`. Like any web request, it reveals your IP address to GitHub; nothing else is sent. See [GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
 
@@ -20,6 +20,11 @@ Movie and series information (titles, posters, ratings) is fetched by your serve
 
 - **Network access:** to reach your server.
 - **Notifications and foreground service:** to show the progress of a download while it runs in the background, with a Pause button.
+
+## Permissions (iOS and iPadOS)
+
+- **Local network:** to reach a server on your home network.
+- **Background downloads and refresh:** downloads go on with the app closed, and the app looks for new episodes when iOS allows it.
 
 ## Deleting your data
 

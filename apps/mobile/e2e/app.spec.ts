@@ -6,16 +6,22 @@ import { SETUP_TOKEN, TestServer } from "../../desktop/e2e/server";
 import { totp } from "../../web/e2e/totp";
 
 /**
- * The Android app on an emulator against a real server (D64): Playwright drives the
- * scenario, Maestro the app. The emulator reaches the host at 10.0.2.2.
+ * The app on an Android emulator or an iOS simulator against a real server (D64, D91):
+ * Playwright drives the scenario, Maestro the app. `PLATFORM=ios` for the simulator.
+ * The Android emulator reaches the host at 10.0.2.2, the simulator at 127.0.0.1.
  */
 test.describe.configure({ mode: "serial" });
 
-const ADMIN = { username: "admin", password: "android-e2e-admin-password" };
-const USER = { username: "lea", password: "android-e2e-user-password" };
-const APK =
-  process.env.BATVISION_APK ??
-  resolve(__dirname, "../android/app/build/outputs/apk/release/app-release.apk");
+const IOS = process.env.PLATFORM === "ios";
+const PLATFORM = IOS ? "ios" : "android";
+const APP_ID = IOS ? "fr.batvision.ios" : "fr.batvision.android";
+const ADMIN = { username: "admin", password: "mobile-e2e-admin-password" };
+const USER = { username: "lea", password: "mobile-e2e-user-password" };
+const APP =
+  process.env.BATVISION_APP ??
+  (IOS
+    ? resolve(__dirname, "../ios/build/dd/Build/Products/Release-iphonesimulator/BatVision.app")
+    : resolve(__dirname, "../android/app/build/outputs/apk/release/app-release.apk"));
 const ADB = process.env.ADB ?? "adb";
 
 let server: TestServer;
@@ -47,19 +53,20 @@ function maestro(flow: string) {
       return;
     } catch (e) {
       if (attempt === 3) throw e;
-      execFileSync(ADB, ["reconnect", "offline"]);
+      if (!IOS) execFileSync(ADB, ["reconnect", "offline"]);
       execFileSync("sleep", ["5"]);
     }
   }
 }
 
 function runFlow(flow: string) {
-  execFileSync(ADB, ["wait-for-device"], { timeout: 60_000 });
+  if (!IOS) execFileSync(ADB, ["wait-for-device"], { timeout: 60_000 });
   execFileSync(
     process.env.MAESTRO ?? "maestro",
     [
       "test",
-      ...["-e", `SERVER=http://10.0.2.2:${server.port}`],
+      ...["-e", `APP_ID=${APP_ID}`],
+      ...["-e", `SERVER=http://${IOS ? "127.0.0.1" : "10.0.2.2"}:${server.port}`],
       ...["-e", `USERNAME=${USER.username}`],
       ...["-e", `PASSWORD=${USER.password}`],
       ...["-e", `MOVIE_ID=${movieId}`],
@@ -72,24 +79,34 @@ function runFlow(flow: string) {
 
 test.beforeAll(async () => {
   test.setTimeout(600_000);
-  expect(existsSync(APK), `build the app first: ${APK}`).toBe(true);
-  execFileSync(ADB, ["install", "-r", APK], { stdio: "inherit" });
-  execFileSync(ADB, [
-    "shell",
-    "pm",
-    "grant",
-    "fr.batvision.android",
-    "android.permission.POST_NOTIFICATIONS",
-  ]);
-  // Android's one-time "Viewing full screen" hint would cover the player's controls.
-  execFileSync(ADB, [
-    "shell",
-    "settings",
-    "put",
-    "secure",
-    "immersive_mode_confirmations",
-    "confirmed",
-  ]);
+  expect(existsSync(APP), `build the app first: ${APP}`).toBe(true);
+  if (IOS) {
+    // A fresh install: the keychain token of an earlier run is dropped at first launch.
+    try {
+      execFileSync("xcrun", ["simctl", "uninstall", "booted", APP_ID]);
+    } catch {
+      // not installed yet
+    }
+    execFileSync("xcrun", ["simctl", "install", "booted", APP], { stdio: "inherit" });
+  } else {
+    execFileSync(ADB, ["install", "-r", APP], { stdio: "inherit" });
+    execFileSync(ADB, [
+      "shell",
+      "pm",
+      "grant",
+      "fr.batvision.android",
+      "android.permission.POST_NOTIFICATIONS",
+    ]);
+    // Android's one-time "Viewing full screen" hint would cover the player's controls.
+    execFileSync(ADB, [
+      "shell",
+      "settings",
+      "put",
+      "secure",
+      "immersive_mode_confirmations",
+      "confirmed",
+    ]);
+  }
 
   server = new TestServer();
   await server.start();
@@ -97,7 +114,7 @@ test.beforeAll(async () => {
   const admin = await api("/api/setup", null, {
     setup_token: SETUP_TOKEN,
     ...ADMIN,
-    device: { name: "android e2e", platform: "other" },
+    device: { name: `${PLATFORM} e2e`, platform: "other" },
   });
   const { secret } = await api("/api/me/totp/setup", admin.token, { password: ADMIN.password });
   await api("/api/me/totp/enable", admin.token, { code: totp(secret) });
@@ -117,7 +134,7 @@ test("first launch connects and signs in", () => {
   maestro("sign-in.yaml");
 });
 
-test("a movie downloads to the phone in the background engine", async () => {
+test("a movie downloads to the device in the background engine", async () => {
   test.setTimeout(400_000);
   maestro("download.yaml");
   const login = await api("/api/auth/login", null, {
@@ -127,7 +144,7 @@ test("a movie downloads to the phone in the background engine", async () => {
   userToken = login.token;
   // The engine confirmed it: the server lists it as downloaded on the phone.
   const overview = await api("/api/downloads/overview", userToken);
-  const phone = overview.devices.find((d: { platform: string }) => d.platform === "android");
+  const phone = overview.devices.find((d: { platform: string }) => d.platform === PLATFORM);
   expect(phone.items[0].status).toBe("downloaded");
 });
 
@@ -152,7 +169,7 @@ test("the watchlist tab and the settings sheets reach the server", async () => {
   test.setTimeout(200_000);
   maestro("watchlist.yaml");
   const overview = await api("/api/downloads/overview", userToken);
-  const phone = overview.devices.find((d: { platform: string }) => d.platform === "android");
+  const phone = overview.devices.find((d: { platform: string }) => d.platform === PLATFORM);
   expect(phone.settings.auto_download).toBe(true);
   expect(phone.settings.mobile_data).toBe("light");
   expect(phone.settings.mobile_cap_bytes).toBe(5_000_000_000);
@@ -160,11 +177,11 @@ test("the watchlist tab and the settings sheets reach the server", async () => {
   expect(overview.watchlist.map((w: { id: number }) => w.id)).toEqual([movieId]);
 });
 
-test("deleting the movie on the phone removes what asked for it", async () => {
+test("deleting the movie on the device removes what asked for it", async () => {
   test.setTimeout(200_000);
   maestro("cancel.yaml");
   const overview = await api("/api/downloads/overview", userToken);
-  const phone = overview.devices.find((d: { platform: string }) => d.platform === "android");
+  const phone = overview.devices.find((d: { platform: string }) => d.platform === PLATFORM);
   expect(phone.manual).toEqual([]);
   expect(overview.watchlist).toEqual([]);
   expect(phone.items).toEqual([]);

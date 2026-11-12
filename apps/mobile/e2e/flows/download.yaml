@@ -1,5 +1,5 @@
 # The movie is downloaded to the phone by the Kotlin engine (encode, download, confirm).
-appId: fr.batvision.android
+appId: ${APP_ID}
 ---
 - stopApp
 - launchApp
@@ -14,7 +14,9 @@ appId: fr.batvision.android
     visible:
       id: local-done
     timeout: 240000
-- back
+# The screen's own back button: iOS has no system one.
+- tapOn:
+    id: back
 - tapOn:
     id: tab-downloads
 - assertVisible:

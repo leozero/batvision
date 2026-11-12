@@ -1,7 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "expo-router";
 import { useTranslation } from "react-i18next";
-import { FlatList, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import {
+  FlatList,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import { UpdateBanner } from "../../components/UpdateBanner";
 import { EmptyState, Loading, Poster, Screen } from "../../components/ui";
 import { SearchButton } from "../../components/Watchlist";
@@ -101,7 +109,8 @@ export default function HomeScreen() {
           <Text className="text-3xl font-bold text-accent">BatVision</Text>
           <SearchButton />
         </View>
-        <UpdateBanner />
+        {/* iOS: TestFlight and the App Store update the app (D90). */}
+        {Platform.OS === "android" ? <UpdateBanner /> : null}
         {empty ? <EmptyState title={t("home.emptyTitle")} /> : null}
         <Row
           title={t("home.continueWatching")}

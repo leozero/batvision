@@ -3,7 +3,7 @@ import { router } from "expo-router";
 import { ArrowLeft, CheckCircle2, Download, HardDriveDownload } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalItem } from "../lib/sync";
 import { COLORS } from "./ui";
@@ -11,9 +11,14 @@ import { COLORS } from "./ui";
 /** Backdrop with a back button, title block below. */
 export function Hero({ backdrop, children }: { backdrop?: string; children: ReactNode }) {
   const insets = useSafeAreaInsets();
+  // A 16:9 picture as wide as a landscape tablet would fill the screen (D85).
+  const { width, height } = useWindowDimensions();
   return (
     <View>
-      <View className="aspect-video w-full bg-surface-2">
+      <View
+        style={{ height: Math.min((width * 9) / 16, height * 0.55) }}
+        className="w-full bg-surface-2"
+      >
         {backdrop ? (
           <Image
             source={{ uri: backdrop }}
@@ -24,6 +29,7 @@ export function Hero({ backdrop, children }: { backdrop?: string; children: Reac
         <View className="absolute inset-x-0 bottom-0 h-24 bg-bg/60" />
       </View>
       <Pressable
+        testID="back"
         accessibilityLabel="back"
         onPress={() => (router.canGoBack() ? router.back() : router.replace("/home"))}
         style={{ top: insets.top + 8 }}
@@ -31,7 +37,7 @@ export function Hero({ backdrop, children }: { backdrop?: string; children: Reac
       >
         <ArrowLeft color={COLORS.fg} size={20} />
       </Pressable>
-      <View className="-mt-10 gap-2 px-4">{children}</View>
+      <View className="-mt-10 w-full max-w-3xl gap-2 self-center px-4">{children}</View>
     </View>
   );
 }

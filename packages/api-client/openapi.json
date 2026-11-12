@@ -2909,6 +2909,10 @@
             "type": "boolean",
             "description": "Can display HDR as is. Otherwise HDR video is tone-mapped to SDR."
           },
+          "hls_subtitles": {
+            "type": "boolean",
+            "description": "Shows subtitles of an HLS stream only from inside the stream (Apple's players):\nHLS streams then come with a master playlist that lists the subtitle (D88)."
+          },
           "max_audio_channels": {
             "type": [
               "integer",
@@ -4507,6 +4511,7 @@
           "desktop",
           "android",
           "android_tv",
+          "ios",
           "other"
         ]
       },

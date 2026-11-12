@@ -2,7 +2,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyboardAvoidingView, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
 import { Button, ErrorText, Field, Input, Muted, Screen } from "../components/ui";
 import { ApiError, api, call, Unreachable } from "../lib/api";
 import { deviceName, session } from "../lib/session";
@@ -49,7 +49,7 @@ export default function Login() {
           body: {
             username: username.trim(),
             password,
-            device: { name: deviceName(), platform: "android" },
+            device: { name: deviceName(), platform: Platform.OS === "ios" ? "ios" : "android" },
           },
         }),
       );
@@ -66,7 +66,7 @@ export default function Login() {
     <Screen>
       <KeyboardAvoidingView behavior="padding" className="flex-1">
         <ScrollView
-          contentContainerClassName="flex-grow justify-center gap-5 p-6"
+          contentContainerClassName="w-full max-w-lg flex-grow justify-center gap-5 self-center p-6"
           keyboardShouldPersistTaps="handled"
         >
           <View className="gap-2">

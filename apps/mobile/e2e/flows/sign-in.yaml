@@ -1,5 +1,5 @@
 # First launch: server address, then a user without 2FA signs in.
-appId: fr.batvision.android
+appId: ${APP_ID}
 ---
 - launchApp:
     clearState: true

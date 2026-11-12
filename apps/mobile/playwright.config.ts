@@ -1,6 +1,7 @@
 import { defineConfig } from "@playwright/test";
 
-/** Android e2e (D64): Playwright runs the scenario, Maestro drives the app on an emulator. */
+/** Mobile e2e (D64, D91): Playwright runs the scenario, Maestro drives the app on an Android
+ * emulator, or an iOS simulator with PLATFORM=ios. */
 export default defineConfig({
   testDir: "./e2e",
   workers: 1,

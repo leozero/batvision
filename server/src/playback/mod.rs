@@ -215,6 +215,10 @@ pub struct Capabilities {
     /// Can display HDR as is. Otherwise HDR video is tone-mapped to SDR.
     #[serde(default)]
     pub hdr: bool,
+    /// Shows subtitles of an HLS stream only from inside the stream (Apple's players):
+    /// HLS streams then come with a master playlist that lists the subtitle (D88).
+    #[serde(default)]
+    pub hls_subtitles: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -515,6 +519,7 @@ mod tests {
             max_height: Some(2160),
             max_audio_channels: Some(6),
             hdr: false,
+            hls_subtitles: false,
         }
     }
 

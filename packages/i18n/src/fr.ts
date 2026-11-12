@@ -294,10 +294,10 @@ export const fr = {
     inWatchlist: "Dans la watchlist",
   },
   mobile: {
-    thisPhone: "Sur ce téléphone",
-    offlineEmpty: "Rien n'est téléchargé sur ce téléphone.",
+    thisPhone: "Sur cet appareil",
+    offlineEmpty: "Rien n'est téléchargé sur cet appareil.",
     signOut: "Se déconnecter",
-    downloadHere: "Télécharger sur ce téléphone",
+    downloadHere: "Télécharger sur cet appareil",
     requested: "Demandé : le serveur prépare le fichier.",
     nextEpisodes: "Les {{count}} prochains épisodes",
     wholeSeason: "La saison {{number}}",
@@ -313,7 +313,7 @@ export const fr = {
     quotaLabel: "Espace maximum",
     capLabel: "Plafond mensuel",
     quotaHint: "Ce qui ne tient pas attend qu'une place se libère.",
-    capHint: "Compté par le téléphone et remis à zéro chaque mois. Au-delà, on attend le Wi-Fi.",
+    capHint: "Compté par l'appareil et remis à zéro chaque mois. Au-delà, on attend le Wi-Fi.",
     unlimited: "Illimité",
     noCap: "Sans plafond",
     gigabytes: "{{count}} Go",
@@ -321,7 +321,9 @@ export const fr = {
     gigabytesInput: "Nombre de Go",
     apply: "Valider",
     more: "Plus d'actions",
-    settings: "Réglages de ce téléphone",
+    settings: "Réglages de cet appareil",
+    iosBackground:
+      "iOS décide quand l'app peut chercher de nouveaux épisodes en arrière-plan : ouvrez-la pour vérifier tout de suite. Les téléchargements continuent app fermée.",
     notifications: "Autorisez les notifications pour suivre les téléchargements.",
     updateAvailable: "La version {{version}} est disponible : touchez pour la télécharger.",
     wait: {

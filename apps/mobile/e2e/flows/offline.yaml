@@ -1,5 +1,5 @@
 # Server stopped: the app opens on the offline library and plays the local copy.
-appId: fr.batvision.android
+appId: ${APP_ID}
 ---
 - stopApp
 - launchApp

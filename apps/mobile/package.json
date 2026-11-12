@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:e2e": "playwright test",
+    "test:e2e:ios": "PLATFORM=ios playwright test",
+    "test:engine:ios": "cd modules/batvision-sync/ios && swift test",
+    "ios": "expo run:ios",
     "build:apk": "expo prebuild --platform android --no-install && cd android && ./gradlew assembleRelease",
     "graphics": "node scripts/store-graphics.mjs"
   },

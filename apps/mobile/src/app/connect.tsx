@@ -44,7 +44,7 @@ export default function Connect() {
     <Screen>
       <KeyboardAvoidingView behavior="padding" className="flex-1">
         <ScrollView
-          contentContainerClassName="flex-grow justify-center gap-6 p-6"
+          contentContainerClassName="w-full max-w-lg flex-grow justify-center gap-6 self-center p-6"
           keyboardShouldPersistTaps="handled"
         >
           <View className="gap-2">

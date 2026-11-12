@@ -66,13 +66,13 @@ pub fn default_settings(platform: Platform) -> DeviceSettings {
     DeviceSettings {
         auto_download: false,
         profile: match platform {
-            Platform::Android | Platform::AndroidTv => Profile::Mobile,
+            Platform::Android | Platform::AndroidTv | Platform::Ios => Profile::Mobile,
             _ => Profile::Max,
         },
-        // Desktop: 100 GB (D48); Android: 20 GB (D70).
+        // Desktop: 100 GB (D48); Android and iOS: 20 GB (D70, D86).
         quota_bytes: match platform {
             Platform::Desktop => Some(100 * 1_000_000_000),
-            Platform::Android => Some(20 * 1_000_000_000),
+            Platform::Android | Platform::Ios => Some(20 * 1_000_000_000),
             _ => None,
         },
         mobile_data: MobileData::Off,

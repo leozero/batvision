@@ -1,6 +1,6 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
-/** 0.2.0 → 200: each release must have a higher versionCode to install over the previous one. */
+/** 0.2.0 → 200: each release must have a higher versionCode (Android) and build number (iOS). */
 function versionCode(version: string) {
   const [major = 0, minor = 0, patch = 0] = version
     .split(".")
@@ -16,6 +16,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     slug: config.slug ?? "batvision",
     version,
     android: { ...config.android, versionCode: versionCode(version) },
+    // TestFlight refuses a build number it has already seen (D94).
+    ios: { ...config.ios, buildNumber: String(versionCode(version)) },
     plugins: [...(config.plugins ?? []), "./plugins/withReleaseSigning"],
   };
 };

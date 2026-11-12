@@ -41,7 +41,7 @@
 │  volumes: media (read-only) · data · cache                    │
 └───────────────────────────────────────────────────────────────┘
         ▲                ▲                  ▲              ▲
-     web (TS)     desktop Electron    Android (Expo)   Android TV (Expo)
+     web (TS)     desktop Electron   Android, iOS (Expo)  Android TV (Expo)
   no downloads    downloads + offline  downloads + offline
 ```
 
@@ -54,6 +54,7 @@
 | Web                        | TypeScript/React, hls.js for playback                                                                       |
 | Desktop                    | Electron, reusing the web code, HTML5 player                                                                |
 | Android / Android TV       | Expo (React Native, react-native-tvos for TV), native ExoPlayer, WorkManager for background work            |
+| iOS / iPadOS               | Same Expo app, AVPlayer, Swift download engine on iOS background transfer sessions (D86, D87)               |
 | TypeScript package manager | pnpm                                                                                                        |
 | CI                         | GitHub Actions                                                                                              |
 | Tests                      | Rust: unit and integration tests. TS: unit tests. e2e: Playwright (web and Electron), then Maestro (mobile) |
@@ -65,7 +66,7 @@
 server/                 Rust project
 apps/web/
 apps/desktop/           Electron
-apps/mobile/            Expo (Android + Android TV), Kotlin sync engine in modules/
+apps/mobile/            Expo (Android, iOS, Android TV), Kotlin and Swift sync engine in modules/
 packages/api-client/    generated from the OpenAPI description, never edited by hand
 packages/bridge/        types shared by the desktop app and the web client
 packages/core/          pure logic shared by the clients
@@ -270,11 +271,14 @@ A series in the watchlist (D73) is not a subscription: it belongs to the account
 | 3   | Download engine  | Watchlist, series subscriptions, device rules, expected set, encoding queue, variant cache, control from the web  |
 | 4   | Electron desktop | Downloads, offline playback, sync, automatic deletion                                                             |
 | 5   | Android          | Background downloads, mobile data, quota, SD card                                                                 |
-| 6   | Android TV       | TV interface, quick connect screen                                                                                |
-| 7   | Release          | Open-source release, Play Store                                                                                   |
+| 6   | iOS / iPadOS     | Universal app with iPad layout, Swift background downloads, TestFlight                                            |
+| 7   | Android TV       | TV interface, quick connect screen                                                                                |
+| 8   | Release          | Open-source release, Play Store, App Store                                                                        |
 
 ## 9. To verify during implementation
 
 - The actual number of concurrent NVENC sessions allowed by the host's driver.
 - Support for the Blackwell generation (RTX 50xx) in the chosen ffmpeg version.
 - WorkManager behavior and background work limits on the targeted Android versions.
+- iOS: how often background refresh actually runs, and whether a transfer started while the app is in the background is delayed (iOS treats it as discretionary) (D86).
+- iOS: the monthly mobile data cap only counts bytes received while the app is awake; transfers iOS runs alone aren't counted (D89).

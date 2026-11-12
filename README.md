@@ -5,20 +5,20 @@ Self-hosted media server (movies and TV series), rewritten from scratch with Jel
 - Specification: [docs/spec.md](docs/spec.md)
 - Decision log: [docs/decisions.md](docs/decisions.md)
 
-> Early development: the server, the web client, the download engine and the desktop app work; the Android apps come next.
+> Early development: the server, the web client, the download engine, the desktop app and the Android app work; the iOS and iPadOS app is being built.
 
 ## Layout
 
-| Folder                 | Content                                                  | License  |
-| ---------------------- | -------------------------------------------------------- | -------- |
-| `server/`              | Rust server (axum, SQLite, ffmpeg)                       | AGPL-3.0 |
-| `apps/web/`            | Web client (React, Vite)                                 | GPL-3.0  |
-| `apps/desktop/`        | Desktop app (Electron): the web client plus downloads    | GPL-3.0  |
-| `apps/mobile/`         | Android app (Expo, React Native) and its Kotlin engine   | GPL-3.0  |
-| `packages/api-client/` | TypeScript client generated from the OpenAPI description | GPL-3.0  |
-| `packages/bridge/`     | Types shared by the desktop app and the web client       | GPL-3.0  |
-| `packages/core/`       | Pure logic shared by the clients (formats, quality)      | GPL-3.0  |
-| `packages/i18n/`       | Interface translations (French, English)                 | GPL-3.0  |
+| Folder                 | Content                                                            | License  |
+| ---------------------- | ------------------------------------------------------------------ | -------- |
+| `server/`              | Rust server (axum, SQLite, ffmpeg)                                 | AGPL-3.0 |
+| `apps/web/`            | Web client (React, Vite)                                           | GPL-3.0  |
+| `apps/desktop/`        | Desktop app (Electron): the web client plus downloads              | GPL-3.0  |
+| `apps/mobile/`         | Android and iOS app (Expo, React Native), Kotlin and Swift engines | GPL-3.0  |
+| `packages/api-client/` | TypeScript client generated from the OpenAPI description           | GPL-3.0  |
+| `packages/bridge/`     | Types shared by the desktop app and the web client                 | GPL-3.0  |
+| `packages/core/`       | Pure logic shared by the clients (formats, quality)                | GPL-3.0  |
+| `packages/i18n/`       | Interface translations (French, English)                           | GPL-3.0  |
 
 ## Development
 
@@ -66,6 +66,20 @@ adb install -r apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 
 During development, `pnpm --filter @batvision/mobile android` runs a debug build with live reload on a device or an emulator. On first launch the app asks for the server address (`http://10.0.2.2:8420` reaches a local server from the emulator). Signed APKs are attached to the releases; they need the release key in the repository secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`), and `apps/mobile/app.json` and `package.json` must carry the release version.
 
+### iOS and iPadOS app
+
+Needs Xcode and CocoaPods (`brew install cocoapods`). The `ios/` folder is generated, never edited by hand. A build for the simulator:
+
+```bash
+cd apps/mobile && pnpm exec expo prebuild --platform ios
+```
+
+```bash
+cd apps/mobile/ios && xcodebuild -workspace BatVision.xcworkspace -scheme BatVision -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath build/dd build
+```
+
+During development, `pnpm --filter @batvision/mobile ios` runs a debug build with live reload on a simulator. The simulator reaches a local server at `http://127.0.0.1:8420`; plain HTTP is allowed on the local network only (D97). Release tags upload a build to TestFlight (D94) once the repository has an App Store Connect API key with the Admin role (`APP_STORE_CONNECT_KEY`, the `.p8` file's content; `APP_STORE_CONNECT_KEY_ID`; `APP_STORE_CONNECT_ISSUER_ID`) and the team id (`APPLE_TEAM_ID`).
+
 ### Tests
 
 ```bash
@@ -94,6 +108,16 @@ cd apps/mobile/android && ./gradlew :batvision-sync:testDebugUnitTest
 
 ```bash
 pnpm --filter @batvision/mobile test:e2e
+```
+
+The iOS scenario, the same flows on a booted simulator, after the simulator build above; and the Swift engine's unit tests:
+
+```bash
+pnpm --filter @batvision/mobile test:e2e:ios
+```
+
+```bash
+pnpm --filter @batvision/mobile test:engine:ios
 ```
 
 ### After changing the server API

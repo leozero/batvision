@@ -59,6 +59,7 @@ pub enum Platform {
     Desktop,
     Android,
     AndroidTv,
+    Ios,
     Other,
 }
 

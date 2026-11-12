@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
-import { Copy, Laptop, MonitorSmartphone, ShieldCheck, Smartphone, Trash2, Tv } from "lucide-react";
+import {
+  Copy,
+  Laptop,
+  MonitorSmartphone,
+  ShieldCheck,
+  Smartphone,
+  Tablet,
+  Trash2,
+  Tv,
+} from "lucide-react";
 import { motion } from "motion/react";
 import QRCode from "qrcode";
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
@@ -497,6 +506,7 @@ const PLATFORM_ICON: Record<string, typeof Laptop> = {
   desktop: Laptop,
   android: Smartphone,
   android_tv: Tv,
+  ios: Tablet,
   other: MonitorSmartphone,
 };
 

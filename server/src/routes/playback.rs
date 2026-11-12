@@ -314,7 +314,7 @@ pub async fn start(
     let start_ms = req.start_ms.unwrap_or(resume).max(0);
     let expires = now() + URL_LIFETIME_SECS;
 
-    let (url, hls, session_id) = if plan.method == Method::Direct {
+    let (mut url, hls, session_id) = if plan.method == Method::Direct {
         let token = state.signer.sign(Grant::File { f: file.id }, expires);
         (format!("/api/stream/{token}"), false, None)
     } else {
@@ -370,6 +370,21 @@ pub async fn start(
             state.signer.sign(grant, expires)
         ))
     });
+
+    // Apple's players only show subtitles listed inside an HLS stream (D88).
+    if let (Some(session), Some(sub_url), true) =
+        (&session_id, &subtitle_url, req.capabilities.hls_subtitles)
+    {
+        let language = selected_subtitle.and_then(|s| s.language.as_deref());
+        let (master, subs) = playback::transcode::hls_playlists(
+            sub_url,
+            language,
+            info.duration_ms.unwrap_or(0) - start_ms,
+            plan.stream_kbps(info).unwrap_or(8_000),
+        );
+        state.transcodes.set_playlists(session, master, subs);
+        url = format!("/api/hls/{session}/master.m3u8");
+    }
 
     let next_episode_id = match req.kind {
         PlayableKind::Episode => {
@@ -550,6 +565,20 @@ pub async fn hls(
         return Err(ApiError::NotFound);
     }
     let dir = state.transcodes.touch(&session).ok_or(ApiError::NotFound)?;
+    if file == "master.m3u8" || file == "subs.m3u8" {
+        let playlist = state
+            .transcodes
+            .playlist(&session, &file)
+            .ok_or(ApiError::NotFound)?;
+        return Ok((
+            [
+                (header::CONTENT_TYPE, "application/vnd.apple.mpegurl"),
+                (header::CACHE_CONTROL, "no-cache"),
+            ],
+            playlist,
+        )
+            .into_response());
+    }
     let path = dir.join(&file);
     let is_playlist = file == "index.m3u8";
     let deadline = Instant::now() + Duration::from_secs(45);

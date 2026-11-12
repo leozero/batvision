@@ -13,6 +13,21 @@
       "resizeMode": "contain",
       "backgroundColor": "#09090c"
     },
+    "ios": {
+      "bundleIdentifier": "fr.batvision.ios",
+      "supportsTablet": true,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch", "audio"],
+        "BGTaskSchedulerPermittedIdentifiers": ["fr.batvision.ios.sync"],
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        },
+        "NSLocalNetworkUsageDescription": "BatVision connects to your media server on this network."
+      }
+    },
     "android": {
       "package": "fr.batvision.android",
       "adaptiveIcon": {

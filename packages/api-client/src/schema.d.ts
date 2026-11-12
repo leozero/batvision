@@ -1119,6 +1119,11 @@ export interface components {
             containers: string[];
             /** @description Can display HDR as is. Otherwise HDR video is tone-mapped to SDR. */
             hdr?: boolean;
+            /**
+             * @description Shows subtitles of an HLS stream only from inside the stream (Apple's players):
+             *     HLS streams then come with a master playlist that lists the subtitle (D88).
+             */
+            hls_subtitles?: boolean;
             /** Format: int64 */
             max_audio_channels?: number | null;
             /** Format: int64 */
@@ -1567,7 +1572,7 @@ export interface components {
             av1?: boolean | null;
         };
         /** @enum {string} */
-        Platform: "web" | "desktop" | "android" | "android_tv" | "other";
+        Platform: "web" | "desktop" | "android" | "android_tv" | "ios" | "other";
         /** @enum {string} */
         PlayableKind: "movie" | "episode";
         PlaybackInfo: {

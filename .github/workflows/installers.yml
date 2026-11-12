@@ -112,6 +112,70 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
+  # TestFlight (D94): signed in the cloud with the App Store Connect API key, so no
+  # certificate or profile is kept in the repository. Skipped until the key is set.
+  ios:
+    name: iOS (TestFlight)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: App Store Connect key
+        id: key
+        env:
+          KEY: ${{ secrets.APP_STORE_CONNECT_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::APP_STORE_CONNECT_KEY is missing: no TestFlight build."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "$KEY" > "$RUNNER_TEMP/AuthKey.p8"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - if: steps.key.outputs.ready == 'true'
+        uses: pnpm/action-setup@v6
+      - if: steps.key.outputs.ready == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - if: steps.key.outputs.ready == 'true'
+        run: pnpm install --frozen-lockfile
+      - if: steps.key.outputs.ready == 'true'
+        name: Generate the iOS project
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform ios
+      - if: steps.key.outputs.ready == 'true'
+        name: Archive and upload to TestFlight
+        working-directory: apps/mobile/ios
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          auth=(-allowProvisioningUpdates
+            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8"
+            -authenticationKeyID "$KEY_ID"
+            -authenticationKeyIssuerID "$ISSUER_ID")
+          xcodebuild archive -workspace BatVision.xcworkspace -scheme BatVision \
+            -configuration Release -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/BatVision.xcarchive" \
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic "${auth[@]}" | tail -30
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>$TEAM_ID</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict></plist>
+          PLIST
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/BatVision.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" "${auth[@]}" | tail -30
+
   release:
     name: GitHub release
     if: startsWith(github.ref, 'refs/tags/v')

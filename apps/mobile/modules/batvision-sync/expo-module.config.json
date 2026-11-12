@@ -1,6 +1,10 @@
 {
-  "platforms": ["android"],
+  "platforms": ["android", "apple"],
   "android": {
     "modules": ["fr.batvision.sync.BatvisionSyncModule"]
+  },
+  "apple": {
+    "modules": ["BatvisionSyncModule"],
+    "appDelegateSubscribers": ["BatvisionSyncAppDelegate"]
   }
 }

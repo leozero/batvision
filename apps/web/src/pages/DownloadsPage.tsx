@@ -7,6 +7,7 @@ import {
   Loader2,
   MonitorSmartphone,
   Smartphone,
+  Tablet,
   Trash2,
   Tv,
   XCircle,
@@ -37,6 +38,7 @@ const PLATFORM_ICON: Record<string, typeof Laptop> = {
   desktop: Laptop,
   android: Smartphone,
   android_tv: Tv,
+  ios: Tablet,
   other: MonitorSmartphone,
 };
 
@@ -107,6 +109,7 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
   };
   const gb = (bytes: number | null | undefined) => (bytes ? String(Math.round(bytes / GB)) : "");
   const isAndroid = device.platform === "android" || device.platform === "android_tv";
+  const isMobile = isAndroid || device.platform === "ios";
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-surface-2 px-4 py-3 sm:col-span-2">
@@ -143,7 +146,7 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
           }
         />
       </Field>
-      {isAndroid ? (
+      {isMobile ? (
         <>
           <Field label={t("downloads.mobileData")}>
             <Select
@@ -167,15 +170,17 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
               }
             />
           </Field>
-          <Field label={t("downloads.storage")}>
-            <Select
-              value={s.storage}
-              onChange={(e) => update({ storage: e.target.value as Schemas["Storage"] })}
-            >
-              <option value="internal">{t("downloads.storageInternal")}</option>
-              <option value="sd">{t("downloads.storageSd")}</option>
-            </Select>
-          </Field>
+          {isAndroid ? (
+            <Field label={t("downloads.storage")}>
+              <Select
+                value={s.storage}
+                onChange={(e) => update({ storage: e.target.value as Schemas["Storage"] })}
+              >
+                <option value="internal">{t("downloads.storageInternal")}</option>
+                <option value="sd">{t("downloads.storageSd")}</option>
+              </Select>
+            </Field>
+          ) : null}
           <label className="flex cursor-pointer items-center justify-between gap-4 rounded-xl bg-surface-2 px-4 py-3">
             <span className="text-sm font-medium">{t("downloads.chargingOnly")}</span>
             <input

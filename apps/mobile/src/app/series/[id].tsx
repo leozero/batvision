@@ -121,7 +121,7 @@ export default function SeriesScreen() {
             <Rating ratings={s.ratings} />
           </View>
         </Hero>
-        <View className="gap-4 p-4">
+        <View className="w-full max-w-3xl gap-4 self-center p-4">
           {s.up_next ? (
             <Button
               testID="play"

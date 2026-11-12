@@ -42,7 +42,7 @@ export default function MovieScreen() {
             <LocalMark kind="movie" id={id} />
           </View>
         </Hero>
-        <View className="gap-4 p-4">
+        <View className="w-full max-w-3xl gap-4 self-center p-4">
           <Button
             testID="play"
             variant="primary"

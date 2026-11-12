@@ -1,5 +1,5 @@
 # Server back: reopening the app syncs, sending the offline progress.
-appId: fr.batvision.android
+appId: ${APP_ID}
 ---
 - stopApp
 - launchApp

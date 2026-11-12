@@ -577,6 +577,75 @@ async fn mkv_is_remuxed_to_hls_and_sidecar_subtitles_become_webvtt() {
 }
 
 #[tokio::test]
+async fn apple_players_get_the_subtitles_inside_the_hls_stream() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    make_video(f.media.path(), "Films/Clip (2020)/Clip.mkv", "aac");
+    std::fs::write(
+        f.media.path().join("Films/Clip (2020)/Clip.fr.srt"),
+        "1\n00:00:01,000 --> 00:00:02,500\nBonjour\n",
+    )
+    .unwrap();
+    f.library("movies", "Films").await;
+    let id = f.get("/api/movies").await["items"][0]["id"]
+        .as_i64()
+        .unwrap();
+    let mut caps = browser_caps();
+    caps["hls_subtitles"] = json!(true);
+
+    let (status, info) = f
+        .app
+        .post(
+            "/api/playback",
+            Some(&f.admin),
+            json!({ "kind": "movie", "id": id, "capabilities": caps }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{info}");
+    assert_eq!(info["hls"], true);
+    let master_url = info["url"].as_str().unwrap();
+    assert!(master_url.ends_with("/master.m3u8"), "{master_url}");
+
+    let (status, master) = f.app.get(master_url, None).await;
+    assert_eq!(status, StatusCode::OK);
+    let master = master.as_str().unwrap();
+    assert!(master.contains("TYPE=SUBTITLES"), "{master}");
+    assert!(master.contains("URI=\"subs.m3u8\""), "{master}");
+    assert!(
+        master.contains("SUBTITLES=\"subs\"\nindex.m3u8"),
+        "{master}"
+    );
+
+    let base = master_url.trim_end_matches("master.m3u8");
+    let (status, subs) = f.app.get(&format!("{base}subs.m3u8"), None).await;
+    assert_eq!(status, StatusCode::OK);
+    let subs = subs.as_str().unwrap();
+    assert!(
+        subs.contains(info["subtitle_url"].as_str().unwrap()),
+        "{subs}"
+    );
+    assert!(subs.contains("#EXT-X-ENDLIST"), "{subs}");
+    let (status, _, _) = f
+        .app
+        .request_with_headers(Method::GET, &format!("{base}index.m3u8"), &[], None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+
+    // Other clients keep the plain playlist and the WebVTT beside it.
+    let (_, info) = f
+        .app
+        .post(
+            "/api/playback",
+            Some(&f.admin),
+            json!({ "kind": "movie", "id": id, "capabilities": browser_caps() }),
+        )
+        .await;
+    assert!(info["url"].as_str().unwrap().ends_with("/index.m3u8"));
+}
+
+#[tokio::test]
 async fn unsupported_audio_is_transcoded_and_choices_are_remembered_per_series() {
     if !ffmpeg_available() {
         return;

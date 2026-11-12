@@ -249,6 +249,8 @@ struct Session {
     dir: PathBuf,
     device_id: i64,
     last_access: Instant,
+    /// `master.m3u8` and `subs.m3u8`, for players that need subtitles inside the stream.
+    playlists: Option<(String, String)>,
 }
 
 pub struct TranscodeManager {
@@ -311,9 +313,28 @@ impl TranscodeManager {
                 dir,
                 device_id,
                 last_access: Instant::now(),
+                playlists: None,
             },
         );
         Ok(id)
+    }
+
+    /// Lists a WebVTT subtitle next to the stream (D88): see `hls_playlists`.
+    pub fn set_playlists(&self, id: &str, master: String, subs: String) {
+        if let Some(session) = self.sessions.lock().unwrap().get_mut(id) {
+            session.playlists = Some((master, subs));
+        }
+    }
+
+    /// `master.m3u8` or `subs.m3u8` of a session, when it has them.
+    pub fn playlist(&self, id: &str, file: &str) -> Option<String> {
+        let sessions = self.sessions.lock().unwrap();
+        let (master, subs) = sessions.get(id)?.playlists.as_ref()?;
+        match file {
+            "master.m3u8" => Some(master.clone()),
+            "subs.m3u8" => Some(subs.clone()),
+            _ => None,
+        }
     }
 
     /// The session's folder, marking it as in use.
@@ -367,8 +388,35 @@ impl TranscodeManager {
 }
 
 /// Whether `name` is a file an HLS session may serve.
+/// A master playlist with the stream and one WebVTT subtitle covering its whole length,
+/// for Apple's players, which ignore subtitles given beside an HLS stream (D88).
+pub fn hls_playlists(
+    subtitle_url: &str,
+    language: Option<&str>,
+    duration_ms: i64,
+    bandwidth_kbps: i64,
+) -> (String, String) {
+    let language = language
+        .map(|l| format!("LANGUAGE=\"{l}\","))
+        .unwrap_or_default();
+    let master = format!(
+        "#EXTM3U\n#EXT-X-VERSION:7\n#EXT-X-INDEPENDENT-SEGMENTS\n\
+         #EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",NAME=\"Subtitles\",{language}DEFAULT=YES,AUTOSELECT=YES,FORCED=NO,URI=\"subs.m3u8\"\n\
+         #EXT-X-STREAM-INF:BANDWIDTH={},SUBTITLES=\"subs\"\nindex.m3u8\n",
+        bandwidth_kbps.max(1) * 1000
+    );
+    let seconds = (duration_ms.max(1000) + 999) / 1000;
+    let subs = format!(
+        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{seconds}\n#EXT-X-MEDIA-SEQUENCE:0\n\
+         #EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:{seconds}.0,\n{subtitle_url}\n#EXT-X-ENDLIST\n"
+    );
+    (master, subs)
+}
+
 pub fn valid_hls_file(name: &str) -> bool {
     name == "index.m3u8"
+        || name == "master.m3u8"
+        || name == "subs.m3u8"
         || name == "init.mp4"
         || (name.starts_with("seg")
             && name.ends_with(".m4s")
@@ -528,6 +576,8 @@ mod tests {
     #[test]
     fn only_session_files_are_served() {
         assert!(valid_hls_file("index.m3u8"));
+        assert!(valid_hls_file("master.m3u8"));
+        assert!(valid_hls_file("subs.m3u8"));
         assert!(valid_hls_file("init.mp4"));
         assert!(valid_hls_file("seg00042.m4s"));
         assert!(!valid_hls_file("ffmpeg.log"));

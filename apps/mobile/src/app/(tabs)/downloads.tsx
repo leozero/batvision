@@ -15,7 +15,7 @@ import {
 } from "lucide-react-native";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { type Choice, ChoiceList, SettingRow, Sheet, SwitchRow } from "../../components/Sheet";
 import {
   Badge,
@@ -418,13 +418,18 @@ function Settings({ device }: { device: Schemas["DeviceDownloads"] }) {
         value={s.charging_only}
         onChange={(v) => update({ charging_only: v })}
       />
-      <SettingRow
-        testID="setting-storage"
-        label={t("downloads.storage")}
-        value={s.storage === "sd" ? t("mobile.storageSd") : t("mobile.storagePhone")}
-        hint={s.storage === "sd" && !sync.sdAvailable ? t("mobile.sdMissing") : undefined}
-        onPress={() => setSheet("storage")}
-      />
+      {/* No SD card on iOS (D89). */}
+      {Platform.OS === "android" ? (
+        <SettingRow
+          testID="setting-storage"
+          label={t("downloads.storage")}
+          value={s.storage === "sd" ? t("mobile.storageSd") : t("mobile.storagePhone")}
+          hint={s.storage === "sd" && !sync.sdAvailable ? t("mobile.sdMissing") : undefined}
+          onPress={() => setSheet("storage")}
+        />
+      ) : (
+        <Muted>{t("mobile.iosBackground")}</Muted>
+      )}
 
       <Sheet open={sheet === "profile"} onClose={close} title={t("downloads.quality")}>
         <ChoiceList
@@ -492,7 +497,7 @@ export default function Downloads() {
   };
   return (
     <Screen>
-      <ScrollView contentContainerClassName="gap-5 p-4 pb-10">
+      <ScrollView contentContainerClassName="w-full max-w-3xl gap-5 self-center p-4 pb-10">
         <Text className="text-2xl font-bold text-fg">{t("nav.downloads")}</Text>
         <ThisPhone />
         {device ? <Settings device={device} /> : null}

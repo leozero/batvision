@@ -295,10 +295,10 @@ export const en: Shape<typeof fr> = {
     inWatchlist: "In watchlist",
   },
   mobile: {
-    thisPhone: "On this phone",
-    offlineEmpty: "Nothing is downloaded on this phone.",
+    thisPhone: "On this device",
+    offlineEmpty: "Nothing is downloaded on this device.",
     signOut: "Sign out",
-    downloadHere: "Download to this phone",
+    downloadHere: "Download to this device",
     requested: "Requested: the server is preparing the file.",
     nextEpisodes: "The next {{count}} episodes",
     wholeSeason: "Season {{number}}",
@@ -314,7 +314,7 @@ export const en: Shape<typeof fr> = {
     quotaLabel: "Maximum space",
     capLabel: "Monthly cap",
     quotaHint: "What doesn't fit waits for room.",
-    capHint: "Counted by the phone and reset every month. Past it, downloads wait for Wi-Fi.",
+    capHint: "Counted by the device and reset every month. Past it, downloads wait for Wi-Fi.",
     unlimited: "Unlimited",
     noCap: "No cap",
     gigabytes: "{{count}} GB",
@@ -322,7 +322,9 @@ export const en: Shape<typeof fr> = {
     gigabytesInput: "Number of GB",
     apply: "Apply",
     more: "More actions",
-    settings: "This phone's settings",
+    settings: "This device's settings",
+    iosBackground:
+      "iOS decides when the app may look for new episodes in the background: open it to check now. Downloads go on with the app closed.",
     notifications: "Allow notifications to follow downloads.",
     updateAvailable: "Version {{version}} is available: tap to download it.",
     wait: {

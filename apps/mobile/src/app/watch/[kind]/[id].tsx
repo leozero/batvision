@@ -17,7 +17,15 @@ import {
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ActivityIndicator, Modal, Pressable, ScrollView, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
 import Video, {
   type ISO639_1,
   SelectedTrackType,
@@ -281,16 +289,19 @@ export default function Player() {
               uri: absolute(info.url),
               type: info.hls ? "m3u8" : undefined,
               startPosition: info.hls ? 0 : info.start_ms,
-              textTracks: info.subtitle_url
-                ? [
-                    {
-                      title: "sub",
-                      language: "und" as ISO639_1,
-                      type: TextTrackType.VTT,
-                      uri: absolute(info.subtitle_url),
-                    },
-                  ]
-                : [],
+              // iOS: the subtitle is listed inside the HLS stream (D88).
+              inStream: Boolean(info.hls && info.subtitle_url && Platform.OS === "ios"),
+              textTracks:
+                info.subtitle_url && !(info.hls && Platform.OS === "ios")
+                  ? [
+                      {
+                        title: "sub",
+                        language: "und" as ISO639_1,
+                        type: TextTrackType.VTT,
+                        uri: absolute(info.subtitle_url),
+                      },
+                    ]
+                  : [],
             }
           : null,
     [local, info],
@@ -321,7 +332,7 @@ export default function Player() {
           reportBandwidth
           enterPictureInPictureOnLeave
           selectedTextTrack={
-            source.textTracks.length
+            source.textTracks.length || ("inStream" in source && source.inStream)
               ? { type: SelectedTrackType.INDEX, value: 0 }
               : { type: SelectedTrackType.DISABLED }
           }

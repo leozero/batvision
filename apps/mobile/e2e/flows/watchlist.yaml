@@ -1,5 +1,5 @@
 # Watchlist tab, account episodes setting, and the device settings sheets (D73, D68).
-appId: fr.batvision.android
+appId: ${APP_ID}
 ---
 - stopApp
 - launchApp
@@ -8,7 +8,9 @@ appId: fr.batvision.android
 - tapOn: Test Movie
 - tapOn:
     id: watchlist
-- back
+# The screen's own back button: iOS has no system one.
+- tapOn:
+    id: back
 - tapOn:
     id: tab-watchlist
 - assertVisible:

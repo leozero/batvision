@@ -171,3 +171,60 @@ jobs:
             apps/mobile/playwright-report
             apps/mobile/maestro-output
           retention-days: 7
+
+  ios:
+    name: iOS (engine tests, end-to-end on a simulator)
+    runs-on: macos-26
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - name: Install ffmpeg (encodes the test movie)
+        run: brew install ffmpeg
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Sync engine unit tests (Swift, D91)
+        working-directory: apps/mobile/modules/batvision-sync/ios
+        run: swift test
+      - name: Generate the iOS project
+        working-directory: apps/mobile
+        run: pnpm exec expo prebuild --platform ios
+      - name: Build for the simulator
+        working-directory: apps/mobile/ios
+        run: |
+          xcodebuild -workspace BatVision.xcworkspace -scheme BatVision -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/dd build | tail -30
+      - name: Install Maestro
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/maestro.zip" https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.12.1/maestro.zip
+          unzip -q "$RUNNER_TEMP/maestro.zip" -d "$HOME"
+          echo "$HOME/maestro/bin" >> "$GITHUB_PATH"
+      # The iPad is the main target (D85).
+      - name: Boot an iPad simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json | node -e '
+            const all = Object.values(JSON.parse(require("fs").readFileSync(0)).devices).flat();
+            console.log(all.find((d) => d.name.startsWith("iPad")).udid);')
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+      - name: End-to-end on the simulator
+        env:
+          PLATFORM: ios
+          MAESTRO_OUTPUT: ${{ github.workspace }}/apps/mobile/maestro-output
+        run: pnpm --filter @batvision/mobile test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-e2e
+          path: |
+            apps/mobile/playwright-report
+            apps/mobile/maestro-output
+          retention-days: 7
