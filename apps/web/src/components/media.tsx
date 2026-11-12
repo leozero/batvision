@@ -5,6 +5,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { imageUrl, type Schemas } from "../lib/api";
 import { episodeCode, formatRuntime, progressRatio } from "../lib/format";
+import { pickRating, Rating } from "./rating";
 import { Button, cx, ProgressBar, Skeleton } from "./ui";
 
 /** Image that fades in once loaded, with a placeholder when missing or broken. */
@@ -69,6 +70,7 @@ export type PosterItem = {
   position_ms?: number;
   duration_ms?: number | null;
   unplayed_count?: number;
+  ratings?: Schemas["Rating"][];
 };
 
 export function PosterCard({
@@ -118,7 +120,13 @@ export function PosterCard({
           <p className="truncate text-sm font-medium text-fg/90 transition-colors group-hover:text-fg">
             {item.title}
           </p>
-          {item.year ? <p className="text-xs text-faint">{item.year}</p> : null}
+          {item.year || pickRating(item.ratings) ? (
+            <p className="flex items-center gap-1.5 text-xs text-faint">
+              {item.year ? <span>{item.year}</span> : null}
+              {item.year && pickRating(item.ratings) ? <span aria-hidden>·</span> : null}
+              <Rating ratings={item.ratings} />
+            </p>
+          ) : null}
         </div>
       </Link>
     </motion.div>

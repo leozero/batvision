@@ -53,6 +53,7 @@ function BrowseHeader({
         <option value="added">{t("browse.sortAdded")}</option>
         <option value="title">{t("browse.sortTitle")}</option>
         <option value="year">{t("browse.sortYear")}</option>
+        <option value="rating">{t("browse.sortRating")}</option>
       </Select>
     </div>
   );

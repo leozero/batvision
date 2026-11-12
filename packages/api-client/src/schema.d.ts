@@ -1225,6 +1225,7 @@ export interface components {
             played: boolean;
             /** Format: int64 */
             position_ms: number;
+            ratings: components["schemas"]["Rating"][];
             /** Format: int64 */
             runtime_minutes?: number | null;
             /** Format: int64 */
@@ -1432,6 +1433,7 @@ export interface components {
             /** Format: int64 */
             position_ms: number;
             poster_path?: string | null;
+            ratings: components["schemas"]["Rating"][];
             release_date?: string | null;
             /** Format: int64 */
             runtime_minutes?: number | null;
@@ -1461,6 +1463,7 @@ export interface components {
              */
             position_ms: number;
             poster_path?: string | null;
+            ratings: components["schemas"]["Rating"][];
             title: string;
             /** Format: int64 */
             year?: number | null;
@@ -1524,6 +1527,10 @@ export interface components {
             method: components["schemas"]["Method"];
             /** Format: int64 */
             next_episode_id?: number | null;
+            /** @description What each level gives for this file, best first. */
+            qualities: components["schemas"]["QualityOption"][];
+            /** @description The quality level of this stream. */
+            quality: components["schemas"]["Quality"];
             /** @description HLS session, to stop it when leaving the player. */
             session_id?: string | null;
             /**
@@ -1548,6 +1555,8 @@ export interface components {
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["PlayableKind"];
+            /** @description Picture quality. Omitted: `max`. */
+            quality?: components["schemas"]["Quality"];
             /** @description The user changed tracks: remember the choice for the rest of the series. */
             remember?: boolean;
             /**
@@ -1577,6 +1586,31 @@ export interface components {
             /** @description True once watched past 90 %: the client can offer the next episode. */
             played: boolean;
         };
+        /**
+         * @description Picture quality asked by the player (D60). Below `Max`, a source heavier than
+         *     the level is transcoded down to it.
+         * @enum {string}
+         */
+        Quality: "max" | "medium" | "low" | "sos";
+        /**
+         * @description What each quality level gives for this file and client, for the player's menu
+         *     and its automatic choice.
+         */
+        QualityOption: {
+            /**
+             * Format: int64
+             * @description Approximate stream bitrate, kbit/s.
+             */
+            bitrate_kbps?: number | null;
+            /**
+             * Format: int64
+             * @description Picture height the client receives.
+             */
+            height?: number | null;
+            /** @description The original video is sent as is (direct play or remux). */
+            original: boolean;
+            quality: components["schemas"]["Quality"];
+        };
         QuickConnectApproveRequest: {
             code: string;
         };
@@ -1604,6 +1638,24 @@ export interface components {
             /** @description Keep secret; send it to `/api/auth/quick-connect/poll`. */
             poll_secret: string;
         };
+        /** @description An average rating from one source. Ratings with fewer than 5 votes are left out. */
+        Rating: {
+            /**
+             * Format: int64
+             * @description Best possible value (10 for TMDB).
+             */
+            scale: number;
+            source: components["schemas"]["RatingSource"];
+            /**
+             * Format: double
+             * @description Between 0 and `scale`.
+             */
+            value: number;
+            /** Format: int64 */
+            votes: number;
+        };
+        /** @enum {string} */
+        RatingSource: "tmdb";
         RecoveryCodes: {
             /** @description Shown only once. Each code can be used once instead of a TOTP code. */
             codes: string[];
@@ -1655,6 +1707,7 @@ export interface components {
             /** Format: int64 */
             id: number;
             poster_path?: string | null;
+            ratings: components["schemas"]["Rating"][];
             /** Format: int64 */
             season_number: number;
             title?: string | null;
@@ -1668,6 +1721,7 @@ export interface components {
             library_id: number;
             overview?: string | null;
             poster_path?: string | null;
+            ratings: components["schemas"]["Rating"][];
             seasons: components["schemas"]["SeasonSummary"][];
             title: string;
             /** Format: int64 */
@@ -1690,6 +1744,7 @@ export interface components {
             /** Format: int64 */
             id: number;
             poster_path?: string | null;
+            ratings: components["schemas"]["Rating"][];
             title: string;
             /**
              * Format: int64
@@ -3257,7 +3312,7 @@ export interface operations {
         parameters: {
             query?: {
                 library_id?: number | null;
-                sort?: "title" | "added" | "year";
+                sort?: "title" | "added" | "year" | "rating";
                 /** @description Default 50, max 200. */
                 limit?: number | null;
                 offset?: number | null;
@@ -3470,7 +3525,7 @@ export interface operations {
         parameters: {
             query?: {
                 library_id?: number | null;
-                sort?: "title" | "added" | "year";
+                sort?: "title" | "added" | "year" | "rating";
                 /** @description Default 50, max 200. */
                 limit?: number | null;
                 offset?: number | null;

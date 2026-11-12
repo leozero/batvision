@@ -4,6 +4,7 @@ import { Check, Eye, EyeOff, Play, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
 import { DownloadMovieButton, WatchlistButton } from "../components/downloads";
+import { pickRating, Rating } from "../components/rating";
 import { DownloadedMark } from "../components/ThisComputer";
 import { Badge, Button, Page, ProgressBar, Skeleton } from "../components/ui";
 import type { Schemas } from "../lib/api";
@@ -94,6 +95,12 @@ export function MovieDetailPage() {
               <>
                 <Dot />
                 <span>{formatRuntime(duration, i18n.language)}</span>
+              </>
+            ) : null}
+            {pickRating(movie.ratings) ? (
+              <>
+                <Dot />
+                <Rating ratings={movie.ratings} className="font-semibold" />
               </>
             ) : null}
             {movie.played ? (

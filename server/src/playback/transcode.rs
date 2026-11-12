@@ -46,7 +46,7 @@ pub const TONEMAP: &str = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt7
 tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
 
 /// Maximum video bitrate for an output height, in kbit/s.
-fn max_bitrate_kbps(height: i64) -> i64 {
+pub fn max_bitrate_kbps(height: i64) -> i64 {
     match height {
         h if h > 1440 => 25_000,
         h if h > 1080 => 16_000,
@@ -166,7 +166,7 @@ fn video_encoder_args(
     source_height: Option<i64>,
 ) {
     let height = plan.max_height.or(source_height).unwrap_or(1080);
-    let rate = max_bitrate_kbps(height);
+    let rate = plan.video_kbps.unwrap_or_else(|| max_bitrate_kbps(height));
     let keyframes = format!("expr:gte(t,n_forced*{SEGMENT_SECONDS})");
     match job.encoder {
         VideoEncoder::Nvenc => args.extend(
@@ -216,7 +216,8 @@ fn audio_and_hls_args(args: &mut Vec<String>, plan: &Plan, out_dir: &Path) {
         if plan.copy_audio {
             args.extend(["-c:a".into(), "copy".into()]);
         } else {
-            args.extend(["-c:a", "aac", "-ac", "2", "-b:a", "192k"].map(String::from));
+            args.extend(["-c:a", "aac", "-ac", "2", "-b:a"].map(String::from));
+            args.push(format!("{}k", plan.audio_kbps));
         }
     }
 
@@ -386,8 +387,10 @@ mod tests {
                 method,
                 audio_index: Some(2),
                 copy_audio: method == Method::Remux,
+                audio_kbps: 192,
                 burn_subtitle: None,
                 max_height: None,
+                video_kbps: None,
                 tonemap: false,
             },
             video_index: Some(0),
@@ -416,7 +419,19 @@ mod tests {
     fn audio_transcode_keeps_video() {
         let args = joined(&job(Method::TranscodeAudio));
         assert!(args.contains("-c:v copy"));
-        assert!(args.contains("-c:a aac -ac 2"));
+        assert!(args.contains("-c:a aac -ac 2 -b:a 192k"));
+    }
+
+    #[test]
+    fn quality_level_caps_the_bitrate() {
+        let mut j = job(Method::Transcode);
+        j.plan.max_height = Some(480);
+        j.plan.video_kbps = Some(1_000);
+        j.plan.audio_kbps = 96;
+        let args = joined(&j);
+        assert!(args.contains("scale=-2:480"));
+        assert!(args.contains("-maxrate 1000k -bufsize 2000k"));
+        assert!(args.contains("-c:a aac -ac 2 -b:a 96k"));
     }
 
     #[test]

@@ -102,6 +102,8 @@ docs/
 - An **"Identify manually"** action in the UI fixes a wrong match.
 - Initial scan, then detection of additions, changes and removals.
 - **Metadata and images come from TMDB**, in each user's language (French by default), with English as a fallback. Images are cached in `data`.
+- Matched items are **fetched from TMDB again every 30 days**, a few per scan, oldest first.
+- **Ratings** (D59): TMDB's average out of 10 for movies, series, seasons and episodes, hidden when fewer than 5 people voted (a season counts its episodes' votes). The API returns a list per source, so other sources can be added later. They show on posters, detail pages, the season picker and episode rows, and the movie and series pages can sort by rating.
 
 ## 5. Playback
 
@@ -118,6 +120,11 @@ docs/
   - **when the user changes a track on an episode, the choice applies to the whole series**;
   - from one episode to the next, the track is matched by **language and kind** (normal, commentary, forced subtitles, subtitles for the deaf and hard of hearing), never by its index;
   - if the episode has no matching track, the general preferences apply.
+- **Picture quality** (D60), chosen in the player and kept per device:
+  - **Max**: the best the device can play, as above;
+  - **Medium** (1080p, 6 Mbit/s), **Low** (720p, 2 Mbit/s, stereo audio) and **SOS** (480p, 1 Mbit/s, stereo audio): a full transcode, only when the file is heavier than the level, otherwise it plays as at Max;
+  - **Auto** (the default) starts where it settled last time on the device. It goes down after two stalls within a minute, a stall of 4 s, a stream that shows nothing for 10 s, or a measured throughput under 1.5 times the stream's bitrate. It goes back up, straight to the best level the throughput carries twice over, after 2 minutes without a stall and at most once every 5 minutes;
+  - changing level restarts the session at the current position, like a seek: a device still uses a single encode.
 - Resume playback, "Continue watching", "Next up".
 
 ## 6. Authentication and security

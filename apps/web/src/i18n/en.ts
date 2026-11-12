@@ -101,8 +101,13 @@ export const en: Shape<typeof fr> = {
     sortAdded: "Recently added",
     sortTitle: "Title",
     sortYear: "Year",
+    sortRating: "Rating",
     noMovies: "No movies yet",
     noSeries: "No shows yet",
+  },
+  rating: {
+    detail_one: "{{value}}/{{scale}} on {{source}} · {{votes}} vote",
+    detail_other: "{{value}}/{{scale}} on {{source}} · {{votes}} votes",
   },
   detail: {
     watched: "Watched",
@@ -155,6 +160,15 @@ export const en: Shape<typeof fr> = {
     nextIn: "In {{seconds}} s",
     error: "Playback failed.",
     retry: "Try again",
+    quality: "Picture quality",
+    original: "Original",
+    qualityLevel: {
+      auto: "Auto",
+      max: "Max",
+      medium: "Medium",
+      low: "Low",
+      sos: "SOS",
+    },
     kind: {
       commentary: "Commentary",
       forced: "Forced",

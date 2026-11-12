@@ -18,6 +18,7 @@ import {
   Play,
   RotateCcw,
   RotateCw,
+  Settings,
   SkipForward,
   Subtitles,
   Volume1,
@@ -33,6 +34,17 @@ import { desktop, localPlaybackQuery } from "../lib/desktop";
 import { episodeCode, formatClock, languageName } from "../lib/format";
 import { episodeQuery, invalidateLibrary, movieQuery } from "../lib/queries";
 import { detectCapabilities } from "./capabilities";
+import {
+  autoStep,
+  LEVELS,
+  type Quality,
+  type QualityMode,
+  type QualityOption,
+  readAutoLevel,
+  readQualityMode,
+  saveAutoLevel,
+  saveQualityMode,
+} from "./quality";
 
 type Info = Schemas["PlaybackInfo"];
 
@@ -70,6 +82,8 @@ function localInfo(local: LocalPlayback, opts: StartOptions, restart?: boolean):
     subtitle_url: sub?.url ?? null,
     next_episode_id: local.nextEpisodeId,
     session_id: null,
+    quality: "max",
+    qualities: [],
   };
 }
 type Kind = "movie" | "episode";
@@ -78,9 +92,22 @@ type StartOptions = {
   audio?: number | null;
   subtitle?: string | null;
   remember?: boolean;
+  quality?: Quality;
 };
 
 const PROGRESS_EVERY_MS = 10_000;
+/** How often Auto looks at the network. */
+const AUTO_EVERY_MS = 2_000;
+/** Buffering this soon after a seek is not the network's fault. */
+const SEEK_GRACE_MS = 3_000;
+/** Throughput samples (HLS segments) needed before trusting the estimate. */
+const MIN_SAMPLES = 3;
+
+/** The level to ask for when nothing plays yet. */
+function initialQuality(): Quality {
+  const mode = readQualityMode();
+  return mode === "auto" ? readAutoLevel() : mode;
+}
 const NEXT_COUNTDOWN_S = 10;
 
 function readVolume() {
@@ -148,7 +175,8 @@ export function PlayerPage() {
   const [muted, setMuted] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
-  const [panel, setPanel] = useState(false);
+  const [panel, setPanel] = useState<"tracks" | "quality" | null>(null);
+  const [qualityMode, setQualityMode] = useState<QualityMode>(readQualityMode);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [cue, setCue] = useState<string | null>(null);
 
@@ -186,6 +214,7 @@ export function PlayerPage() {
               audio_index: opts.audio ?? undefined,
               subtitle: opts.subtitle === undefined ? undefined : (opts.subtitle ?? "off"),
               remember: opts.remember ?? false,
+              quality: opts.quality ?? infoRef.current?.quality ?? initialQuality(),
             },
           }),
         );
@@ -214,6 +243,14 @@ export function PlayerPage() {
     loadedUrl.current = info.url;
     hlsRef.current?.destroy();
     hlsRef.current = null;
+    const auto = autoRef.current;
+    auto.started = false;
+    auto.stalls = [];
+    auto.stallingSince = null;
+    auto.stableSince = Date.now();
+    auto.loadedAt = Date.now();
+    auto.samples = 0;
+    auto.switching = false;
 
     const seekAfterLoad = info.hls ? 0 : info.start_ms / 1000;
     const onLoaded = () => {
@@ -224,6 +261,9 @@ export function PlayerPage() {
 
     if (info.hls && Hls.isSupported()) {
       const hls = new Hls({ startPosition: 0, maxBufferLength: 60, backBufferLength: 120 });
+      hls.on(Hls.Events.FRAG_LOADED, () => {
+        autoRef.current.samples += 1;
+      });
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
@@ -238,6 +278,102 @@ export function PlayerPage() {
     }
     return () => video.removeEventListener("loadedmetadata", onLoaded);
   }, [info, t]);
+
+  // ---- Automatic quality ----------------------------------------------------------------
+  // Stalls and throughput of the current stream; reset when a new one loads.
+  const autoRef = useRef({
+    started: false,
+    stalls: [] as number[],
+    stallingSince: null as number | null,
+    stableSince: Date.now(),
+    lastUpAt: 0,
+    lastSeekAt: 0,
+    loadedAt: Date.now(),
+    samples: 0,
+    switching: false,
+  });
+
+  const onWaiting = () => {
+    setWaiting(true);
+    const video = videoRef.current;
+    const auto = autoRef.current;
+    const now = Date.now();
+    if (
+      !auto.started ||
+      !video ||
+      video.seeking ||
+      now - auto.lastSeekAt < SEEK_GRACE_MS ||
+      auto.stallingSince !== null
+    )
+      return;
+    auto.stallingSince = now;
+    auto.stalls.push(now);
+  };
+
+  const onPlaying = () => {
+    setWaiting(false);
+    const auto = autoRef.current;
+    auto.started = true;
+    if (auto.stallingSince !== null) {
+      auto.stallingSince = null;
+      auto.stableSince = Date.now();
+    }
+  };
+
+  useEffect(() => {
+    if (qualityMode !== "auto" || local || !info || error) return;
+    const timer = setInterval(() => {
+      const video = videoRef.current;
+      const auto = autoRef.current;
+      const current = infoRef.current;
+      if (!video || !current || auto.switching) return;
+      if (auto.started && video.paused && auto.stallingSince === null) return;
+      const hls = hlsRef.current;
+      const now = Date.now();
+      const next = autoStep({
+        current: current.quality,
+        options: current.qualities,
+        estimateKbps: hls && auto.samples >= MIN_SAMPLES ? hls.bandwidthEstimate / 1000 : null,
+        stalls: auto.stalls,
+        stallingSince: auto.stallingSince,
+        loadingSince: auto.started ? null : auto.loadedAt,
+        now,
+        stableSince: auto.stableSince,
+        lastUpAt: auto.lastUpAt,
+      });
+      if (!next || next === current.quality) return;
+      auto.switching = true;
+      if (LEVELS.indexOf(next) < LEVELS.indexOf(current.quality)) auto.lastUpAt = now;
+      saveAutoLevel(next);
+      void start({
+        startMs: timeRef.current,
+        audio: current.audio_index,
+        subtitle: current.subtitle ?? null,
+        quality: next,
+      });
+    }, AUTO_EVERY_MS);
+    return () => clearInterval(timer);
+  }, [qualityMode, local, info, error, start]);
+
+  const chooseQuality = (mode: QualityMode) => {
+    setPanel(null);
+    setQualityMode(mode);
+    saveQualityMode(mode);
+    const current = infoRef.current;
+    if (!current) return;
+    // Auto carries on from the current stream.
+    if (mode === "auto") {
+      saveAutoLevel(current.quality);
+      return;
+    }
+    if (mode === current.quality) return;
+    void start({
+      startMs: timeRef.current,
+      audio: current.audio_index,
+      subtitle: current.subtitle ?? null,
+      quality: mode,
+    });
+  };
 
   // Subtitles are drawn by us (consistent look, above the controls): the track is
   // kept "hidden" and its active cues are mirrored into state.
@@ -389,6 +525,7 @@ export function PlayerPage() {
       if (!video || !current) return;
       const target = Math.max(0, Math.min(targetMs, (current.duration_ms ?? targetMs) - 500));
       setTime(target);
+      autoRef.current.lastSeekAt = Date.now();
       if (!current.hls) {
         video.currentTime = target / 1000;
         return;
@@ -427,7 +564,7 @@ export function PlayerPage() {
     audio: number | null | undefined,
     subtitleId: string | null | undefined,
   ) => {
-    setPanel(false);
+    setPanel(null);
     void start({ startMs: timeRef.current, audio, subtitle: subtitleId ?? null, remember: true });
   };
 
@@ -460,7 +597,7 @@ export function PlayerPage() {
           setMuted((m) => !m);
           break;
         case "Escape":
-          if (panel) setPanel(false);
+          if (panel) setPanel(null);
           else if (!document.fullscreenElement) back();
           break;
         default:
@@ -519,8 +656,11 @@ export function PlayerPage() {
           setPlaying(false);
           report();
         }}
-        onWaiting={() => setWaiting(true)}
-        onPlaying={() => setWaiting(false)}
+        onWaiting={onWaiting}
+        onPlaying={onPlaying}
+        onSeeking={() => {
+          autoRef.current.lastSeekAt = Date.now();
+        }}
         onCanPlay={() => setWaiting(false)}
         onTimeUpdate={onTimeUpdate}
         onEnded={onEnded}
@@ -654,11 +794,20 @@ export function PlayerPage() {
                   ) : null}
                   <IconButton
                     label={t("player.tracks")}
-                    onClick={() => setPanel((p) => !p)}
-                    className={panel ? "bg-white/15" : ""}
+                    onClick={() => setPanel((p) => (p === "tracks" ? null : "tracks"))}
+                    className={panel === "tracks" ? "bg-white/15" : ""}
                   >
                     <Subtitles className="size-5" />
                   </IconButton>
+                  {info && !local ? (
+                    <IconButton
+                      label={t("player.quality")}
+                      onClick={() => setPanel((p) => (p === "quality" ? null : "quality"))}
+                      className={panel === "quality" ? "bg-white/15" : ""}
+                    >
+                      <Settings className="size-5" />
+                    </IconButton>
+                  ) : null}
                   <IconButton label={t("player.fullscreen")} onClick={toggleFullscreen}>
                     {fullscreen ? <Minimize className="size-5" /> : <Maximize className="size-5" />}
                   </IconButton>
@@ -670,12 +819,23 @@ export function PlayerPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {panel && info ? (
+        {panel === "tracks" && info ? (
           <TracksPanel
+            key="tracks"
             info={info}
             language={i18n.language}
-            onClose={() => setPanel(false)}
+            onClose={() => setPanel(null)}
             onChange={changeTracks}
+          />
+        ) : null}
+        {panel === "quality" && info ? (
+          <QualityPanel
+            key="quality"
+            info={info}
+            mode={qualityMode}
+            language={i18n.language}
+            onClose={() => setPanel(null)}
+            onChange={chooseQuality}
           />
         ) : null}
       </AnimatePresence>
@@ -870,6 +1030,68 @@ function TracksPanel({
               ]
                 .filter(Boolean)
                 .join(" · ")}
+            />
+          ))}
+        </TrackColumn>
+      </motion.div>
+    </>
+  );
+}
+
+function qualityDetail(t: TFunction, option: QualityOption | undefined, language: string) {
+  if (!option) return undefined;
+  const height = option.height ? `${option.height}p` : null;
+  if (option.original) return [t("player.original"), height].filter(Boolean).join(" · ");
+  const rate = option.bitrate_kbps
+    ? `${new Intl.NumberFormat(language, { maximumFractionDigits: 1 }).format(option.bitrate_kbps / 1000)} Mbit/s`
+    : null;
+  return [height, rate].filter(Boolean).join(" · ");
+}
+
+function QualityPanel({
+  info,
+  mode,
+  language,
+  onChange,
+  onClose,
+}: {
+  info: Info;
+  mode: QualityMode;
+  language: string;
+  onChange: (mode: QualityMode) => void;
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const option = (q: Quality) => info.qualities.find((o) => o.quality === q);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={t("common.close")}
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+      />
+      <motion.div
+        initial={{ opacity: 0, y: 16, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 12, scale: 0.98 }}
+        transition={{ type: "spring", duration: 0.35, bounce: 0.15 }}
+        className="absolute bottom-28 right-4 max-h-[60vh] w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-white/10 bg-black/85 p-5 shadow-2xl backdrop-blur-xl sm:right-8"
+      >
+        <TrackColumn title={t("player.quality")}>
+          <TrackOption
+            selected={mode === "auto"}
+            onClick={() => onChange("auto")}
+            label={`${t("player.qualityLevel.auto")} (${t(`player.qualityLevel.${info.quality}`)})`}
+            detail={qualityDetail(t, option(info.quality), language)}
+          />
+          {LEVELS.map((q) => (
+            <TrackOption
+              key={q}
+              selected={mode === q}
+              onClick={() => onChange(q)}
+              label={t(`player.qualityLevel.${q}`)}
+              detail={qualityDetail(t, option(q), language)}
             />
           ))}
         </TrackColumn>

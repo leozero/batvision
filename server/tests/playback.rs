@@ -463,6 +463,31 @@ async fn mp4_plays_directly_with_range_requests() {
     // A forged token is refused.
     let (status, _) = f.app.get(&format!("{url}x"), None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // Every level is described; a file lighter than SOS still plays directly.
+    assert_eq!(info["quality"], "max");
+    let levels: Vec<&str> = info["qualities"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|q| q["quality"].as_str().unwrap())
+        .collect();
+    assert_eq!(levels, ["max", "medium", "low", "sos"]);
+    assert_eq!(info["qualities"][3]["height"], 240);
+    assert_eq!(info["qualities"][3]["original"], true);
+    let (status, info) = f
+        .app
+        .post(
+            "/api/playback",
+            Some(&f.admin),
+            json!({ "kind": "movie", "id": id, "capabilities": browser_caps(), "quality": "sos" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{info}");
+    assert_eq!(
+        (&info["method"], &info["quality"]),
+        (&json!("direct"), &json!("sos"))
+    );
 }
 
 #[tokio::test]

@@ -62,6 +62,10 @@ pub struct MovieDetails {
     pub poster_path: Option<String>,
     #[serde(default)]
     pub backdrop_path: Option<String>,
+    #[serde(default)]
+    pub vote_average: Option<f64>,
+    #[serde(default)]
+    pub vote_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -89,6 +93,10 @@ pub struct TvDetails {
     pub backdrop_path: Option<String>,
     #[serde(default)]
     pub seasons: Vec<SeasonSummary>,
+    #[serde(default)]
+    pub vote_average: Option<f64>,
+    #[serde(default)]
+    pub vote_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -104,6 +112,10 @@ pub struct EpisodeDetails {
     pub runtime: Option<i64>,
     #[serde(default)]
     pub still_path: Option<String>,
+    #[serde(default)]
+    pub vote_average: Option<f64>,
+    #[serde(default)]
+    pub vote_count: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -115,8 +127,18 @@ pub struct SeasonDetails {
     pub overview: Option<String>,
     #[serde(default)]
     pub poster_path: Option<String>,
+    /// TMDB gives no vote count for a season: see [`SeasonDetails::votes`].
+    #[serde(default)]
+    pub vote_average: Option<f64>,
     #[serde(default)]
     pub episodes: Vec<EpisodeDetails>,
+}
+
+impl SeasonDetails {
+    /// Votes behind the season average: those of its episodes.
+    pub fn votes(&self) -> i64 {
+        self.episodes.iter().filter_map(|e| e.vote_count).sum()
+    }
 }
 
 pub struct TmdbClient {

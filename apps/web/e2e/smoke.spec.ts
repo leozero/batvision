@@ -96,10 +96,95 @@ test("series page lists episodes and marks them watched", async () => {
   await page.goto("/series");
   await page.getByRole("link", { name: /^Dark/ }).first().click();
   await expect(page.getByRole("heading", { name: "Dark" })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Épisode 1$/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: /Épisode 2$/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Épisode 1\b/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Épisode 2\b/ })).toBeVisible();
   await page.getByRole("button", { name: "Tout marquer comme vu" }).click();
   await expect(page.getByRole("button", { name: "Marquer comme non vu" })).toBeVisible();
+});
+
+test("TMDB ratings show on cards, detail pages, seasons and episodes", async () => {
+  await page.goto("/movies");
+  await page.getByLabel("Trier").selectOption("rating");
+  const cards = page.getByRole("main").getByRole("link");
+  await expect(cards.first()).toContainText("Heat");
+  await expect(cards.first().getByTestId("rating")).toHaveText(/^7,9/);
+  await expect(cards.nth(1).getByTestId("rating")).toHaveText(/^6,9/);
+
+  await cards.first().click();
+  const movieRating = page.getByTestId("rating");
+  await expect(movieRating).toHaveText(/^7,9/);
+  await expect(movieRating).toHaveAttribute("title", /^7,9\/10 sur TMDB · 7\s000 votes$/);
+  await expect(movieRating).toHaveClass(/text-success/);
+
+  await page.goto("/series");
+  await page.getByRole("link", { name: /^Dark/ }).first().click();
+  // Season rating next to the season picker, then one per episode with enough votes.
+  const episodes = page.getByRole("listitem");
+  await expect(page.getByTestId("rating")).toHaveText([/^8,4/, /^8,2/, /^7,9/]);
+  await expect(episodes.nth(1).getByTestId("rating")).toHaveCount(0);
+});
+
+test("the player switches picture quality and remembers it on the device", async () => {
+  await page.goto("/movies");
+  await page.getByRole("link", { name: /^Heat/ }).first().click();
+  const started = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
+  await page.getByRole("button", { name: "Lecture" }).click();
+  // Auto starts at Max: the 720p original, remuxed for the browser.
+  expect((await started).request().postDataJSON().quality).toBe("max");
+
+  await page.mouse.move(700, 450);
+  await page.getByRole("button", { name: "Qualité de l'image" }).click();
+  await expect(page.getByRole("button", { name: /^Auto \(Max\)/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Basse\s*Original · 720p/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^SOS\s*480p · 1,1 Mbit\/s/ })).toBeVisible();
+
+  // SOS is lighter than the file: a new session transcodes it to 480p.
+  const switched = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
+  await page.getByRole("button", { name: /^SOS/ }).click();
+  const info = await (await switched).json();
+  expect([info.quality, info.method]).toEqual(["sos", "transcode"]);
+
+  // The choice sticks on this device.
+  const again = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
+  await page.reload();
+  expect((await again).request().postDataJSON().quality).toBe("sos");
+  await page.mouse.move(600, 400);
+  await page.getByRole("button", { name: "Qualité de l'image" }).click();
+  await page.getByRole("button", { name: /^Auto/ }).click();
+  expect(await page.evaluate(() => localStorage.getItem("bv.quality"))).toBe("auto");
+});
+
+test("Auto lowers the quality when the network can't keep up", async () => {
+  test.setTimeout(60_000);
+  await page.evaluate(() => localStorage.setItem("bv.quality.auto", "max"));
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Network.enable");
+  // About half the movie's bitrate: the first segment takes over 10 s.
+  await cdp.send("Network.emulateNetworkConditions", {
+    offline: false,
+    latency: 20,
+    downloadThroughput: (700 * 1000) / 8,
+    uploadThroughput: -1,
+  });
+  try {
+    const lowered = page.waitForRequest(
+      (r) => r.url().endsWith("/api/playback") && r.postDataJSON()?.quality === "sos",
+      { timeout: 40_000 },
+    );
+    await page.goto("/movies");
+    await page.getByRole("link", { name: /^Heat/ }).first().click();
+    await page.getByRole("button", { name: "Lecture" }).click();
+    await lowered;
+    expect(await page.evaluate(() => localStorage.getItem("bv.quality.auto"))).toBe("sos");
+  } finally {
+    await cdp.send("Network.emulateNetworkConditions", {
+      offline: false,
+      latency: 0,
+      downloadThroughput: -1,
+      uploadThroughput: -1,
+    });
+    await cdp.detach();
+  }
 });
 
 test("search finds titles", async () => {

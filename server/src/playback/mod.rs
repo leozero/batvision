@@ -230,17 +230,98 @@ pub enum Method {
     Transcode,
 }
 
+/// Picture quality asked by the player (D60). Below `Max`, a source heavier than
+/// the level is transcoded down to it.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize, ToSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Quality {
+    /// The best the client can play: the original file when possible.
+    #[default]
+    Max,
+    /// 1080p, 6 Mbit/s.
+    Medium,
+    /// 720p, 2 Mbit/s, stereo audio.
+    Low,
+    /// 480p, 1 Mbit/s, stereo audio.
+    Sos,
+}
+
+impl Quality {
+    pub const ALL: [Quality; 4] = [Quality::Max, Quality::Medium, Quality::Low, Quality::Sos];
+
+    /// Height and video bitrate (kbit/s) of the level; `None` for `Max`.
+    pub fn limit(self) -> Option<(i64, i64)> {
+        match self {
+            Quality::Max => None,
+            Quality::Medium => Some((1080, 6_000)),
+            Quality::Low => Some((720, 2_000)),
+            Quality::Sos => Some((480, 1_000)),
+        }
+    }
+
+    /// Stereo AAC bitrate (kbit/s) when the audio is converted.
+    pub fn audio_kbps(self) -> i64 {
+        match self {
+            Quality::Max | Quality::Medium => 192,
+            Quality::Low => 128,
+            Quality::Sos => 96,
+        }
+    }
+
+    /// The level forces stereo AAC audio.
+    fn converts_audio(self) -> bool {
+        matches!(self, Quality::Low | Quality::Sos)
+    }
+}
+
+/// Room left for the audio when comparing a file's total bitrate to a level's video bitrate.
+const AUDIO_ALLOWANCE_KBPS: i64 = 500;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Plan {
     pub method: Method,
     pub audio_index: Option<i64>,
     /// The audio can be passed through (otherwise converted to stereo AAC).
     pub copy_audio: bool,
+    /// Bitrate of the converted audio, kbit/s.
+    pub audio_kbps: i64,
     /// Image subtitle stream burned into the video.
     pub burn_subtitle: Option<i64>,
     /// Output height when downscaling.
     pub max_height: Option<i64>,
+    /// Video bitrate cap set by the quality level, kbit/s (otherwise from the height).
+    pub video_kbps: Option<i64>,
     pub tonemap: bool,
+}
+
+impl Plan {
+    /// Approximate bitrate of the stream the client receives, kbit/s.
+    pub fn stream_kbps(&self, info: &MediaInfo) -> Option<i64> {
+        if self.method != Method::Transcode {
+            return info.bitrate.map(|b| b / 1000);
+        }
+        let height = self
+            .max_height
+            .or(info.video.as_ref().and_then(|v| v.height))
+            .unwrap_or(1080);
+        let video = self
+            .video_kbps
+            .unwrap_or_else(|| transcode::max_bitrate_kbps(height));
+        let audio = if self.copy_audio {
+            AUDIO_ALLOWANCE_KBPS
+        } else {
+            self.audio_kbps
+        };
+        Some(video + audio)
+    }
+
+    /// Height of the picture the client receives.
+    pub fn output_height(&self, info: &MediaInfo) -> Option<i64> {
+        self.max_height
+            .or(info.video.as_ref().and_then(|v| v.height))
+    }
 }
 
 /// Short container name from ffprobe's `format_name`.
@@ -265,6 +346,7 @@ pub fn decide(
     caps: &Capabilities,
     audio_index: Option<i64>,
     subtitle: Option<&SubtitleOption>,
+    quality: Quality,
 ) -> Plan {
     let burn_subtitle = subtitle
         .filter(|s| !s.text)
@@ -272,15 +354,22 @@ pub fn decide(
         .and_then(|i| i.parse().ok());
 
     let video = info.video.as_ref();
-    let too_tall = video
-        .and_then(|v| v.height)
-        .zip(caps.max_height)
-        .is_some_and(|(h, max)| h > max);
+    let height = video.and_then(|v| v.height);
+    let too_tall = height.zip(caps.max_height).is_some_and(|(h, max)| h > max);
+    // The level only applies to a source heavier than it.
+    let level = quality.limit().filter(|&(max_h, kbps)| {
+        video.is_some()
+            && (height.is_some_and(|h| h > max_h)
+                || info
+                    .bitrate
+                    .is_some_and(|b| b > (kbps + AUDIO_ALLOWANCE_KBPS) * 1000))
+    });
     let tonemap = video.is_some_and(|v| v.hdr) && !caps.hdr;
     let video_ok = video.is_none_or(|v| has(&caps.video_codecs, &v.codec))
         && !too_tall
         && !tonemap
-        && burn_subtitle.is_none();
+        && burn_subtitle.is_none()
+        && level.is_none();
 
     let audio = audio_index.and_then(|i| info.audio.iter().find(|a| a.index == i));
     let audio_ok = audio.is_none_or(|a| {
@@ -289,7 +378,7 @@ pub fn decide(
                 .max_audio_channels
                 .zip(a.channels)
                 .is_none_or(|(max, ch)| ch <= max)
-    });
+    }) && !(level.is_some() && quality.converts_audio());
     // A browser plays the first audio track of a file: another one needs a remux.
     let audio_is_first =
         audio.is_none_or(|a| info.audio.first().is_some_and(|f| f.index == a.index));
@@ -307,14 +396,58 @@ pub fn decide(
     } else {
         Method::Transcode
     };
+    let max_height = [
+        caps.max_height.filter(|_| too_tall),
+        level
+            .map(|(h, _)| h)
+            .filter(|&h| height.is_some_and(|source| source > h)),
+    ]
+    .into_iter()
+    .flatten()
+    .min();
     Plan {
         method,
         audio_index: audio.map(|a| a.index),
         copy_audio: audio_ok,
+        audio_kbps: quality.audio_kbps(),
         burn_subtitle,
-        max_height: if too_tall { caps.max_height } else { None },
+        max_height,
+        video_kbps: level.map(|(_, kbps)| kbps),
         tonemap,
     }
+}
+
+/// What each quality level gives for this file and client, for the player's menu
+/// and its automatic choice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, ToSchema)]
+pub struct QualityOption {
+    pub quality: Quality,
+    /// Picture height the client receives.
+    pub height: Option<i64>,
+    /// Approximate stream bitrate, kbit/s.
+    pub bitrate_kbps: Option<i64>,
+    /// The original video is sent as is (direct play or remux).
+    pub original: bool,
+}
+
+pub fn quality_options(
+    info: &MediaInfo,
+    caps: &Capabilities,
+    audio_index: Option<i64>,
+    subtitle: Option<&SubtitleOption>,
+) -> Vec<QualityOption> {
+    Quality::ALL
+        .iter()
+        .map(|&quality| {
+            let plan = decide(info, caps, audio_index, subtitle, quality);
+            QualityOption {
+                quality,
+                height: plan.output_height(info),
+                bitrate_kbps: plan.stream_kbps(info),
+                original: plan.method != Method::Transcode,
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -540,7 +673,7 @@ mod tests {
         let mut i = info();
         i.container = Some("mov,mp4,m4a,3gp,3g2,mj2".into());
         i.audio = vec![audio(1, "aac", "eng", TrackKind::Normal, true)];
-        let plan = decide(&i, &browser(), Some(1), None);
+        let plan = decide(&i, &browser(), Some(1), None, Quality::Max);
         assert_eq!(plan.method, Method::Direct);
     }
 
@@ -548,18 +681,21 @@ mod tests {
     fn mkv_is_remuxed_for_browsers() {
         let mut i = info();
         i.audio = vec![audio(1, "aac", "eng", TrackKind::Normal, true)];
-        assert_eq!(decide(&i, &browser(), Some(1), None).method, Method::Remux);
+        assert_eq!(
+            decide(&i, &browser(), Some(1), None, Quality::Max).method,
+            Method::Remux
+        );
         let mut mkv_player = browser();
         mkv_player.containers.push("mkv".into());
         assert_eq!(
-            decide(&i, &mkv_player, Some(1), None).method,
+            decide(&i, &mkv_player, Some(1), None, Quality::Max).method,
             Method::Direct
         );
     }
 
     #[test]
     fn unsupported_audio_is_transcoded_alone() {
-        let plan = decide(&info(), &browser(), Some(1), None);
+        let plan = decide(&info(), &browser(), Some(1), None, Quality::Max);
         assert_eq!(plan.method, Method::TranscodeAudio, "eac3 not supported");
         assert_eq!(plan.audio_index, Some(1));
     }
@@ -572,8 +708,14 @@ mod tests {
             audio(1, "aac", "eng", TrackKind::Normal, true),
             audio(2, "aac", "fre", TrackKind::Normal, false),
         ];
-        assert_eq!(decide(&i, &browser(), Some(1), None).method, Method::Direct);
-        assert_eq!(decide(&i, &browser(), Some(2), None).method, Method::Remux);
+        assert_eq!(
+            decide(&i, &browser(), Some(1), None, Quality::Max).method,
+            Method::Direct
+        );
+        assert_eq!(
+            decide(&i, &browser(), Some(2), None, Quality::Max).method,
+            Method::Remux
+        );
     }
 
     #[test]
@@ -582,13 +724,13 @@ mod tests {
         let mut no_h264 = browser();
         no_h264.video_codecs = vec!["vp9".into()];
         assert_eq!(
-            decide(&i, &no_h264, Some(2), None).method,
+            decide(&i, &no_h264, Some(2), None, Quality::Max).method,
             Method::Transcode
         );
 
         let mut small = browser();
         small.max_height = Some(720);
-        let plan = decide(&i, &small, Some(2), None);
+        let plan = decide(&i, &small, Some(2), None, Quality::Max);
         assert_eq!(
             (plan.method, plan.max_height),
             (Method::Transcode, Some(720))
@@ -596,7 +738,7 @@ mod tests {
 
         let mut hdr = info();
         hdr.video.as_mut().unwrap().hdr = true;
-        let plan = decide(&hdr, &browser(), Some(2), None);
+        let plan = decide(&hdr, &browser(), Some(2), None, Quality::Max);
         assert!(plan.tonemap);
         assert_eq!(plan.method, Method::Transcode);
     }
@@ -606,15 +748,106 @@ mod tests {
         let i = info();
         let subs = subtitle_options(&i, &[]);
         let pgs = subs.iter().find(|s| s.id == "s6").unwrap();
-        let plan = decide(&i, &browser(), Some(2), Some(pgs));
+        let plan = decide(&i, &browser(), Some(2), Some(pgs), Quality::Max);
         assert_eq!(
             (plan.method, plan.burn_subtitle),
             (Method::Transcode, Some(6))
         );
         let srt = subs.iter().find(|s| s.id == "s5").unwrap();
         assert_eq!(
-            decide(&i, &browser(), Some(2), Some(srt)).burn_subtitle,
+            decide(&i, &browser(), Some(2), Some(srt), Quality::Max).burn_subtitle,
             None
+        );
+    }
+
+    #[test]
+    fn lower_quality_transcodes_a_heavier_source() {
+        let mut i = info();
+        i.container = Some("mov,mp4".into());
+        i.bitrate = Some(12_000_000);
+        i.audio = vec![audio(1, "aac", "eng", TrackKind::Normal, true)];
+        assert_eq!(
+            decide(&i, &browser(), Some(1), None, Quality::Max).method,
+            Method::Direct
+        );
+
+        // Same height, but a heavier bitrate: transcoded at the level's bitrate.
+        let plan = decide(&i, &browser(), Some(1), None, Quality::Medium);
+        assert_eq!(
+            (
+                plan.method,
+                plan.max_height,
+                plan.video_kbps,
+                plan.copy_audio
+            ),
+            (Method::Transcode, None, Some(6_000), true)
+        );
+
+        let plan = decide(&i, &browser(), Some(1), None, Quality::Low);
+        assert_eq!(
+            (
+                plan.max_height,
+                plan.video_kbps,
+                plan.copy_audio,
+                plan.audio_kbps
+            ),
+            (Some(720), Some(2_000), false, 128)
+        );
+        let plan = decide(&i, &browser(), Some(1), None, Quality::Sos);
+        assert_eq!(
+            (plan.max_height, plan.video_kbps, plan.audio_kbps),
+            (Some(480), Some(1_000), 96)
+        );
+    }
+
+    #[test]
+    fn a_light_source_keeps_its_method_at_any_level() {
+        let mut i = info();
+        i.container = Some("mov,mp4".into());
+        i.bitrate = Some(1_200_000);
+        i.video.as_mut().unwrap().height = Some(480);
+        i.audio = vec![audio(1, "aac", "eng", TrackKind::Normal, true)];
+        for quality in Quality::ALL {
+            let plan = decide(&i, &browser(), Some(1), None, quality);
+            assert_eq!(
+                (plan.method, plan.video_kbps),
+                (Method::Direct, None),
+                "{quality:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_smaller_of_screen_and_level_heights_wins() {
+        let mut i = info();
+        i.video.as_mut().unwrap().height = Some(2160);
+        let mut small = browser();
+        small.max_height = Some(720);
+        let plan = decide(&i, &small, Some(2), None, Quality::Medium);
+        assert_eq!(plan.max_height, Some(720));
+        let plan = decide(&i, &browser(), Some(2), None, Quality::Medium);
+        assert_eq!(plan.max_height, Some(1080));
+    }
+
+    #[test]
+    fn quality_options_describe_each_level() {
+        let mut i = info();
+        i.container = Some("mov,mp4".into());
+        i.bitrate = Some(10_000_000);
+        i.audio = vec![audio(1, "aac", "eng", TrackKind::Normal, true)];
+        let options = quality_options(&i, &browser(), Some(1), None);
+        let summary: Vec<_> = options
+            .iter()
+            .map(|o| (o.quality, o.height, o.bitrate_kbps, o.original))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (Quality::Max, Some(1080), Some(10_000), true),
+                (Quality::Medium, Some(1080), Some(6_500), false),
+                (Quality::Low, Some(720), Some(2_128), false),
+                (Quality::Sos, Some(480), Some(1_096), false),
+            ]
         );
     }
 
@@ -627,7 +860,7 @@ mod tests {
             ..audio(1, "aac", "eng", TrackKind::Normal, true)
         }];
         assert_eq!(
-            decide(&i, &browser(), Some(1), None).method,
+            decide(&i, &browser(), Some(1), None, Quality::Max).method,
             Method::TranscodeAudio
         );
     }

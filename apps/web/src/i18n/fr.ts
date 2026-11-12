@@ -97,8 +97,13 @@ export const fr = {
     sortAdded: "Ajoutés récemment",
     sortTitle: "Titre",
     sortYear: "Année",
+    sortRating: "Note",
     noMovies: "Aucun film pour l'instant",
     noSeries: "Aucune série pour l'instant",
+  },
+  rating: {
+    detail_one: "{{value}}/{{scale}} sur {{source}} · {{votes}} vote",
+    detail_other: "{{value}}/{{scale}} sur {{source}} · {{votes}} votes",
   },
   detail: {
     watched: "Vu",
@@ -151,6 +156,15 @@ export const fr = {
     nextIn: "Dans {{seconds}} s",
     error: "La lecture a échoué.",
     retry: "Réessayer",
+    quality: "Qualité de l'image",
+    original: "Original",
+    qualityLevel: {
+      auto: "Auto",
+      max: "Max",
+      medium: "Moyenne",
+      low: "Basse",
+      sos: "SOS",
+    },
     kind: {
       commentary: "Commentaires",
       forced: "Forcés",

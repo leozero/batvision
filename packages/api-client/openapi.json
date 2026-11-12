@@ -1867,7 +1867,8 @@
               "enum": [
                 "title",
                 "added",
-                "year"
+                "year",
+                "rating"
               ]
             }
           },
@@ -2229,7 +2230,8 @@
               "enum": [
                 "title",
                 "added",
-                "year"
+                "year",
+                "rating"
               ]
             }
           },
@@ -3225,7 +3227,8 @@
           "season_number",
           "episode_number",
           "position_ms",
-          "played"
+          "played",
+          "ratings"
         ],
         "properties": {
           "air_date": {
@@ -3268,6 +3271,12 @@
           "position_ms": {
             "type": "integer",
             "format": "int64"
+          },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rating"
+            }
           },
           "runtime_minutes": {
             "type": [
@@ -3997,7 +4006,8 @@
           "added_at",
           "position_ms",
           "played",
-          "in_watchlist"
+          "in_watchlist",
+          "ratings"
         ],
         "properties": {
           "added_at": {
@@ -4049,6 +4059,12 @@
               "string",
               "null"
             ]
+          },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rating"
+            }
           },
           "release_date": {
             "type": [
@@ -4108,7 +4124,8 @@
           "title",
           "added_at",
           "position_ms",
-          "played"
+          "played",
+          "ratings"
         ],
         "properties": {
           "added_at": {
@@ -4145,6 +4162,12 @@
               "string",
               "null"
             ]
+          },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rating"
+            }
           },
           "title": {
             "type": "string"
@@ -4329,7 +4352,9 @@
           "hls",
           "start_ms",
           "audio_tracks",
-          "subtitles"
+          "subtitles",
+          "quality",
+          "qualities"
         ],
         "properties": {
           "audio_index": {
@@ -4364,6 +4389,17 @@
               "null"
             ],
             "format": "int64"
+          },
+          "qualities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QualityOption"
+            },
+            "description": "What each level gives for this file, best first."
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality",
+            "description": "The quality level of this stream."
           },
           "session_id": {
             "type": [
@@ -4427,6 +4463,10 @@
           },
           "kind": {
             "$ref": "#/components/schemas/PlayableKind"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality",
+            "description": "Picture quality. Omitted: `max`."
           },
           "remember": {
             "type": "boolean",
@@ -4511,6 +4551,49 @@
           "played": {
             "type": "boolean",
             "description": "True once watched past 90 %: the client can offer the next episode."
+          }
+        }
+      },
+      "Quality": {
+        "type": "string",
+        "description": "Picture quality asked by the player (D60). Below `Max`, a source heavier than\nthe level is transcoded down to it.",
+        "enum": [
+          "max",
+          "medium",
+          "low",
+          "sos"
+        ]
+      },
+      "QualityOption": {
+        "type": "object",
+        "description": "What each quality level gives for this file and client, for the player's menu\nand its automatic choice.",
+        "required": [
+          "quality",
+          "original"
+        ],
+        "properties": {
+          "bitrate_kbps": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Approximate stream bitrate, kbit/s."
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Picture height the client receives."
+          },
+          "original": {
+            "type": "boolean",
+            "description": "The original video is sent as is (direct play or remux)."
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality"
           }
         }
       },
@@ -4624,6 +4707,41 @@
             "description": "Keep secret; send it to `/api/auth/quick-connect/poll`."
           }
         }
+      },
+      "Rating": {
+        "type": "object",
+        "description": "An average rating from one source. Ratings with fewer than 5 votes are left out.",
+        "required": [
+          "source",
+          "value",
+          "scale",
+          "votes"
+        ],
+        "properties": {
+          "scale": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Best possible value (10 for TMDB)."
+          },
+          "source": {
+            "$ref": "#/components/schemas/RatingSource"
+          },
+          "value": {
+            "type": "number",
+            "format": "double",
+            "description": "Between 0 and `scale`."
+          },
+          "votes": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "RatingSource": {
+        "type": "string",
+        "enum": [
+          "tmdb"
+        ]
       },
       "RecoveryCodes": {
         "type": "object",
@@ -4799,7 +4917,8 @@
         "required": [
           "id",
           "season_number",
-          "episode_count"
+          "episode_count",
+          "ratings"
         ],
         "properties": {
           "episode_count": {
@@ -4815,6 +4934,12 @@
               "string",
               "null"
             ]
+          },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rating"
+            }
           },
           "season_number": {
             "type": "integer",
@@ -4834,6 +4959,7 @@
           "id",
           "library_id",
           "title",
+          "ratings",
           "seasons"
         ],
         "properties": {
@@ -4868,6 +4994,12 @@
               "string",
               "null"
             ]
+          },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rating"
+            }
           },
           "seasons": {
             "type": "array",
@@ -4931,7 +5063,8 @@
           "title",
           "episode_count",
           "unplayed_count",
-          "added_at"
+          "added_at",
+          "ratings"
         ],
         "properties": {
           "added_at": {
@@ -4957,6 +5090,12 @@
               "string",
               "null"
             ]
+          },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rating"
+            }
           },
           "title": {
             "type": "string"

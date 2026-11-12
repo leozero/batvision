@@ -156,7 +156,7 @@ pub async fn delete_library(
         ));
     }
     let mut tx = state.db.begin().await?;
-    // Files and translations point to items without a foreign key: clean them first.
+    // Files, translations and ratings point to items without a foreign key: clean them first.
     sqlx::query(
         "DELETE FROM media_files WHERE
            (item_kind = 'movie' AND item_id IN (SELECT id FROM movies WHERE library_id = ?1))
@@ -168,6 +168,18 @@ pub async fn delete_library(
     .await?;
     sqlx::query(
         "DELETE FROM translations WHERE
+           (item_kind = 'movie' AND item_id IN (SELECT id FROM movies WHERE library_id = ?1))
+           OR (item_kind = 'series' AND item_id IN (SELECT id FROM series WHERE library_id = ?1))
+           OR (item_kind = 'season' AND item_id IN (
+               SELECT se.id FROM seasons se JOIN series s ON s.id = se.series_id WHERE s.library_id = ?1))
+           OR (item_kind = 'episode' AND item_id IN (
+               SELECT e.id FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.library_id = ?1))",
+    )
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM ratings WHERE
            (item_kind = 'movie' AND item_id IN (SELECT id FROM movies WHERE library_id = ?1))
            OR (item_kind = 'series' AND item_id IN (SELECT id FROM series WHERE library_id = ?1))
            OR (item_kind = 'season' AND item_id IN (
@@ -310,6 +322,10 @@ pub async fn identify_movie(
         .bind(id)
         .execute(&state.db)
         .await?;
+    sqlx::query("DELETE FROM ratings WHERE item_kind = 'movie' AND item_id = ?")
+        .bind(id)
+        .execute(&state.db)
+        .await?;
     let languages = metadata::languages(&state.db, &state.config.default_language).await?;
     metadata::refresh_movie(&state.db, tmdb, id, &languages)
         .await
@@ -347,6 +363,15 @@ pub async fn identify_series(
     .bind(id)
     .execute(&state.db)
     .await?;
+    sqlx::query(
+        "DELETE FROM ratings WHERE
+           (item_kind = 'series' AND item_id = ?1)
+           OR (item_kind = 'season' AND item_id IN (SELECT id FROM seasons WHERE series_id = ?1))
+           OR (item_kind = 'episode' AND item_id IN (SELECT id FROM episodes WHERE series_id = ?1))",
+    )
+    .bind(id)
+    .execute(&state.db)
+    .await?;
     sqlx::query("UPDATE episodes SET air_date = NULL, runtime_minutes = NULL, still_path = NULL WHERE series_id = ?")
         .bind(id)
         .execute(&state.db)
@@ -359,6 +384,55 @@ pub async fn identify_series(
 }
 
 // ---- Browsing ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum RatingSource {
+    Tmdb,
+}
+
+/// An average rating from one source. Ratings with fewer than 5 votes are left out.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct Rating {
+    pub source: RatingSource,
+    /// Between 0 and `scale`.
+    pub value: f64,
+    /// Best possible value (10 for TMDB).
+    pub scale: i64,
+    pub votes: i64,
+}
+
+/// `ratings` column: a JSON array of [`Rating`] for one item, built in SQL.
+type Ratings = sqlx::types::Json<Vec<Rating>>;
+
+/// SQL expression for the ratings of an item (`kind` literal, `id` column), as a
+/// JSON array, without those with fewer than 5 votes.
+macro_rules! ratings_sql {
+    ($kind:literal, $id:literal) => {
+        concat!(
+            "(SELECT json_group_array(json_object('source', r.source, 'value', r.value,
+                'scale', r.scale, 'votes', r.votes))
+              FROM ratings r WHERE r.item_kind = '",
+            $kind,
+            "' AND r.item_id = ",
+            $id,
+            " AND r.votes >= 5)"
+        )
+    };
+}
+
+/// SQL expression for the rating browse pages sort on: TMDB's, out of 1.
+macro_rules! rating_sort_sql {
+    ($kind:literal, $id:literal) => {
+        concat!(
+            "(SELECT r.value / r.scale FROM ratings r WHERE r.item_kind = '",
+            $kind,
+            "' AND r.item_id = ",
+            $id,
+            " AND r.source = 'tmdb' AND r.votes >= 5)"
+        )
+    };
+}
 
 #[derive(Serialize, ToSchema, sqlx::FromRow)]
 pub struct LibrarySummary {
@@ -389,6 +463,8 @@ pub enum SortOrder {
     Added,
     /// Most recent first.
     Year,
+    /// Best rated first; unrated items last.
+    Rating,
 }
 
 impl SortOrder {
@@ -397,6 +473,7 @@ impl SortOrder {
             Self::Title => "title",
             Self::Added => "added",
             Self::Year => "year",
+            Self::Rating => "rating",
         }
     }
 }
@@ -433,6 +510,8 @@ pub struct MovieSummary {
     /// The caller's resume position (0 if not started or already watched).
     pub position_ms: i64,
     pub played: bool,
+    #[schema(value_type = Vec<Rating>)]
+    pub ratings: Ratings,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -459,7 +538,7 @@ pub async fn query_movies(
     only_ids: Option<&[i64]>,
 ) -> ApiResult<MoviePage> {
     let ids = only_ids.map(|ids| serde_json::to_string(ids).expect("serializable"));
-    let items = sqlx::query_as(
+    let items = sqlx::query_as(concat!(
         "SELECT * FROM (
            SELECT m.id,
              COALESCE(
@@ -473,16 +552,23 @@ pub async fn query_movies(
              COALESCE((SELECT position_ms FROM user_item_data u
                 WHERE u.user_id = ?7 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS position_ms,
              COALESCE((SELECT played FROM user_item_data u
-                WHERE u.user_id = ?7 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played
+                WHERE u.user_id = ?7 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played,
+             ",
+        ratings_sql!("movie", "m.id"),
+        " AS ratings, ",
+        rating_sort_sql!("movie", "m.id"),
+        " AS rating_sort
            FROM movies m
            WHERE m.missing_since IS NULL AND (?3 IS NULL OR m.library_id = ?3)
              AND (?8 IS NULL OR m.id IN (SELECT value FROM json_each(?8))))
          ORDER BY
            CASE WHEN ?4 = 'added' THEN added_at ELSE 0 END DESC,
            CASE WHEN ?4 = 'year' THEN COALESCE(year, 0) ELSE 0 END DESC,
+           CASE WHEN ?4 = 'rating' THEN rating_sort IS NULL ELSE 0 END,
+           CASE WHEN ?4 = 'rating' THEN COALESCE(rating_sort, 0) ELSE 0 END DESC,
            title COLLATE NOCASE
          LIMIT ?5 OFFSET ?6",
-    )
+    ))
     .bind(&user.language)
     .bind(&state.config.default_language)
     .bind(q.library_id)
@@ -575,6 +661,8 @@ pub struct MovieDetail {
     pub position_ms: i64,
     pub played: bool,
     pub in_watchlist: bool,
+    #[schema(value_type = Vec<Rating>)]
+    pub ratings: Ratings,
     #[sqlx(skip)]
     pub file: Option<FileInfo>,
 }
@@ -595,7 +683,7 @@ pub async fn load_movie_detail(
     user: &crate::auth::User,
     id: i64,
 ) -> ApiResult<MovieDetail> {
-    let mut detail: MovieDetail = sqlx::query_as(
+    let mut detail: MovieDetail = sqlx::query_as(concat!(
         "SELECT m.id, m.library_id,
            COALESCE(
              (SELECT title FROM translations WHERE item_kind = 'movie' AND item_id = m.id AND language = ?1),
@@ -611,9 +699,12 @@ pub async fn load_movie_detail(
               WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS position_ms,
            COALESCE((SELECT played FROM user_item_data u
               WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played,
-           EXISTS (SELECT 1 FROM watchlist w WHERE w.user_id = ?4 AND w.movie_id = m.id) AS in_watchlist
+           EXISTS (SELECT 1 FROM watchlist w WHERE w.user_id = ?4 AND w.movie_id = m.id) AS in_watchlist,
+           ",
+        ratings_sql!("movie", "m.id"),
+        " AS ratings
          FROM movies m WHERE m.id = ?3 AND m.missing_since IS NULL",
-    )
+    ))
     .bind(&user.language)
     .bind(&state.config.default_language)
     .bind(id)
@@ -636,6 +727,8 @@ pub struct SeriesSummary {
     /// Episodes the caller hasn't watched yet.
     pub unplayed_count: i64,
     pub added_at: i64,
+    #[schema(value_type = Vec<Rating>)]
+    pub ratings: Ratings,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -662,7 +755,7 @@ pub async fn query_series(
     only_ids: Option<&[i64]>,
 ) -> ApiResult<SeriesPage> {
     let ids = only_ids.map(|ids| serde_json::to_string(ids).expect("serializable"));
-    let items = sqlx::query_as(
+    let items = sqlx::query_as(concat!(
         "SELECT * FROM (
            SELECT s.id,
              COALESCE(
@@ -678,16 +771,23 @@ pub async fn query_series(
                   AND u.item_kind = 'episode' AND u.item_id = e.id AND u.played = 1)) AS unplayed_count,
              -- A new episode brings the series back to the top of recently added.
              COALESCE((SELECT MAX(e.added_at) FROM episodes e
-                       WHERE e.series_id = s.id AND e.missing_since IS NULL), s.added_at) AS added_at
+                       WHERE e.series_id = s.id AND e.missing_since IS NULL), s.added_at) AS added_at,
+             ",
+        ratings_sql!("series", "s.id"),
+        " AS ratings, ",
+        rating_sort_sql!("series", "s.id"),
+        " AS rating_sort
            FROM series s
            WHERE s.missing_since IS NULL AND (?3 IS NULL OR s.library_id = ?3)
              AND (?8 IS NULL OR s.id IN (SELECT value FROM json_each(?8))))
          ORDER BY
            CASE WHEN ?4 = 'added' THEN added_at ELSE 0 END DESC,
            CASE WHEN ?4 = 'year' THEN COALESCE(year, 0) ELSE 0 END DESC,
+           CASE WHEN ?4 = 'rating' THEN rating_sort IS NULL ELSE 0 END,
+           CASE WHEN ?4 = 'rating' THEN COALESCE(rating_sort, 0) ELSE 0 END DESC,
            title COLLATE NOCASE
          LIMIT ?5 OFFSET ?6",
-    )
+    ))
     .bind(&user.language)
     .bind(&state.config.default_language)
     .bind(q.library_id)
@@ -716,6 +816,8 @@ pub struct SeasonSummary {
     pub title: Option<String>,
     pub poster_path: Option<String>,
     pub episode_count: i64,
+    #[schema(value_type = Vec<Rating>)]
+    pub ratings: Ratings,
 }
 
 #[derive(Serialize, ToSchema, sqlx::FromRow)]
@@ -729,6 +831,8 @@ pub struct SeriesDetail {
     pub poster_path: Option<String>,
     pub backdrop_path: Option<String>,
     pub tmdb_id: Option<i64>,
+    #[schema(value_type = Vec<Rating>)]
+    pub ratings: Ratings,
     #[sqlx(skip)]
     pub seasons: Vec<SeasonSummary>,
     /// Episode the play button starts: the one in progress, else the next unwatched.
@@ -746,7 +850,7 @@ pub async fn series(
 ) -> ApiResult<Json<SeriesDetail>> {
     let lang = &current.user.language;
     let default = &state.config.default_language;
-    let mut detail: SeriesDetail = sqlx::query_as(
+    let mut detail: SeriesDetail = sqlx::query_as(concat!(
         "SELECT s.id, s.library_id,
            COALESCE(
              (SELECT title FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?1),
@@ -757,16 +861,18 @@ pub async fn series(
              (SELECT overview FROM translations WHERE item_kind = 'series' AND item_id = s.id AND language = ?2)
            ) AS overview,
            COALESCE(CAST(substr(s.first_air_date, 1, 4) AS INTEGER), s.parsed_year) AS year,
-           s.first_air_date, s.poster_path, s.backdrop_path, s.tmdb_id
+           s.first_air_date, s.poster_path, s.backdrop_path, s.tmdb_id, ",
+        ratings_sql!("series", "s.id"),
+        " AS ratings
          FROM series s WHERE s.id = ?3 AND s.missing_since IS NULL",
-    )
+    ))
     .bind(lang)
     .bind(default)
     .bind(id)
     .fetch_optional(&state.db)
     .await?
     .ok_or(ApiError::NotFound)?;
-    detail.seasons = sqlx::query_as(
+    detail.seasons = sqlx::query_as(concat!(
         "SELECT se.id, se.season_number,
            COALESCE(
              (SELECT title FROM translations WHERE item_kind = 'season' AND item_id = se.id AND language = ?1),
@@ -774,12 +880,14 @@ pub async fn series(
            ) AS title,
            se.poster_path,
            (SELECT COUNT(*) FROM episodes e WHERE e.season_id = se.id AND e.missing_since IS NULL)
-             AS episode_count
+             AS episode_count, ",
+        ratings_sql!("season", "se.id"),
+        " AS ratings
          FROM seasons se WHERE se.series_id = ?3
            AND EXISTS (SELECT 1 FROM episodes e WHERE e.season_id = se.id AND e.missing_since IS NULL)
          -- Specials (season 0) last.
          ORDER BY se.season_number = 0, se.season_number",
-    )
+    ))
     .bind(lang)
     .bind(default)
     .bind(id)
@@ -808,6 +916,8 @@ pub struct EpisodeSummary {
     pub duration_ms: Option<i64>,
     pub position_ms: i64,
     pub played: bool,
+    #[schema(value_type = Vec<Rating>)]
+    pub ratings: Ratings,
 }
 
 #[utoipa::path(get, path = "/api/series/{id}/seasons/{season}", tag = "library",
@@ -819,7 +929,7 @@ pub async fn season_episodes(
     Path((id, season)): Path<(i64, i64)>,
 ) -> ApiResult<Json<Vec<EpisodeSummary>>> {
     Ok(Json(
-        sqlx::query_as(
+        sqlx::query_as(concat!(
             "SELECT e.id, e.series_id, e.season_number, e.episode_number, e.episode_number_end,
                COALESCE(
                  (SELECT title FROM translations WHERE item_kind = 'episode' AND item_id = e.id AND language = ?1),
@@ -836,11 +946,14 @@ pub async fn season_episodes(
                COALESCE((SELECT position_ms FROM user_item_data u
                   WHERE u.user_id = ?5 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS position_ms,
                COALESCE((SELECT played FROM user_item_data u
-                  WHERE u.user_id = ?5 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS played
+                  WHERE u.user_id = ?5 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS played,
+               ",
+            ratings_sql!("episode", "e.id"),
+            " AS ratings
              FROM episodes e
              WHERE e.series_id = ?3 AND e.season_number = ?4 AND e.missing_since IS NULL
              ORDER BY e.episode_number",
-        )
+        ))
         .bind(&current.user.language)
         .bind(&state.config.default_language)
         .bind(id)
@@ -869,7 +982,7 @@ pub async fn load_episode(
     user: &crate::auth::User,
     id: i64,
 ) -> ApiResult<EpisodeSummary> {
-    sqlx::query_as(
+    sqlx::query_as(concat!(
         "SELECT e.id, e.series_id, e.season_number, e.episode_number, e.episode_number_end,
            COALESCE(
              (SELECT title FROM translations WHERE item_kind = 'episode' AND item_id = e.id AND language = ?1),
@@ -886,9 +999,12 @@ pub async fn load_episode(
            COALESCE((SELECT position_ms FROM user_item_data u
               WHERE u.user_id = ?4 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS position_ms,
            COALESCE((SELECT played FROM user_item_data u
-              WHERE u.user_id = ?4 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS played
+              WHERE u.user_id = ?4 AND u.item_kind = 'episode' AND u.item_id = e.id), 0) AS played,
+           ",
+        ratings_sql!("episode", "e.id"),
+        " AS ratings
          FROM episodes e WHERE e.id = ?3 AND e.missing_since IS NULL",
-    )
+    ))
     .bind(&user.language)
     .bind(&state.config.default_language)
     .bind(id)

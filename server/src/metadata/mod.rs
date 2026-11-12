@@ -10,6 +10,13 @@ use tmdb::{TmdbClient, TmdbError, best_match};
 /// An item without a TMDB match is searched again after this long.
 const RETRY_UNMATCHED_SECS: i64 = 7 * 24 * 3600;
 const FALLBACK_LANGUAGE: &str = "en-US";
+/// A matched item is fetched again after this long, so its ratings stay current.
+const STALE_AFTER_SECS: i64 = 30 * 24 * 3600;
+/// Stale items refetched per library and per scan, to spread the load over scans.
+const STALE_MOVIES_PER_SCAN: i64 = 40;
+const STALE_SERIES_PER_SCAN: i64 = 10;
+/// A stale item whose refresh failed is tried again after this long.
+const STALE_RETRY_SECS: i64 = 24 * 3600;
 
 /// Languages to fetch: the server default first, then each user's language.
 pub async fn languages(db: &Db, default_language: &str) -> anyhow::Result<Vec<String>> {
@@ -47,6 +54,45 @@ async fn upsert_translation(
     .bind(overview.filter(|o| !o.is_empty()))
     .execute(db)
     .await?;
+    Ok(())
+}
+
+/// Stores (or clears) an item's TMDB rating. Every vote count is kept: the API
+/// decides what is shown.
+async fn set_tmdb_rating(
+    db: &Db,
+    kind: &str,
+    id: i64,
+    average: Option<f64>,
+    votes: Option<i64>,
+) -> anyhow::Result<()> {
+    match (average, votes) {
+        (Some(value), Some(votes)) => {
+            sqlx::query(
+                "INSERT INTO ratings (item_kind, item_id, source, value, scale, votes, updated_at)
+                 VALUES (?, ?, 'tmdb', ?, 10, ?, ?)
+                 ON CONFLICT (item_kind, item_id, source)
+                 DO UPDATE SET value = excluded.value, scale = excluded.scale,
+                   votes = excluded.votes, updated_at = excluded.updated_at",
+            )
+            .bind(kind)
+            .bind(id)
+            .bind(value)
+            .bind(votes)
+            .bind(now())
+            .execute(db)
+            .await?;
+        }
+        _ => {
+            sqlx::query(
+                "DELETE FROM ratings WHERE item_kind = ? AND item_id = ? AND source = 'tmdb'",
+            )
+            .bind(kind)
+            .bind(id)
+            .execute(db)
+            .await?;
+        }
+    }
     Ok(())
 }
 
@@ -125,6 +171,8 @@ pub async fn refresh_movie(
     .execute(db)
     .await?;
 
+    set_tmdb_rating(db, "movie", movie_id, main.vote_average, main.vote_count).await?;
+
     for (language, d) in &details {
         let overview = non_empty(&d.overview).or(non_empty(&fallback_overview));
         upsert_translation(db, "movie", movie_id, language, Some(&d.title), overview).await?;
@@ -195,6 +243,7 @@ pub async fn refresh_series(
     .bind(series_id)
     .execute(db)
     .await?;
+    set_tmdb_rating(db, "series", series_id, main.vote_average, main.vote_count).await?;
     for (language, show) in &shows {
         let overview = non_empty(&show.overview)
             .or_else(|| fallback_show.as_ref().and_then(|f| non_empty(&f.overview)));
@@ -246,6 +295,14 @@ pub async fn refresh_series(
             .bind(season_id)
             .execute(db)
             .await?;
+        set_tmdb_rating(
+            db,
+            "season",
+            season_id,
+            main_season.vote_average,
+            Some(main_season.votes()),
+        )
+        .await?;
 
         let local: Vec<(i64, i64)> =
             sqlx::query_as("SELECT id, episode_number FROM episodes WHERE season_id = ?")
@@ -268,6 +325,7 @@ pub async fn refresh_series(
                 .bind(episode_id)
                 .execute(db)
                 .await?;
+                set_tmdb_rating(db, "episode", *episode_id, e.vote_average, e.vote_count).await?;
             }
         }
 
@@ -322,7 +380,8 @@ pub struct RefreshCounts {
 }
 
 /// Refreshes every item of a library that has no metadata yet, lacks a language,
-/// or (for series) has episodes without metadata.
+/// or (for series) has episodes without metadata; then a few matched items whose
+/// metadata is older than [`STALE_AFTER_SECS`], oldest first.
 pub async fn refresh_library(
     db: &Db,
     tmdb: &TmdbClient,
@@ -398,7 +457,74 @@ pub async fn refresh_library(
             }
         }
     }
+    refresh_stale(db, tmdb, library_id, languages, &mut counts).await?;
     Ok(counts)
+}
+
+#[derive(Clone, Copy)]
+enum ItemKind {
+    Movie,
+    Series,
+}
+
+async fn refresh_stale(
+    db: &Db,
+    tmdb: &TmdbClient,
+    library_id: i64,
+    languages: &[String],
+    counts: &mut RefreshCounts,
+) -> anyhow::Result<()> {
+    let stale_before = now() - STALE_AFTER_SECS;
+    let movies: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM movies
+         WHERE library_id = ? AND missing_since IS NULL AND tmdb_id IS NOT NULL
+           AND metadata_updated_at < ?
+         ORDER BY metadata_updated_at, id LIMIT ?",
+    )
+    .bind(library_id)
+    .bind(stale_before)
+    .bind(STALE_MOVIES_PER_SCAN)
+    .fetch_all(db)
+    .await?;
+    let series: Vec<i64> = sqlx::query_scalar(
+        "SELECT id FROM series
+         WHERE library_id = ? AND missing_since IS NULL AND tmdb_id IS NOT NULL
+           AND metadata_updated_at < ?
+         ORDER BY metadata_updated_at, id LIMIT ?",
+    )
+    .bind(library_id)
+    .bind(stale_before)
+    .bind(STALE_SERIES_PER_SCAN)
+    .fetch_all(db)
+    .await?;
+    let items = movies
+        .into_iter()
+        .map(|id| (ItemKind::Movie, id))
+        .chain(series.into_iter().map(|id| (ItemKind::Series, id)));
+    for (kind, id) in items {
+        let result = match kind {
+            ItemKind::Movie => refresh_movie(db, tmdb, id, languages).await,
+            ItemKind::Series => refresh_series(db, tmdb, id, languages).await,
+        };
+        match result {
+            Ok(_) => counts.refreshed += 1,
+            Err(err) => {
+                counts.errors += 1;
+                tracing::warn!(id, error = %err, "stale metadata refresh failed");
+                if is_fatal(&err) {
+                    return Err(err);
+                }
+                // Keep the old metadata, and let other stale items go first.
+                let retry_at = now() - STALE_AFTER_SECS + STALE_RETRY_SECS;
+                let sql = match kind {
+                    ItemKind::Movie => "UPDATE movies SET metadata_updated_at = ? WHERE id = ?",
+                    ItemKind::Series => "UPDATE series SET metadata_updated_at = ? WHERE id = ?",
+                };
+                sqlx::query(sql).bind(retry_at).bind(id).execute(db).await?;
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A bad token fails every request: stop instead of hammering TMDB.

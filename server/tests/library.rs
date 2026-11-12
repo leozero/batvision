@@ -73,7 +73,8 @@ async fn mount_tmdb(server: &MockServer) {
         .respond_with(json(json!({
             "id": 27205, "title": "Inception", "overview": "Dom Cobb est un voleur.",
             "release_date": "2010-07-15", "runtime": 148,
-            "poster_path": "/poster-fr.jpg", "backdrop_path": "/backdrop.jpg"
+            "poster_path": "/poster-fr.jpg", "backdrop_path": "/backdrop.jpg",
+            "vote_average": 8.369, "vote_count": 37000
         })))
         .mount(server)
         .await;
@@ -82,14 +83,17 @@ async fn mount_tmdb(server: &MockServer) {
         .respond_with(json(json!({
             "id": 27205, "title": "Inception", "overview": "Dom Cobb is a thief.",
             "release_date": "2010-07-15", "runtime": 148,
-            "poster_path": "/poster-en.jpg", "backdrop_path": "/backdrop.jpg"
+            "poster_path": "/poster-en.jpg", "backdrop_path": "/backdrop.jpg",
+            "vote_average": 8.369, "vote_count": 37000
         })))
         .mount(server)
         .await;
     Mock::given(path("/movie/155"))
         .respond_with(json(json!({
             "id": 155, "title": "The Dark Knight", "overview": "Batman.",
-            "release_date": "2008-07-16", "poster_path": "/tdk.jpg"
+            "release_date": "2008-07-16", "poster_path": "/tdk.jpg",
+            // Too few votes to be shown.
+            "vote_average": 9.5, "vote_count": 3
         })))
         .mount(server)
         .await;
@@ -105,7 +109,8 @@ async fn mount_tmdb(server: &MockServer) {
         .and(query_param("language", "fr-FR"))
         .respond_with(json(json!({
             "id": 70523, "name": "Dark", "overview": "", "first_air_date": "2017-12-01",
-            "poster_path": "/dark.jpg", "seasons": [{ "season_number": 1 }]
+            "poster_path": "/dark.jpg", "seasons": [{ "season_number": 1 }],
+            "vote_average": 8.4, "vote_count": 6500
         })))
         .mount(server)
         .await;
@@ -121,11 +126,14 @@ async fn mount_tmdb(server: &MockServer) {
     Mock::given(path("/tv/70523/season/1"))
         .and(query_param("language", "fr-FR"))
         .respond_with(json(json!({
-            "season_number": 1, "name": "Saison 1", "overview": "",
+            "season_number": 1, "name": "Saison 1", "overview": "", "vote_average": 8.2,
             "episodes": [
-                { "episode_number": 1, "name": "Secrets", "overview": "Résumé 1", "still_path": "/e1.jpg" },
-                { "episode_number": 2, "name": "Mensonges", "overview": "Résumé 2" },
-                { "episode_number": 3, "name": "Passé et présent", "overview": "Résumé 3" }
+                { "episode_number": 1, "name": "Secrets", "overview": "Résumé 1", "still_path": "/e1.jpg",
+                  "vote_average": 7.9, "vote_count": 30 },
+                { "episode_number": 2, "name": "Mensonges", "overview": "Résumé 2",
+                  "vote_average": 8.1, "vote_count": 20 },
+                { "episode_number": 3, "name": "Passé et présent", "overview": "Résumé 3",
+                  "vote_average": 9.0, "vote_count": 2 }
             ]
         })))
         .mount(server)
@@ -431,6 +439,98 @@ async fn scans_series_seasons_and_episodes_with_metadata() {
     assert_eq!(episode["series_title"], "Dark");
     assert_eq!(episode["episode_number"], 3);
     assert!(episode["file"].is_object());
+}
+
+#[tokio::test]
+async fn shows_tmdb_ratings_with_enough_votes() {
+    let f = fixture(true).await;
+    touch(f.media.path(), "Films/Inception (2010)/Inception.mkv");
+    touch(f.media.path(), "Films/Film Inconnu (2003)/film.mkv");
+    f.create_library("Films", "movies", "Films").await;
+
+    // Unrated items go last, whatever their title.
+    let page = f.get("/api/movies?sort=rating").await;
+    assert_eq!(Fixture::titles(&page), vec!["Inception", "Film Inconnu"]);
+    let rating = json!([{ "source": "tmdb", "value": 8.369, "scale": 10, "votes": 37000 }]);
+    assert_eq!(page["items"][0]["ratings"], rating);
+    assert_eq!(page["items"][1]["ratings"], json!([]));
+    let id = page["items"][0]["id"].as_i64().unwrap();
+    assert_eq!(f.get(&format!("/api/movies/{id}")).await["ratings"], rating);
+    let home = f.get("/api/home").await;
+    let recent = home["recent_movies"].as_array().unwrap();
+    let inception = recent.iter().find(|m| m["id"] == id).unwrap();
+    assert_eq!(inception["ratings"], rating);
+
+    // The Dark Knight has only 3 votes: hidden.
+    let (status, _) = f
+        .app
+        .post(
+            &format!("/api/admin/movies/{id}/identify"),
+            Some(&f.admin),
+            json!({ "tmdb_id": 155 }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        f.get(&format!("/api/movies/{id}")).await["ratings"],
+        json!([])
+    );
+}
+
+#[tokio::test]
+async fn rates_series_seasons_and_episodes() {
+    let f = fixture(true).await;
+    for n in 1..=3 {
+        touch(
+            f.media.path(),
+            &format!("Séries/Dark (2017)/Season 01/Dark - S01E0{n}.mkv"),
+        );
+    }
+    f.create_library("Séries", "series", "Séries").await;
+    let page = f.get("/api/series?sort=rating").await;
+    assert_eq!(page["items"][0]["ratings"][0]["value"], 8.4);
+    let id = page["items"][0]["id"].as_i64().unwrap();
+
+    let detail = f.get(&format!("/api/series/{id}")).await;
+    assert_eq!(detail["ratings"][0]["votes"], 6500);
+    // TMDB has no vote count for a season: its episodes' votes are used.
+    assert_eq!(
+        detail["seasons"][0]["ratings"],
+        json!([{ "source": "tmdb", "value": 8.2, "scale": 10, "votes": 52 }])
+    );
+
+    let episodes = f.get(&format!("/api/series/{id}/seasons/1")).await;
+    assert_eq!(episodes[0]["ratings"][0]["value"], 7.9);
+    assert_eq!(episodes[2]["ratings"], json!([]), "only 2 votes");
+    let episode_id = episodes[1]["id"].as_i64().unwrap();
+    assert_eq!(
+        f.get(&format!("/api/episodes/{episode_id}")).await["ratings"][0]["votes"],
+        20
+    );
+}
+
+#[tokio::test]
+async fn stale_metadata_is_fetched_again() {
+    let f = fixture(true).await;
+    touch(f.media.path(), "Films/Inception (2010)/Inception.mkv");
+    let library = f.create_library("Films", "movies", "Films").await;
+    assert_eq!(f.rescan(library).await.metadata_refreshed, 0, "fresh");
+
+    // As left by the ratings migration: matched, but without a rating.
+    sqlx::query("DELETE FROM ratings")
+        .execute(&f.app.state.db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE movies SET metadata_updated_at = 0")
+        .execute(&f.app.state.db)
+        .await
+        .unwrap();
+    assert_eq!(f.rescan(library).await.metadata_refreshed, 1);
+    assert_eq!(
+        f.get("/api/movies").await["items"][0]["ratings"][0]["votes"],
+        37000
+    );
+    assert_eq!(f.rescan(library).await.metadata_refreshed, 0);
 }
 
 #[tokio::test]

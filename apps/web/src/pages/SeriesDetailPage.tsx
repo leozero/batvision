@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
 import { DownloadSeriesButton } from "../components/downloads";
 import { Img } from "../components/media";
+import { pickRating, Rating } from "../components/rating";
 import { DownloadedMark } from "../components/ThisComputer";
 import {
   Button,
@@ -81,6 +82,7 @@ function EpisodeRow({ episode, index }: { episode: Schemas["EpisodeSummary"]; in
             </p>
             <span className="flex shrink-0 items-center gap-3 text-sm text-faint">
               <DownloadedMark kind="episode" id={episode.id} />
+              <Rating ratings={episode.ratings} />
               {duration ? formatRuntime(duration, i18n.language) : null}
             </span>
           </div>
@@ -178,6 +180,12 @@ export function SeriesDetailPage() {
             </span>
             <Dot />
             <span>{t("detail.episodeCount", { count: episodeCount })}</span>
+            {pickRating(series.ratings) ? (
+              <>
+                <Dot />
+                <Rating ratings={series.ratings} className="font-semibold" />
+              </>
+            ) : null}
           </>
         }
         actions={
@@ -210,38 +218,42 @@ export function SeriesDetailPage() {
 
       <section className="mx-auto max-w-6xl px-4 sm:px-10">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <MenuRoot>
-            <MenuTrigger asChild>
-              <button
-                type="button"
-                className="flex cursor-pointer items-center gap-2 rounded-full bg-white/8 px-5 py-2.5 text-lg font-semibold transition hover:bg-white/12"
-              >
-                {seasonLabel(t, selected)}
-                <ChevronDown className="size-5 text-muted" />
-              </button>
-            </MenuTrigger>
-            <MenuContent align="start">
-              {seasons.map((s) => (
-                <MenuItem
-                  key={s.id}
-                  onSelect={() =>
-                    navigate({
-                      to: "/series/$id",
-                      params: { id },
-                      search: { season: s.season_number },
-                      replace: true,
-                    })
-                  }
+          <div className="flex items-center gap-3">
+            <MenuRoot>
+              <MenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex cursor-pointer items-center gap-2 rounded-full bg-white/8 px-5 py-2.5 text-lg font-semibold transition hover:bg-white/12"
                 >
-                  <span className="flex-1">{seasonLabel(t, s.season_number)}</span>
-                  <span className="text-xs text-faint">
-                    {t("detail.episodeCount", { count: s.episode_count })}
-                  </span>
-                  {s.season_number === selected ? <Check className="size-4 text-accent" /> : null}
-                </MenuItem>
-              ))}
-            </MenuContent>
-          </MenuRoot>
+                  {seasonLabel(t, selected)}
+                  <ChevronDown className="size-5 text-muted" />
+                </button>
+              </MenuTrigger>
+              <MenuContent align="start">
+                {seasons.map((s) => (
+                  <MenuItem
+                    key={s.id}
+                    onSelect={() =>
+                      navigate({
+                        to: "/series/$id",
+                        params: { id },
+                        search: { season: s.season_number },
+                        replace: true,
+                      })
+                    }
+                  >
+                    <span className="flex-1">{seasonLabel(t, s.season_number)}</span>
+                    <Rating ratings={s.ratings} className="text-xs" />
+                    <span className="text-xs text-faint">
+                      {t("detail.episodeCount", { count: s.episode_count })}
+                    </span>
+                    {s.season_number === selected ? <Check className="size-4 text-accent" /> : null}
+                  </MenuItem>
+                ))}
+              </MenuContent>
+            </MenuRoot>
+            <Rating ratings={current?.ratings} className="text-sm font-semibold" />
+          </div>
           {current ? (
             <Button
               variant="ghost"

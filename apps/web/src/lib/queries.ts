@@ -8,7 +8,7 @@ import {
 import { ApiError, api, call, type Schemas } from "./api";
 
 export type User = Schemas["User"];
-export type SortOrder = "title" | "added" | "year";
+export type SortOrder = "title" | "added" | "year" | "rating";
 
 /** The signed-in user, or `null` when signed out. */
 export const meQuery = queryOptions({

@@ -24,8 +24,8 @@ use crate::{
         scanner,
     },
     playback::{
-        self, Capabilities, ExternalSubtitle, GeneralPreferences, Method, SeriesPreference,
-        normalize_language,
+        self, Capabilities, ExternalSubtitle, GeneralPreferences, Method, Quality, QualityOption,
+        SeriesPreference, normalize_language,
         signing::Grant,
         subtitles,
         transcode::{TranscodeJob, VideoEncoder, valid_hls_file},
@@ -50,6 +50,9 @@ pub struct PlaybackRequest {
     /// The user changed tracks: remember the choice for the rest of the series.
     #[serde(default)]
     pub remember: bool,
+    /// Picture quality. Omitted: `max`.
+    #[serde(default)]
+    pub quality: Quality,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -91,6 +94,10 @@ pub struct PlaybackInfo {
     /// WebVTT for the selected text subtitle, timed for this stream.
     pub subtitle_url: Option<String>,
     pub next_episode_id: Option<i64>,
+    /// The quality level of this stream.
+    pub quality: Quality,
+    /// What each level gives for this file, best first.
+    pub qualities: Vec<QualityOption>,
 }
 
 struct MediaFile {
@@ -285,7 +292,15 @@ pub async fn start(
     let selected_subtitle = subtitle_id
         .as_ref()
         .and_then(|id| options.iter().find(|o| &o.id == id));
-    let plan = playback::decide(info, &req.capabilities, audio_index, selected_subtitle);
+    let plan = playback::decide(
+        info,
+        &req.capabilities,
+        audio_index,
+        selected_subtitle,
+        req.quality,
+    );
+    let qualities =
+        playback::quality_options(info, &req.capabilities, audio_index, selected_subtitle);
 
     let resume: i64 = sqlx::query_scalar(
         "SELECT position_ms FROM user_item_data WHERE user_id = ? AND item_kind = ? AND item_id = ?",
@@ -414,6 +429,8 @@ pub async fn start(
         subtitle: subtitle_id,
         subtitle_url,
         next_episode_id,
+        quality: req.quality,
+        qualities,
     }))
 }
 
