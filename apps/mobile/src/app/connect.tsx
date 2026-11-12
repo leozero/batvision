@@ -48,7 +48,7 @@ export default function Connect() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="gap-2">
-            <Text className="text-3xl font-bold text-accent">batvision</Text>
+            <Text className="text-3xl font-bold text-accent">BatVision</Text>
             <Text className="text-xl font-semibold text-fg">{t("desktop.connectTitle")}</Text>
             <Muted>{t("desktop.connectIntro")}</Muted>
           </View>

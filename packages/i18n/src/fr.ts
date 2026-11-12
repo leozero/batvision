@@ -38,7 +38,7 @@ export const fr = {
     verify: "Vérifier",
   },
   setup: {
-    title: "Bienvenue sur batvision",
+    title: "Bienvenue sur BatVision",
     subtitle: "Créez le compte administrateur.",
     token: "Jeton d'installation",
     tokenHint: "Affiché dans les logs du serveur au premier démarrage.",
@@ -335,7 +335,7 @@ export const fr = {
     updateReady: "La version {{version}} est prête : cliquez pour redémarrer et l'installer.",
     updateAvailable: "La version {{version}} est disponible : cliquez pour la télécharger.",
     connectTitle: "Votre serveur",
-    connectIntro: "Saisissez l'adresse de votre serveur batvision.",
+    connectIntro: "Saisissez l'adresse de votre serveur BatVision.",
     serverAddress: "Adresse du serveur",
     serverPlaceholder: "media.exemple.fr",
     connect: "Continuer",
@@ -343,7 +343,7 @@ export const fr = {
     serverErrors: {
       invalid_url: "Cette adresse n'est pas valide.",
       unreachable: "Aucun serveur ne répond à cette adresse.",
-      not_batvision: "Ce n'est pas un serveur batvision.",
+      not_batvision: "Ce n'est pas un serveur BatVision.",
     },
     offlineTitle: "Hors ligne",
     offlineIntro:
@@ -365,7 +365,7 @@ export const fr = {
     lastSync: "Dernière synchro {{time}}",
     serverUnreachable: "Serveur injoignable",
     launchAtLogin: "Lancer au démarrage de l'ordinateur",
-    launchAtLoginHint: "batvision démarre en arrière-plan pour télécharger.",
+    launchAtLoginHint: "BatVision démarre en arrière-plan pour télécharger.",
     downloaded: "Téléchargé",
     empty:
       "Rien de prévu sur cet ordinateur. Lancez un téléchargement depuis la page d'un film ou d'une série.",
@@ -453,7 +453,7 @@ export const fr = {
     title: "Administration",
     needs2fa: "Activez la double authentification avant d'accéder à l'administration.",
     libraries: "Bibliothèques",
-    librariesHint: "Les dossiers de /media scannés par batvision.",
+    librariesHint: "Les dossiers de /media scannés par BatVision.",
     noLibraries: "Aucune bibliothèque.",
     scan: "Scanner",
     scanning: "Scan en cours…",

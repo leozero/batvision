@@ -142,6 +142,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" installers/* \
-            --title "batvision $GITHUB_REF_NAME" \
+            --title "BatVision $GITHUB_REF_NAME" \
             --notes-file .github/release-notes.md \
             --generate-notes

@@ -12,7 +12,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const version = config.version ?? "0.0.0";
   return {
     ...config,
-    name: config.name ?? "batvision",
+    name: config.name ?? "BatVision",
     slug: config.slug ?? "batvision",
     version,
     android: { ...config.android, versionCode: versionCode(version) },

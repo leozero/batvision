@@ -171,7 +171,7 @@ app.whenReady().then(() => {
       minWidth: 900,
       minHeight: 600,
       backgroundColor: "#0b0b0f",
-      title: "batvision",
+      title: "BatVision",
       icon: join(resources, "icon.png"),
       show: false,
       webPreferences: {
@@ -213,7 +213,7 @@ app.whenReady().then(() => {
           : [];
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: "Ouvrir batvision", click: show },
+        { label: "Ouvrir BatVision", click: show },
         ...updateItems,
         { type: "separator" },
         {
@@ -246,7 +246,7 @@ app.whenReady().then(() => {
   );
   if (OS === "mac") trayIcon.setTemplateImage(true);
   tray = new Tray(trayIcon);
-  tray.setToolTip("batvision");
+  tray.setToolTip("BatVision");
   tray.on("click", show);
   updateTray();
 

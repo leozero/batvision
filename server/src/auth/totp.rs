@@ -2,7 +2,7 @@
 
 use totp_rs::{Secret, Totp};
 
-pub const ISSUER: &str = "batvision";
+pub const ISSUER: &str = "BatVision";
 
 pub fn new_secret() -> String {
     Secret::generate().to_base32()
@@ -105,7 +105,7 @@ mod tests {
     fn otpauth_url_contains_issuer() {
         let url = otpauth_url(&new_secret(), "alice").unwrap();
         assert!(url.starts_with("otpauth://totp/"));
-        assert!(url.contains("issuer=batvision"));
+        assert!(url.contains("issuer=BatVision"));
     }
 
     #[test]

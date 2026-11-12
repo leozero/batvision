@@ -70,7 +70,7 @@ export default function Login() {
           keyboardShouldPersistTaps="handled"
         >
           <View className="gap-2">
-            <Text className="text-3xl font-bold text-accent">batvision</Text>
+            <Text className="text-3xl font-bold text-accent">BatVision</Text>
             <Text className="text-xl font-semibold text-fg">{t("auth.welcome")}</Text>
             <Muted>{challenge ? t("auth.totpPrompt") : t("auth.signInPrompt")}</Muted>
             <Muted className="text-faint">{session().server}</Muted>

@@ -1,4 +1,4 @@
-# batvision
+# BatVision
 
 Self-hosted media server (movies and TV series), rewritten from scratch with Jellyfin as inspiration. What sets it apart: **automatic downloads** and **lighter versions encoded on demand**.
 

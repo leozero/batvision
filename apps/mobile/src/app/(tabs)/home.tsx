@@ -98,7 +98,7 @@ export default function HomeScreen() {
         }
       >
         <View className="flex-row items-center justify-between px-4 pt-4">
-          <Text className="text-3xl font-bold text-accent">batvision</Text>
+          <Text className="text-3xl font-bold text-accent">BatVision</Text>
           <SearchButton />
         </View>
         <UpdateBanner />

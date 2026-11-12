@@ -167,7 +167,7 @@ export function AppLayout() {
 
       <footer className="mt-20 flex items-center justify-center gap-2 px-4 pb-10 text-xs text-faint">
         <ShieldCheck className="size-3.5" />
-        batvision
+        BatVision
       </footer>
     </div>
   );

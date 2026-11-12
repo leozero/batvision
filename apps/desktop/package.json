@@ -4,7 +4,7 @@
   "version": "0.3.0",
   "private": true,
   "license": "GPL-3.0-only",
-  "description": "batvision desktop app: library, playback and offline downloads",
+  "description": "BatVision desktop app: library, playback and offline downloads",
   "author": "batvision",
   "main": "out/main/index.js",
   "scripts": {

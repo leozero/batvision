@@ -75,7 +75,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
       }
       return NotificationCompat.Builder(context, CHANNEL)
         .setSmallIcon(android.R.drawable.stat_sys_download)
-        .setContentTitle(context.getString(R.string.batvision_downloading, current?.title ?: "batvision"))
+        .setContentTitle(context.getString(R.string.batvision_downloading, current?.title ?: "BatVision"))
         .setContentText(percent?.let { "$it %" })
         .setProgress(100, percent ?: 0, percent == null)
         .setOngoing(true)

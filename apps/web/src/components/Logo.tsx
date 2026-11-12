@@ -25,7 +25,7 @@ export function Logo({ className }: { className?: string }) {
       className={cx("inline-flex items-center gap-2 text-lg font-bold tracking-tight", className)}
     >
       <LogoMark />
-      batvision
+      BatVision
     </span>
   );
 }

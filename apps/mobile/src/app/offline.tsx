@@ -65,7 +65,7 @@ export default function Offline() {
     <Screen>
       <ScrollView contentContainerClassName="gap-6 p-4 pb-10">
         <View className="flex-row items-center gap-3">
-          <Text className="text-2xl font-bold text-accent">batvision</Text>
+          <Text className="text-2xl font-bold text-accent">BatVision</Text>
           <Badge tone="accent">
             <WifiOff color={COLORS.accent} size={12} />
             <Text className="text-xs font-semibold text-accent">{t("desktop.offlineTitle")}</Text>
