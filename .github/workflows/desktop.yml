@@ -1,0 +1,49 @@
+name: Desktop installers
+
+# Unsigned builds (D55): download them from the run's artifacts.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - "packages/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macOS, os: macos-latest, artifact: "release/*.dmg" }
+          - { name: Windows, os: windows-latest, artifact: "release/*.exe" }
+          - { name: Linux, os: ubuntu-latest, artifact: "release/*.AppImage" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @batvision/web build
+      - run: pnpm --filter @batvision/desktop dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: batvision-desktop-${{ matrix.name }}
+          path: apps/desktop/${{ matrix.artifact }}
+          if-no-files-found: error
+          retention-days: 30

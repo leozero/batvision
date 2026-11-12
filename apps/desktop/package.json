@@ -1,0 +1,31 @@
+{
+  "name": "@batvision/desktop",
+  "productName": "batvision",
+  "version": "0.1.0",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "description": "batvision desktop app: library, playback and offline downloads",
+  "author": "batvision",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "icons": "node scripts/make-icons.mjs",
+    "dist": "electron-vite build && electron-builder --publish never"
+  },
+  "devDependencies": {
+    "@batvision/bridge": "workspace:*",
+    "@playwright/test": "^1.65.0",
+    "@types/node": "^24.19.2",
+    "electron": "^45.3.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^6.0.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.7",
+    "vitest": "^5.1.0"
+  }
+}

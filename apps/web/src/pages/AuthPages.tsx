@@ -22,7 +22,7 @@ function useErrorMessage() {
 }
 
 /** Full-screen backdrop with an animated glow, shared by the sign-in pages. */
-function AuthShell({
+export function AuthShell({
   title,
   subtitle,
   children,

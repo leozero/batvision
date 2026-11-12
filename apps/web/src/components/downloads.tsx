@@ -4,6 +4,7 @@ import { Bookmark, BookmarkCheck, Download } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, call, type Schemas } from "../lib/api";
+import { syncDesktop } from "../lib/desktop";
 import { languageName } from "../lib/format";
 import { downloadsQuery, invalidateLibrary, preferencesQuery } from "../lib/queries";
 import { errorText } from "../pages/account/AccountPage";
@@ -85,6 +86,7 @@ export function WatchlistButton({ movie }: { movie: Schemas["MovieDetail"] }) {
   const [open, setOpen] = useState(false);
   const [audio, setAudio] = useState<string | null>(null);
   const refresh = () => {
+    syncDesktop();
     invalidateLibrary(qc);
     void qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
   };
@@ -174,6 +176,7 @@ export function DownloadMovieButton({ movie }: { movie: Schemas["MovieDetail"] }
     onSuccess: () => {
       setOpen(false);
       void qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
+      syncDesktop();
     },
   });
   return (
@@ -272,6 +275,7 @@ export function DownloadSeriesButton({
     onSuccess: () => {
       setOpen(false);
       void qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
+      syncDesktop();
     },
   });
   const subscribed = devices.flatMap((d) =>

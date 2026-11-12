@@ -5,7 +5,7 @@ Self-hosted media server (movies and TV series), rewritten from scratch with Jel
 - Specification: [docs/spec.md](docs/spec.md)
 - Decision log: [docs/decisions.md](docs/decisions.md)
 
-> Early development: the server, the web client and the download engine work; the desktop and Android apps come next.
+> Early development: the server, the web client, the download engine and the desktop app work; the Android apps come next.
 
 ## Layout
 
@@ -13,7 +13,9 @@ Self-hosted media server (movies and TV series), rewritten from scratch with Jel
 | ---------------------- | -------------------------------------------------------- | -------- |
 | `server/`              | Rust server (axum, SQLite, ffmpeg)                       | AGPL-3.0 |
 | `apps/web/`            | Web client (React, Vite)                                 | GPL-3.0  |
+| `apps/desktop/`        | Desktop app (Electron): the web client plus downloads    | GPL-3.0  |
 | `packages/api-client/` | TypeScript client generated from the OpenAPI description | GPL-3.0  |
+| `packages/bridge/`     | Types shared by the desktop app and the web client       | GPL-3.0  |
 
 ## Development
 
@@ -33,6 +35,20 @@ pnpm --filter @batvision/web dev
 
 The server listens on `127.0.0.1:8420`, and Vite (`http://localhost:5173`) proxies `/api` calls to it.
 
+### Desktop app
+
+The desktop app shows the web client's own build, so build it first:
+
+```bash
+pnpm --filter @batvision/web build && pnpm --filter @batvision/desktop build
+```
+
+```bash
+pnpm --filter @batvision/desktop start
+```
+
+On first launch it asks for the server address (`http://127.0.0.1:8420` for a local server). Downloads go to `Videos/Batvision` by default. Installers for macOS, Windows and Linux are built by the "Desktop installers" workflow (unsigned for now), or locally with `pnpm --filter @batvision/desktop dist`.
+
 ### Tests
 
 ```bash
@@ -44,7 +60,13 @@ cargo test --manifest-path server/Cargo.toml
 ```
 
 ```bash
-pnpm --filter @batvision/web build && pnpm test:e2e
+pnpm --filter @batvision/web build && pnpm --filter @batvision/web test:e2e
+```
+
+The desktop scenario (needs ffmpeg; on Linux, run it under `xvfb-run`):
+
+```bash
+pnpm --filter @batvision/desktop build && pnpm --filter @batvision/desktop test:e2e
 ```
 
 ### After changing the server API

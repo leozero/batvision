@@ -4,6 +4,7 @@ import { Check, Eye, EyeOff, Play, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
 import { DownloadMovieButton, WatchlistButton } from "../components/downloads";
+import { DownloadedMark } from "../components/ThisComputer";
 import { Badge, Button, Page, ProgressBar, Skeleton } from "../components/ui";
 import type { Schemas } from "../lib/api";
 import { formatRuntime, languageName, progressRatio } from "../lib/format";
@@ -103,6 +104,7 @@ export function MovieDetailPage() {
                 </span>
               </>
             ) : null}
+            <DownloadedMark kind="movie" id={movie.id} />
           </>
         }
         actions={

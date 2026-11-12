@@ -17,6 +17,7 @@ import { motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Img } from "../components/media";
+import { ThisComputerCard } from "../components/ThisComputer";
 import {
   Badge,
   Button,
@@ -30,6 +31,7 @@ import {
 } from "../components/ui";
 import { api, call, imageUrl, type Schemas } from "../lib/api";
 import { formatBytes } from "../lib/bytes";
+import { desktop, syncDesktop } from "../lib/desktop";
 import { episodeCode, languageName } from "../lib/format";
 import { downloadsQuery } from "../lib/queries";
 import { Card } from "./account/AccountPage";
@@ -96,7 +98,10 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
           body: settings,
         }),
       ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: downloadsQuery.queryKey }),
+    onSuccess: () => {
+      syncDesktop();
+      return qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
+    },
   });
   const update = (patch: Partial<Schemas["DeviceSettings"]>) => {
     const next = { ...s, ...patch };
@@ -186,12 +191,18 @@ function DeviceCard({ device, index }: { device: Schemas["DeviceDownloads"]; ind
   const removeSub = useMutation({
     mutationFn: (id: number) =>
       call(api.DELETE("/api/downloads/subscriptions/{id}", { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: downloadsQuery.queryKey }),
+    onSuccess: () => {
+      syncDesktop();
+      return qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
+    },
   });
   const removeManual = useMutation({
     mutationFn: (id: number) =>
       call(api.DELETE("/api/downloads/manual/{id}", { params: { path: { id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: downloadsQuery.queryKey }),
+    onSuccess: () => {
+      syncDesktop();
+      return qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
+    },
   });
   const total = device.items.reduce((n, i) => n + (i.size_bytes ?? 0), 0);
   return (
@@ -321,7 +332,10 @@ export function DownloadsPage() {
   const removeFromWatchlist = useMutation({
     mutationFn: (movie_id: number) =>
       call(api.DELETE("/api/watchlist/{movie_id}", { params: { path: { movie_id } } })),
-    onSuccess: () => qc.invalidateQueries(),
+    onSuccess: () => {
+      syncDesktop();
+      return qc.invalidateQueries();
+    },
   });
 
   return (
@@ -333,6 +347,7 @@ export function DownloadsPage() {
         <Skeleton className="h-64" />
       ) : (
         <div className="space-y-6">
+          {desktop ? <ThisComputerCard /> : null}
           <Card title={t("downloads.watchlist")} description={t("downloads.watchlistHint")}>
             {data?.watchlist.length ? (
               <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-4">

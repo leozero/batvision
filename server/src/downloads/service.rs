@@ -55,7 +55,11 @@ pub fn default_settings(platform: Platform) -> DeviceSettings {
             Platform::Android | Platform::AndroidTv => Profile::Mobile,
             _ => Profile::Max,
         },
-        quota_bytes: None,
+        // Desktop: 100 GB (D48). Android picks its own once it knows the free space.
+        quota_bytes: match platform {
+            Platform::Desktop => Some(100 * 1_000_000_000),
+            _ => None,
+        },
         mobile_data: false,
         mobile_cap_bytes: None,
         storage: Storage::Internal,

@@ -67,10 +67,39 @@ jobs:
             || (echo "::error::Run 'pnpm --filter @batvision/api-client generate' and commit the result." && exit 1)
       - run: pnpm --filter @batvision/web build
       - run: pnpm --filter @batvision/web exec playwright install --with-deps chromium
-      - run: pnpm test:e2e
+      - run: pnpm --filter @batvision/web test:e2e
       - if: failure()
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: apps/web/playwright-report
+          retention-days: 7
+
+  desktop:
+    name: Desktop end-to-end (Electron)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: server
+      - name: Install ffmpeg (encodes the test movie) and a virtual display
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg xvfb
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download the Electron binary
+        run: pnpm --filter @batvision/desktop exec electron --version
+      - run: pnpm --filter @batvision/web build
+      - run: pnpm --filter @batvision/desktop build
+      - run: xvfb-run -a pnpm --filter @batvision/desktop test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-playwright-report
+          path: apps/desktop/playwright-report
           retention-days: 7

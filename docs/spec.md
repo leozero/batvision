@@ -67,7 +67,7 @@ apps/web/
 apps/desktop/           Electron
 apps/mobile/            Expo (Android + Android TV)
 packages/api-client/    generated from the OpenAPI description, never edited by hand
-packages/ui-logic/      shared UI logic
+packages/bridge/        types shared by the desktop app and the web client
 docs/
 ```
 
@@ -215,6 +215,18 @@ Series subscriptions and manual downloads are explicit requests for one device: 
 | Desktop (Electron) | Yes             | First offline client. It validates the download engine                                               |
 | Android (Expo)     | Yes             | Storage in the app's private space **or** on the SD card, chosen per device                          |
 | Android TV (Expo)  | To decide later | Playback, quick connect                                                                              |
+
+### 7.9 Desktop client
+
+- Ships its own build of the web interface. On first launch: server address, then sign-in (password + 2FA). The device token is encrypted with the OS keychain.
+- Download features appear only in the desktop app: a "On this computer" section in Downloads, a "Downloaded" mark on detail pages.
+- Files go to `Videos/Batvision` by default (changeable), with a 100 GB quota by default.
+- When the server is unreachable, an **offline library** shows only downloaded items, played by the same player (tracks, local WebVTT subtitles, resume). Offline progress is uploaded when the server is back.
+- Only downloaded items' metadata and images are kept, in a JSON file.
+- Closing the window keeps the app in the tray; "Quit" stops it. Sync on open, when the network returns and every 30 minutes. Launch at login is off by default.
+- One download at a time, pause/resume, interrupted downloads resume (HTTP Range). No network restriction.
+- One signed-in account per install.
+- Builds: macOS (arm64, x64), Windows, Linux AppImage, unsigned until milestone 7, no auto-update yet.
 
 ## 8. Milestones
 

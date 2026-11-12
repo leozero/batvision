@@ -1,0 +1,36 @@
+# Installers for macOS, Windows and Linux. Unsigned until the release milestone (D55).
+appId: fr.batvision.desktop
+productName: batvision
+artifactName: batvision-${version}-${os}-${arch}.${ext}
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+extraResources:
+  # The interface is the web app's own build (D45).
+  - from: ../web/dist
+    to: web
+  - from: resources
+    to: .
+    filter: ["*.png"]
+mac:
+  category: public.app-category.entertainment
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  identity: null
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  category: AudioVideo
+  target:
+    - target: AppImage
+      arch: [x64]
+publish: null

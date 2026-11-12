@@ -1,5 +1,12 @@
+import type { LocalPlayback } from "@batvision/bridge";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams, useRouter, useSearch } from "@tanstack/react-router";
+import {
+  useNavigate,
+  useParams,
+  useRouter,
+  useRouterState,
+  useSearch,
+} from "@tanstack/react-router";
 import Hls from "hls.js";
 import type { TFunction } from "i18next";
 import {
@@ -22,11 +29,49 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from "react-i18next";
 import { cx, IconButton, Spinner } from "../components/ui";
 import { ApiError, api, call, type Schemas } from "../lib/api";
+import { desktop, localPlaybackQuery } from "../lib/desktop";
 import { episodeCode, formatClock, languageName } from "../lib/format";
 import { episodeQuery, invalidateLibrary, movieQuery } from "../lib/queries";
 import { detectCapabilities } from "./capabilities";
 
 type Info = Schemas["PlaybackInfo"];
+
+/** Watched at 90 % (D36). */
+const isPlayed = (positionMs: number, durationMs: number | null | undefined) =>
+  !!durationMs && positionMs >= durationMs * 0.9;
+
+/** A downloaded copy, described like a direct-play session. */
+function localInfo(local: LocalPlayback, opts: StartOptions, restart?: boolean): Info {
+  const forced = local.subtitles.findIndex((s) => s.kind === "forced");
+  const chosen =
+    opts.subtitle === undefined
+      ? forced
+      : opts.subtitle === null || opts.subtitle === "off"
+        ? -1
+        : Number(opts.subtitle.slice(1));
+  const sub = chosen >= 0 ? local.subtitles[chosen] : undefined;
+  return {
+    method: "direct",
+    hls: false,
+    url: local.url,
+    start_ms:
+      opts.startMs !== undefined ? Math.round(opts.startMs) : restart ? 0 : local.positionMs,
+    duration_ms: local.durationMs,
+    audio_tracks: [{ index: 0, codec: "aac", kind: "normal", language: local.audioLanguage }],
+    audio_index: 0,
+    subtitles: local.subtitles.map((s, i) => ({
+      id: `l${i}`,
+      external: true,
+      text: true,
+      kind: s.kind as Schemas["TrackKind"],
+      language: s.language,
+    })),
+    subtitle: sub ? `l${chosen}` : null,
+    subtitle_url: sub?.url ?? null,
+    next_episode_id: local.nextEpisodeId,
+    session_id: null,
+  };
+}
 type Kind = "movie" | "episode";
 type StartOptions = {
   startMs?: number;
@@ -56,14 +101,36 @@ export function PlayerPage() {
   const { restart } = useSearch({ strict: false }) as { restart?: boolean };
   const kind: Kind = params.kind === "episode" ? "episode" : "movie";
   const id = Number(params.id);
+  // Desktop app: a downloaded copy is played from disk, and is the only option offline.
+  const offlineRoute = useRouterState({
+    select: (s) => s.location.pathname.startsWith("/offline"),
+  });
+  const localQuery = useQuery({ ...localPlaybackQuery(kind, id), enabled: !!desktop });
+  const local = localQuery.data ?? null;
+  const localPending = !!desktop && localQuery.isPending;
+  const localRef = useRef(local);
+  localRef.current = local;
 
-  const movie = useQuery({ ...movieQuery(id), enabled: kind === "movie" });
-  const episode = useQuery({ ...episodeQuery(id), enabled: kind === "episode" });
-  const title = kind === "movie" ? movie.data?.title : episode.data?.series_title;
-  const subtitle =
-    kind === "episode" && episode.data
-      ? `${episodeCode(episode.data.season_number, episode.data.episode_number)}${episode.data.title ? ` — ${episode.data.title}` : ""}`
+  const movie = useQuery({ ...movieQuery(id), enabled: kind === "movie" && !offlineRoute });
+  const episode = useQuery({ ...episodeQuery(id), enabled: kind === "episode" && !offlineRoute });
+  const title =
+    (kind === "movie" ? movie.data?.title : episode.data?.series_title) ?? local?.meta.title;
+  const ep = episode.data
+    ? {
+        season: episode.data.season_number,
+        number: episode.data.episode_number,
+        title: episode.data.title,
+      }
+    : local && kind === "episode"
+      ? {
+          season: local.meta.seasonNumber,
+          number: local.meta.episodeNumber,
+          title: local.meta.episodeTitle,
+        }
       : null;
+  const subtitle = ep
+    ? `${episodeCode(ep.season, ep.number)}${ep.title ? ` — ${ep.title}` : ""}`
+    : null;
 
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -95,8 +162,18 @@ export function PlayerPage() {
   // ---- Session ---------------------------------------------------------------------------
   const start = useCallback(
     async (opts: StartOptions = {}) => {
+      if (localPending) return;
       setWaiting(true);
       setError(null);
+      if (local) {
+        setInfo(localInfo(local, opts, restart));
+        return;
+      }
+      if (offlineRoute) {
+        setError(t("player.error"));
+        setWaiting(false);
+        return;
+      }
       try {
         const next = await call(
           api.POST("/api/playback", {
@@ -122,7 +199,7 @@ export function PlayerPage() {
         setWaiting(false);
       }
     },
-    [kind, id, capabilities, restart, t],
+    [kind, id, capabilities, restart, t, local, localPending, offlineRoute],
   );
 
   useEffect(() => {
@@ -200,7 +277,19 @@ export function PlayerPage() {
     return () => {
       hlsRef.current?.destroy();
       const last = infoRef.current;
-      const body = JSON.stringify({ kind, id, position_ms: Math.round(timeRef.current) });
+      const position = Math.round(timeRef.current);
+      if (localRef.current) {
+        if (position > 0)
+          void desktop?.reportProgress({
+            kind,
+            id,
+            positionMs: position,
+            played: isPlayed(position, last?.duration_ms),
+          });
+        invalidateLibrary(qc);
+        return;
+      }
+      const body = JSON.stringify({ kind, id, position_ms: position });
       void fetch("/api/progress", {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -222,6 +311,16 @@ export function PlayerPage() {
   // ---- Progress --------------------------------------------------------------------------
   const report = useCallback(() => {
     if (timeRef.current <= 0) return;
+    if (localRef.current) {
+      const position = Math.round(timeRef.current);
+      void desktop?.reportProgress({
+        kind,
+        id,
+        positionMs: position,
+        played: isPlayed(position, infoRef.current?.duration_ms),
+      });
+      return;
+    }
     void api.POST("/api/progress", {
       body: { kind, id, position_ms: Math.round(timeRef.current) },
     });
@@ -252,11 +351,11 @@ export function PlayerPage() {
   const goNext = useCallback(() => {
     if (info?.next_episode_id)
       void navigate({
-        to: "/watch/$kind/$id",
+        to: offlineRoute ? "/offline/watch/$kind/$id" : "/watch/$kind/$id",
         params: { kind: "episode", id: String(info.next_episode_id) },
         replace: true,
       });
-  }, [info, navigate]);
+  }, [info, navigate, offlineRoute]);
 
   const onEnded = () => {
     setPlaying(false);

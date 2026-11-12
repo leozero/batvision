@@ -7,11 +7,13 @@ import {
   redirect,
 } from "@tanstack/react-router";
 import { AppLayout } from "./components/Layout";
+import { desktop, hasServer, isUnreachable } from "./lib/desktop";
 import { meQuery, setupQuery } from "./lib/queries";
 import { InvitePage, LoginPage, SetupPage } from "./pages/AuthPages";
 import { AccountPage } from "./pages/account/AccountPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { MoviesPage, SeriesListPage } from "./pages/BrowsePages";
+import { ConnectPage, OfflinePage } from "./pages/DesktopPages";
 import { DownloadsPage } from "./pages/DownloadsPage";
 import { HomePage } from "./pages/HomePage";
 import { MovieDetailPage } from "./pages/MovieDetailPage";
@@ -23,8 +25,41 @@ import { PlayerPage } from "./player/PlayerPage";
 type Context = { queryClient: QueryClient };
 
 const root = createRootRouteWithContext<Context>()({
+  // Desktop app: nothing works before it knows where the server is.
+  beforeLoad: ({ location }) => {
+    if (!hasServer() && location.pathname !== "/connect") throw redirect({ to: "/connect" });
+  },
   component: Outlet,
   notFoundComponent: NotFoundPage,
+});
+
+/** Desktop app: an unreachable server shows the offline library instead of an error. */
+async function orOffline<T>(load: Promise<T>): Promise<T> {
+  try {
+    return await load;
+  } catch (e) {
+    if (desktop && isUnreachable(e)) throw redirect({ to: "/offline" });
+    throw e;
+  }
+}
+
+const connect = createRoute({
+  getParentRoute: () => root,
+  path: "/connect",
+  component: ConnectPage,
+});
+
+const offline = createRoute({
+  getParentRoute: () => root,
+  path: "/offline",
+  component: OfflinePage,
+});
+
+/** Plays a downloaded copy without the server. */
+const offlineWatch = createRoute({
+  getParentRoute: () => root,
+  path: "/offline/watch/$kind/$id",
+  component: PlayerPage,
 });
 
 /** Signed-out pages. A signed-in user is sent home. */
@@ -32,7 +67,7 @@ const publicLayout = createRoute({
   getParentRoute: () => root,
   id: "public",
   beforeLoad: async ({ context }) => {
-    if (await context.queryClient.ensureQueryData(meQuery)) throw redirect({ to: "/" });
+    if (await orOffline(context.queryClient.ensureQueryData(meQuery))) throw redirect({ to: "/" });
   },
 });
 
@@ -42,7 +77,7 @@ const login = createRoute({
   validateSearch: (s: Record<string, unknown>): { next?: string } =>
     typeof s.next === "string" ? { next: s.next } : {},
   beforeLoad: async ({ context }) => {
-    const setup = await context.queryClient.fetchQuery(setupQuery);
+    const setup = await orOffline(context.queryClient.fetchQuery(setupQuery));
     if (setup.needed) throw redirect({ to: "/setup" });
   },
   component: LoginPage,
@@ -65,7 +100,7 @@ const app = createRoute({
   getParentRoute: () => root,
   id: "app",
   beforeLoad: async ({ context, location }) => {
-    const me = await context.queryClient.ensureQueryData(meQuery);
+    const me = await orOffline(context.queryClient.ensureQueryData(meQuery));
     if (!me) throw redirect({ to: "/login", search: { next: location.href } });
     return { me };
   },
@@ -135,6 +170,9 @@ const watch = createRoute({
 });
 
 const routeTree = root.addChildren([
+  connect,
+  offline,
+  offlineWatch,
   publicLayout.addChildren([login, setup, invite]),
   app.addChildren([
     shell.addChildren([home, movies, movie, seriesList, series, search, downloads, account, admin]),

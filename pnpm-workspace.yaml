@@ -3,3 +3,6 @@ packages:
   - packages/*
 minimumReleaseAgeExclude:
   - tldts-core@7.4.21
+allowBuilds:
+  electron: true
+  electron-winstaller: true

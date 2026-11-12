@@ -1,4 +1,5 @@
 import { type ApiClient, createApiClient, type Schemas } from "@batvision/api-client";
+import { desktopInfo } from "./desktop";
 
 export type { Schemas };
 
@@ -44,6 +45,9 @@ export type DeviceInfo = Schemas["DeviceInfo"];
 
 /** "Firefox · macOS": shown in the device list. */
 export function thisDevice(): DeviceInfo {
+  // The desktop app signs in as a desktop device: it gets a token, not a cookie.
+  const desktop = desktopInfo();
+  if (desktop) return desktop.device;
   const ua = navigator.userAgent;
   const browser = /Edg\//.test(ua)
     ? "Edge"

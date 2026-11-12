@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
 import { DownloadSeriesButton } from "../components/downloads";
 import { Img } from "../components/media";
+import { DownloadedMark } from "../components/ThisComputer";
 import {
   Button,
   IconButton,
@@ -78,11 +79,10 @@ function EpisodeRow({ episode, index }: { episode: Schemas["EpisodeSummary"]; in
               <span className="text-faint sm:hidden">{number}. </span>
               {episode.title ?? t("detail.episode", { number })}
             </p>
-            {duration ? (
-              <span className="shrink-0 text-sm text-faint">
-                {formatRuntime(duration, i18n.language)}
-              </span>
-            ) : null}
+            <span className="flex shrink-0 items-center gap-3 text-sm text-faint">
+              <DownloadedMark kind="episode" id={episode.id} />
+              {duration ? formatRuntime(duration, i18n.language) : null}
+            </span>
           </div>
           {episode.overview ? (
             <p className="mt-1.5 line-clamp-2 text-sm leading-relaxed text-muted">
