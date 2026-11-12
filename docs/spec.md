@@ -91,7 +91,7 @@ docs/
 | **Watchlist**           | A list of **movies only**, per user, stored on the server.                                                                                        |
 | **Series subscription** | A download request made from a series page, for a given user and device. Two modes: `rolling(X)` or `season(n)`.                                  |
 | **Expected set**        | The items a device should have on its disk, computed by the server.                                                                               |
-| **Encoding profile**    | `original`, `mobile` or `saver`.                                                                                                                  |
+| **Encoding profile**    | `max`, `mobile` or `saver`.                                                                                                                       |
 | **Variant**             | An encoded file, identified by its profile × codec pair.                                                                                          |
 
 ## 4. Library
@@ -151,10 +151,12 @@ All the logic deciding what to download and what to delete lives in **one place*
 
 | Source              | Rule                                                                                                                                      |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Watchlist (movies)  | Every watchlist movie is expected on devices with automatic downloads enabled. **A watched movie leaves the watchlist.**                  |
+| Watchlist (movies)  | Every watchlist movie is expected on devices with automatic downloads enabled (off by default). **A watched movie leaves after 24 h.**    |
 | Series `rolling(X)` | The next X unwatched episodes. The set refills as episodes are watched and new ones air, until the series ends or the subscription stops. |
 | Series `season(n)`  | Every episode of season n, once. It never moves on to the next season.                                                                    |
-| Manual download     | A movie or episode added by hand.                                                                                                         |
+| Manual download     | A movie or episode added by hand for one device.                                                                                          |
+
+Series subscriptions and manual downloads are explicit requests for one device: they apply even with automatic downloads off. The audio track is chosen when requesting (default: the user's preferred audio language).
 
 ### 7.3 Deletion and quota
 
@@ -171,26 +173,27 @@ All the logic deciding what to download and what to delete lives in **one place*
 
 ### 7.5 Encoding profiles
 
-| Profile    | Video                | Audio      |
-| ---------- | -------------------- | ---------- |
-| `original` | File as is           | As is      |
-| `mobile`   | 720p, about 1.5 Mb/s | AAC stereo |
-| `saver`    | 480p, about 700 kb/s | AAC stereo |
+| Profile  | Video                                       | Audio         |
+| -------- | ------------------------------------------- | ------------- |
+| `max`    | Original stream copied (H.264, HEVC or AV1) | AAC, 5.1 kept |
+| `mobile` | 720p, about 1.5 Mb/s                        | AAC stereo    |
+| `saver`  | 480p, about 700 kb/s                        | AAC stereo    |
 
-- **Codec picked automatically:** AV1 if the device decodes it in hardware, otherwise HEVC (H.264 as a last resort).
-- Each device has a default profile, which can be changed for a given download.
-- Text subtitles are delivered as separate files.
+- Output is always MP4 with **one audio track** (the chosen language), so it plays in any player.
+- **Codec for lighter profiles:** AV1 if the device decodes it in hardware, otherwise HEVC. HDR is tone-mapped.
+- Default profile per device (desktop: `max`, Android: `mobile`), overridable per series or manual download.
+- **All text subtitles** (embedded and external) are delivered as separate WebVTT files.
 
 ### 7.6 Server-side encoding
 
-- **On-demand encoding**, in a queue.
-  - The server starts encoding **ahead of time** as soon as an expected set asks for a variant that doesn't exist yet.
-  - Concurrent encodes are capped (2 by default, configurable) to leave room for live playback.
+- **Encoding only when a device asks** (no anticipation: too heavy for a home server), in a persistent queue.
+  - One encode at a time by default (`BATVISION_ENCODE_CONCURRENCY`), leaving room for live playback.
 - **Variant cache:**
-  - configurable size budget, about 100 GB by default;
-  - least recently served variants are evicted first;
-  - **a variant listed in an expected set is never evicted.**
-- Finished variants are complete files, with a known size, downloadable with resume.
+  - size budget, 50 GB by default (`BATVISION_ENCODE_CACHE_GB`);
+  - **a variant is deleted as soon as every device that asked for it confirmed the download**;
+  - over budget, only variants nobody is waiting for are evicted.
+- Finished variants are complete files, with a known size, downloadable with resume (HTTP Range).
+- Device protocol: `POST /api/downloads/plan` (expected set with each item's state) → `POST /api/downloads/request` → download `url` and `subtitles` when `ready` → `POST /api/downloads/confirm`.
 
 ### 7.7 Synchronization
 
@@ -199,7 +202,7 @@ All the logic deciding what to download and what to delete lives in **one place*
   - when the connection comes back;
   - periodically, every 15 minutes to 1 hour (WorkManager on Android, a timer on desktop).
 - At each check, the client:
-  1. **uploads progress made offline** (positions, watched state, watch dates);
+  1. **uploads progress made offline** (positions, watched state, watch dates) with `POST /api/progress/batch`;
   2. fetches its expected set;
   3. applies it.
 - **On a progress conflict**, the most recent watch date wins.

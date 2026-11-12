@@ -33,6 +33,24 @@ async fn main() -> anyhow::Result<()> {
         batvision_server::playback::signing::MediaSigner::load_or_create(&config.data_dir)?;
     state.transcodes.clean();
     state.transcodes.clone().spawn_reaper();
+    let probe = state.ffmpeg.clone();
+    state
+        .encoder
+        .clone()
+        .start(move || {
+            probe
+                .try_read()
+                .ok()
+                .and_then(|p| {
+                    p.as_ref().map(|i| {
+                        batvision_server::downloads::encode::Encoders::from_names(
+                            &i.working_encoders,
+                        )
+                    })
+                })
+                .unwrap_or_default()
+        })
+        .await?;
     if let Some(token) = state.init_setup_token().await? {
         tracing::warn!(
             "no account exists yet: create the first administrator with setup token {token}"

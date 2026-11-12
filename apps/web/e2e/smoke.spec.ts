@@ -141,3 +141,52 @@ test("sign out returns to the sign-in page", async () => {
   await page.goto("/");
   await expect(page).toHaveURL(/\/login/);
 });
+
+test("watchlist and series downloads show up for a download device", async ({ browser }) => {
+  // Sign in an "Android phone" through the API: browsers can't download.
+  const phone = await browser.newContext();
+  const login = await phone.request.post("/api/auth/login", {
+    data: {
+      username: "alice",
+      password: "alice-password-123",
+      device: { name: "Pixel e2e", platform: "android" },
+    },
+  });
+  expect(login.ok()).toBeTruthy();
+  const token = (await login.json()).token as string;
+
+  const alice = await (await browser.newContext({ locale: "fr-FR" })).newPage();
+  await alice.goto("/login");
+  await alice.getByLabel("Identifiant").fill("alice");
+  await alice.getByLabel("Mot de passe").fill("alice-password-123");
+  await alice.getByRole("button", { name: "Se connecter" }).click();
+  await expect(alice.getByRole("link", { name: "Accueil" })).toBeVisible();
+
+  // Movie → watchlist.
+  await alice.goto("/movies");
+  await alice.getByRole("link", { name: /^Heat/ }).first().click();
+  await alice.getByRole("button", { name: "Watchlist" }).click();
+  await alice.getByRole("button", { name: "Ajouter à la watchlist" }).click();
+  await expect(alice.getByRole("button", { name: "Dans la watchlist" })).toBeVisible();
+
+  // Series → next 2 episodes on the phone.
+  await alice.goto("/series");
+  await alice.getByRole("link", { name: /^Dark/ }).first().click();
+  await alice.getByRole("button", { name: "Télécharger" }).click();
+  await alice.getByLabel("Combien").selectOption("2");
+  await alice.getByRole("dialog").getByRole("button", { name: "Télécharger" }).click();
+
+  await alice.goto("/downloads");
+  await expect(alice.getByRole("heading", { name: "Pixel e2e" })).toBeVisible();
+  await expect(alice.getByText("Les 2 prochains épisodes")).toBeVisible();
+  await expect(alice.getByText("Heat").first()).toBeVisible();
+
+  // The phone sees the same expected set.
+  const plan = await phone.request.post("/api/downloads/plan", {
+    data: {},
+    headers: { authorization: `Bearer ${token}` },
+  });
+  const items = (await plan.json()).items as { kind: string; source: string }[];
+  expect(items.filter((i) => i.kind === "episode")).toHaveLength(2);
+  expect(items.every((i) => i.source === "rolling")).toBeTruthy();
+});

@@ -97,6 +97,19 @@ pub struct HomeItem {
     pub duration_ms: Option<i64>,
 }
 
+/// A card for any playable item.
+pub async fn item_card(
+    state: &AppState,
+    user: &User,
+    kind: PlayableKind,
+    id: i64,
+) -> ApiResult<HomeItem> {
+    match kind {
+        PlayableKind::Movie => movie_item(state, user, id).await,
+        PlayableKind::Episode => episode_item(state, user, id).await,
+    }
+}
+
 async fn movie_item(state: &AppState, user: &User, id: i64) -> ApiResult<HomeItem> {
     let movie = library::load_movie_detail(state, user, id).await?;
     Ok(HomeItem {

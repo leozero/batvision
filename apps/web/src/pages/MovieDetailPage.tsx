@@ -3,6 +3,7 @@ import { Link, useParams } from "@tanstack/react-router";
 import { Check, Eye, EyeOff, Play, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
+import { DownloadMovieButton, WatchlistButton } from "../components/downloads";
 import { Badge, Button, Page, ProgressBar, Skeleton } from "../components/ui";
 import type { Schemas } from "../lib/api";
 import { formatRuntime, languageName, progressRatio } from "../lib/format";
@@ -131,6 +132,8 @@ export function MovieDetailPage() {
               {movie.played ? <EyeOff className="size-5" /> : <Eye className="size-5" />}
               {movie.played ? t("detail.markUnwatched") : t("detail.markWatched")}
             </Button>
+            <WatchlistButton movie={movie} />
+            <DownloadMovieButton movie={movie} />
             <IdentifyButton kind="movies" id={movie.id} title={movie.title} year={movie.year} />
             {progress > 0 ? (
               <ProgressBar value={progress} className="w-full max-w-sm basis-full" />

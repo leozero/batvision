@@ -4,6 +4,39 @@
  */
 
 export interface paths {
+    "/api/admin/encodes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["encodes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/encodes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Deletes an encoded version (or cancels a queued one). Devices can request it again. */
+        delete: operations["delete_encode"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/invitations": {
         parameters: {
             query?: never;
@@ -295,6 +328,170 @@ export interface paths {
         put?: never;
         post: operations["quick_connect_start"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** The device finished downloading: the server can drop its cache copy. */
+        post: operations["confirm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/devices/{id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["put_settings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/file/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** An encoded file (video or subtitle), with Range support to resume downloads. */
+        get: operations["file"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["add_manual"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/manual/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["remove_manual"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/overview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** What this device should have on disk. Call on start, when back online, periodically. */
+        post: operations["plan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Asks the server to prepare an expected item (encoding starts only now). */
+        post: operations["request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/subscriptions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["subscribe"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/downloads/subscriptions/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["unsubscribe"];
         options?: never;
         head?: never;
         patch?: never;
@@ -650,6 +847,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/progress/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Progress made offline, uploaded in one go. The most recent watch wins. */
+        post: operations["progress_batch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/search": {
         parameters: {
             query?: never;
@@ -783,6 +997,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/watchlist": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_watchlist"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/watchlist/{movie_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["add_to_watchlist"];
+        post?: never;
+        delete: operations["remove_from_watchlist"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -815,6 +1061,9 @@ export interface components {
             language?: string | null;
             title?: string | null;
         };
+        BatchResult: {
+            applied: number;
+        };
         /** @description What a client says it can play. */
         Capabilities: {
             /** @description ffprobe codec names: `aac`, `mp3`, `opus`, `flac`, `ac3`, `eac3`. */
@@ -833,6 +1082,10 @@ export interface components {
         ChangePasswordRequest: {
             current_password: string;
             new_password: string;
+        };
+        ConfirmRequest: {
+            /** Format: int64 */
+            variant_id: number;
         };
         CreateInvitationRequest: {
             role: components["schemas"]["Role"];
@@ -853,11 +1106,46 @@ export interface components {
             role: components["schemas"]["Role"];
             username: string;
         };
+        Created: {
+            /** Format: int64 */
+            id: number;
+        };
+        DeviceDownloads: {
+            /** Format: int64 */
+            id: number;
+            items: components["schemas"]["PlanItem"][];
+            /** Format: int64 */
+            last_seen_at: number;
+            manual: components["schemas"]["ManualInfo"][];
+            name: string;
+            platform: components["schemas"]["Platform"];
+            settings: components["schemas"]["DeviceSettings"];
+            subscriptions: components["schemas"]["SubscriptionInfo"][];
+        };
         /** @description What a client says about itself when signing in. */
         DeviceInfo: {
             /** @description Human-readable name shown in the device list ("Pixel 9", "Firefox – Mac"). */
             name: string;
             platform: components["schemas"]["Platform"];
+        };
+        DeviceSettings: {
+            /** @description Download watchlist movies automatically. */
+            auto_download: boolean;
+            /**
+             * Format: int64
+             * @description Monthly mobile data cap.
+             */
+            mobile_cap_bytes?: number | null;
+            /** @description Allow downloads over mobile data (lighter versions only). */
+            mobile_data: boolean;
+            profile: components["schemas"]["Profile"];
+            /**
+             * Format: int64
+             * @description Space downloads may use on the device; `None` = no limit.
+             */
+            quota_bytes?: number | null;
+            /** @description Android: app storage or SD card. */
+            storage: components["schemas"]["Storage"];
         };
         DeviceSummary: {
             /** Format: int64 */
@@ -870,6 +1158,48 @@ export interface components {
             last_seen_at: number;
             name: string;
             platform: components["schemas"]["Platform"];
+        };
+        DownloadPlan: {
+            /** @description In priority order: keep the longest prefix that fits the quota, delete the rest. */
+            items: components["schemas"]["PlanItem"][];
+            settings: components["schemas"]["DeviceSettings"];
+        };
+        /** @enum {string} */
+        DownloadStatus: "not_requested" | "queued" | "encoding" | "ready" | "failed" | "downloaded" | "unavailable";
+        DownloadsOverview: {
+            /** @description The user's devices able to download (apps, not browsers). */
+            devices: components["schemas"]["DeviceDownloads"][];
+            watchlist: components["schemas"]["WatchlistItem"][];
+        };
+        EncodeInfo: {
+            codec: string;
+            /** Format: int64 */
+            created_at: number;
+            error?: string | null;
+            file: string;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            item_id: number;
+            item_kind: string;
+            profile: components["schemas"]["Profile"];
+            /** Format: double */
+            progress: number;
+            /** Format: int64 */
+            size_bytes?: number | null;
+            status: string;
+            /**
+             * Format: int64
+             * @description Devices that asked and haven't confirmed the download yet.
+             */
+            waiting_devices: number;
+        };
+        EncodeQueue: {
+            /** Format: int64 */
+            budget_bytes: number;
+            /** Format: int64 */
+            cache_bytes: number;
+            variants: components["schemas"]["EncodeInfo"][];
         };
         EpisodeDetail: components["schemas"]["EpisodeSummary"] & {
             file?: components["schemas"]["FileInfo"] | null;
@@ -911,6 +1241,18 @@ export interface components {
         ErrorBody: {
             code: string;
             message: string;
+        };
+        ExpectedItem: {
+            audio_language?: string | null;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            keep_until?: number | null;
+            kind: components["schemas"]["PlayableKind"];
+            profile: components["schemas"]["Profile"];
+            source: components["schemas"]["Source"];
+            /** @description Watched: kept until `keep_until`, and the first to go when space runs out. */
+            watched: boolean;
         };
         ExternalSubtitleInfo: {
             kind: components["schemas"]["TrackKind"];
@@ -992,6 +1334,11 @@ export interface components {
             /** @description Shown only once. The client builds the invitation link from it. */
             token: string;
         };
+        ItemRef: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["PlayableKind"];
+        };
         Library: {
             /** Format: int64 */
             id: number;
@@ -1022,6 +1369,25 @@ export interface components {
             challenge: string;
             /** @enum {string} */
             status: "totp_required";
+        };
+        ManualInfo: {
+            audio_language?: string | null;
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            item_id: number;
+            kind: string;
+            profile?: components["schemas"]["Profile"] | null;
+            title: string;
+        };
+        ManualRequest: {
+            audio_language?: string | null;
+            /** Format: int64 */
+            device_id: number;
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["PlayableKind"];
+            profile?: components["schemas"]["Profile"] | null;
         };
         /** @enum {string} */
         MarkableKind: "movie" | "episode" | "season" | "series";
@@ -1056,6 +1422,7 @@ export interface components {
             file?: components["schemas"]["FileInfo"] | null;
             /** Format: int64 */
             id: number;
+            in_watchlist: boolean;
             /** Format: int64 */
             library_id: number;
             overview?: string | null;
@@ -1095,6 +1462,51 @@ export interface components {
             title: string;
             /** Format: int64 */
             year?: number | null;
+        };
+        /** @description One progress record made offline, uploaded when the device is back online. */
+        OfflineProgress: {
+            /**
+             * Format: int64
+             * @description When it happened on the device, Unix seconds.
+             */
+            at: number;
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["PlayableKind"];
+            played: boolean;
+            /** Format: int64 */
+            position_ms: number;
+        };
+        PlanItem: components["schemas"]["ExpectedItem"] & {
+            /** Format: int64 */
+            duration_ms?: number | null;
+            /** Format: int64 */
+            episode_number?: number | null;
+            episode_title?: string | null;
+            error?: string | null;
+            poster_path?: string | null;
+            /**
+             * Format: double
+             * @description Encoding progress, 0 to 1.
+             */
+            progress: number;
+            /** Format: int64 */
+            season_number?: number | null;
+            /** Format: int64 */
+            series_id?: number | null;
+            /** Format: int64 */
+            size_bytes?: number | null;
+            status: components["schemas"]["DownloadStatus"];
+            subtitles: components["schemas"]["SubtitleFile"][];
+            /** @description Movie title, or series title for an episode. */
+            title: string;
+            url?: string | null;
+            /** Format: int64 */
+            variant_id?: number | null;
+        };
+        PlanRequest: {
+            /** @description The device decodes AV1 in hardware (then lighter versions use AV1). */
+            av1?: boolean | null;
         };
         /** @enum {string} */
         Platform: "web" | "desktop" | "android" | "android_tv" | "other";
@@ -1150,6 +1562,8 @@ export interface components {
             subtitle_language?: string | null;
             subtitle_mode: components["schemas"]["SubtitleMode"];
         };
+        /** @enum {string} */
+        Profile: "max" | "mobile" | "saver";
         ProgressReport: {
             /** Format: int64 */
             id: number;
@@ -1195,6 +1609,10 @@ export interface components {
         RegenerateRecoveryCodesRequest: {
             /** @description Current TOTP code. */
             code: string;
+        };
+        Requested: {
+            /** Format: int64 */
+            variant_id: number;
         };
         /** @enum {string} */
         Role: "admin" | "user";
@@ -1304,9 +1722,48 @@ export interface components {
             /** @description True while no account exists: the first admin must be created with the setup token. */
             needed: boolean;
         };
+        /** @enum {string} */
+        Source: "rolling" | "season" | "manual" | "watchlist";
         StopRequest: {
             session_id: string;
         };
+        /** @enum {string} */
+        Storage: "internal" | "sd";
+        SubscribeRequest: {
+            audio_language?: string | null;
+            /**
+             * Format: int64
+             * @description rolling: number of unwatched episodes to keep (1 to 20).
+             */
+            count?: number | null;
+            /** Format: int64 */
+            device_id: number;
+            mode: components["schemas"]["SubscriptionMode"];
+            profile?: components["schemas"]["Profile"] | null;
+            /**
+             * Format: int64
+             * @description season: the season to download.
+             */
+            season_number?: number | null;
+            /** Format: int64 */
+            series_id: number;
+        };
+        SubscriptionInfo: {
+            audio_language?: string | null;
+            /** Format: int64 */
+            count?: number | null;
+            /** Format: int64 */
+            id: number;
+            mode: string;
+            profile?: components["schemas"]["Profile"] | null;
+            /** Format: int64 */
+            season_number?: number | null;
+            /** Format: int64 */
+            series_id: number;
+            series_title: string;
+        };
+        /** @enum {string} */
+        SubscriptionMode: "rolling" | "season";
         SubtitleChoice: {
             external: boolean;
             id: string;
@@ -1315,6 +1772,11 @@ export interface components {
             /** @description Image subtitles are burned into the video (triggers a transcode). */
             text: boolean;
             title?: string | null;
+        };
+        SubtitleFile: {
+            kind: components["schemas"]["TrackKind"];
+            language?: string | null;
+            url: string;
         };
         /** @enum {string} */
         SubtitleMode: "always" | "foreign" | "never";
@@ -1387,6 +1849,21 @@ export interface components {
             /** Format: int64 */
             width?: number | null;
         };
+        WatchlistAdd: {
+            /** @description ISO 639-2 audio language to download; omitted = the preferred one. */
+            audio_language?: string | null;
+        };
+        WatchlistItem: {
+            /** Format: int64 */
+            added_at: number;
+            audio_language?: string | null;
+            /** Format: int64 */
+            movie_id: number;
+            poster_path?: string | null;
+            title: string;
+            /** Format: int64 */
+            year?: number | null;
+        };
     };
     responses: never;
     parameters: never;
@@ -1396,6 +1873,44 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    encodes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EncodeQueue"];
+                };
+            };
+        };
+    };
+    delete_encode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     list_invitations: {
         parameters: {
             query?: never;
@@ -2015,6 +2530,282 @@ export interface operations {
             };
         };
     };
+    confirm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConfirmRequest"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceSettings"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceSettings"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    file: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            206: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    add_manual: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Created"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    remove_manual: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadsOverview"];
+                };
+            };
+        };
+    };
+    plan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DownloadPlan"];
+                };
+            };
+        };
+    };
+    request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ItemRef"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Requested"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    subscribe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubscribeRequest"];
+            };
+        };
+        responses: {
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Created"];
+                };
+            };
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unsubscribe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     episode: {
         parameters: {
             query?: never;
@@ -2629,6 +3420,29 @@ export interface operations {
             };
         };
     };
+    progress_batch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OfflineProgress"][];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchResult"];
+                };
+            };
+        };
+    };
     search: {
         parameters: {
             query: {
@@ -2858,6 +3672,75 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    get_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchlistItem"][];
+                };
+            };
+        };
+    };
+    add_to_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movie_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WatchlistAdd"];
+            };
+        };
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_from_watchlist: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                movie_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

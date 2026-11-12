@@ -33,7 +33,7 @@ pub struct TranscodeJob {
     pub encoder: VideoEncoder,
 }
 
-const TONEMAP: &str = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,\
+pub const TONEMAP: &str = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,\
 tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
 
 /// Maximum video bitrate for an output height, in kbit/s.

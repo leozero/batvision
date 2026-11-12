@@ -20,6 +20,8 @@ pub enum Grant {
     Subtitle { f: i64, s: i64, o: i64 },
     /// An external subtitle file, as WebVTT shifted by `o` ms.
     External { x: i64, o: i64 },
+    /// File `f` of an encoded variant: 0 = the video, n = its n-th subtitle.
+    Variant { v: i64, f: i64 },
 }
 
 #[derive(Serialize, Deserialize)]

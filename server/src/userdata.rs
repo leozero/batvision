@@ -13,7 +13,7 @@ pub const MIN_RESUME_MS: i64 = 60_000;
 /// Watched past this share of its duration, an item counts as played.
 pub const PLAYED_RATIO: f64 = 0.9;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum PlayableKind {
     Movie,
@@ -405,4 +405,82 @@ mod tests {
             "unknown duration"
         );
     }
+}
+
+/// One progress record made offline, uploaded when the device is back online.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct OfflineProgress {
+    pub kind: PlayableKind,
+    pub id: i64,
+    pub position_ms: i64,
+    pub played: bool,
+    /// When it happened on the device, Unix seconds.
+    pub at: i64,
+}
+
+/// Applies offline records. The most recent watch wins: a record older than what the
+/// server already has (watched elsewhere since) is ignored. Returns how many applied.
+pub async fn apply_offline(db: &Db, user_id: i64, records: &[OfflineProgress]) -> ApiResult<usize> {
+    let now = now();
+    let mut applied = 0;
+    let mut sorted: Vec<&OfflineProgress> = records.iter().collect();
+    sorted.sort_by_key(|r| r.at);
+    for r in sorted {
+        // A clock in the future must not lock the item forever.
+        let at = r.at.min(now);
+        let exists: bool = match r.kind {
+            PlayableKind::Movie => {
+                sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM movies WHERE id = ?)")
+            }
+            PlayableKind::Episode => {
+                sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM episodes WHERE id = ?)")
+            }
+        }
+        .bind(r.id)
+        .fetch_one(db)
+        .await?;
+        if !exists {
+            continue;
+        }
+        let current: Option<Option<i64>> = sqlx::query_scalar(
+            "SELECT last_played_at FROM user_item_data WHERE user_id = ? AND item_kind = ? AND item_id = ?",
+        )
+        .bind(user_id)
+        .bind(r.kind.as_str())
+        .bind(r.id)
+        .fetch_optional(db)
+        .await?;
+        if current.flatten().is_some_and(|server_at| server_at > at) {
+            continue;
+        }
+        let duration = duration_of(db, r.kind, r.id).await?;
+        let played =
+            r.played || progress_outcome(r.position_ms, duration) == ProgressOutcome::Played;
+        let position = match progress_outcome(r.position_ms.max(0), duration) {
+            ProgressOutcome::Resume(p) if !played => p,
+            _ => 0,
+        };
+        sqlx::query(
+            "INSERT INTO user_item_data
+               (user_id, item_kind, item_id, position_ms, played, play_count, last_played_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?5, ?6, ?7)
+             ON CONFLICT (user_id, item_kind, item_id) DO UPDATE SET
+               play_count = user_item_data.play_count + (CASE WHEN ?5 = 1 AND user_item_data.played = 0 THEN 1 ELSE 0 END),
+               played = CASE WHEN ?5 = 1 THEN 1 ELSE user_item_data.played END,
+               position_ms = excluded.position_ms,
+               last_played_at = excluded.last_played_at,
+               updated_at = excluded.updated_at",
+        )
+        .bind(user_id)
+        .bind(r.kind.as_str())
+        .bind(r.id)
+        .bind(position)
+        .bind(played)
+        .bind(at)
+        .bind(now)
+        .execute(db)
+        .await?;
+        applied += 1;
+    }
+    Ok(applied)
 }

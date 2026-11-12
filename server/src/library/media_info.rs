@@ -28,7 +28,7 @@ pub struct VideoStream {
 }
 
 /// What a track is for, used to carry a track choice from one episode to the next.
-#[derive(Debug, Clone, Copy, Serialize, ToSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ToSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum TrackKind {
     Normal,

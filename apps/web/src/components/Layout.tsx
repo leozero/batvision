@@ -9,7 +9,13 @@ import { meQuery } from "../lib/queries";
 import { Logo } from "./Logo";
 import { cx, IconButton, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "./ui";
 
-function NavLink({ to, children }: { to: "/" | "/movies" | "/series"; children: string }) {
+function NavLink({
+  to,
+  children,
+}: {
+  to: "/" | "/movies" | "/series" | "/downloads";
+  children: string;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
   return (
@@ -71,6 +77,7 @@ export function AppLayout() {
           <NavLink to="/">{t("nav.home")}</NavLink>
           <NavLink to="/movies">{t("nav.movies")}</NavLink>
           <NavLink to="/series">{t("nav.series")}</NavLink>
+          <NavLink to="/downloads">{t("nav.downloads")}</NavLink>
         </nav>
         <div className="ml-auto flex items-center gap-1">
           <Link to="/search" aria-label={t("nav.search")}>

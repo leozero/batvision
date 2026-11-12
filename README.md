@@ -5,7 +5,7 @@ Self-hosted media server (movies and TV series), rewritten from scratch with Jel
 - Specification: [docs/spec.md](docs/spec.md)
 - Decision log: [docs/decisions.md](docs/decisions.md)
 
-> Early development: the server and the web client work; downloads and the other clients come next.
+> Early development: the server, the web client and the download engine work; the desktop and Android apps come next.
 
 ## Layout
 
@@ -69,6 +69,8 @@ pnpm --filter @batvision/api-client generate
 | `BATVISION_SCAN_INTERVAL_MINUTES` | `15`           | Interval between automatic scans (`0` disables them)                            |
 | `BATVISION_TRUST_PROXY`           | `false`        | Read the client IP from `X-Forwarded-For` (only behind a reverse proxy)         |
 | `BATVISION_SECURE_COOKIES`        | `true`         | `Secure` flag on the session cookie (disable only for plain-HTTP local testing) |
+| `BATVISION_ENCODE_CACHE_GB`       | `50`           | Size budget of the download versions cache                                      |
+| `BATVISION_ENCODE_CONCURRENCY`    | `1`            | Download versions encoded at the same time                                      |
 | `BATVISION_SETUP_TOKEN`           | —              | Fixed first-run setup token (16+ characters) instead of a random one            |
 | `RUST_LOG`                        | `info`         | Log level                                                                       |
 

@@ -22,13 +22,16 @@ import {
   Field,
   Input,
   Page,
+  ProgressBar,
   Select,
   Spinner,
   TabPanel,
   Tabs,
 } from "../../components/ui";
 import { ApiError, api, call, type Schemas } from "../../lib/api";
+import { formatBytes } from "../../lib/bytes";
 import {
+  encodesQuery,
   invalidateLibrary,
   invitationsQuery,
   librariesQuery,
@@ -47,6 +50,7 @@ export function AdminPage() {
   const tabs = [
     { value: "libraries", label: t("admin.libraries") },
     { value: "users", label: t("admin.users") },
+    { value: "encodes", label: t("admin.encodes") },
     { value: "system", label: t("admin.system") },
   ];
   if (me && !me.totp_enabled) {
@@ -77,6 +81,9 @@ export function AdminPage() {
         <TabPanel value="users" className="space-y-6">
           <InvitationsCard />
           <UsersCard />
+        </TabPanel>
+        <TabPanel value="encodes" className="space-y-6">
+          <EncodesCard />
         </TabPanel>
         <TabPanel value="system" className="space-y-6">
           <SystemCard />
@@ -423,6 +430,71 @@ function SystemCard() {
           {hardware.length ? t("admin.gpuOk") : t("admin.gpuMissing")}
         </dd>
       </dl>
+    </Card>
+  );
+}
+
+function EncodesCard() {
+  const { t, i18n } = useTranslation();
+  const qc = useQueryClient();
+  const { data } = useQuery(encodesQuery);
+  const remove = useMutation({
+    mutationFn: (id: number) =>
+      call(api.DELETE("/api/admin/encodes/{id}", { params: { path: { id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: encodesQuery.queryKey }),
+  });
+  const used = data ? Math.min(1, data.cache_bytes / Math.max(1, data.budget_bytes)) : 0;
+  return (
+    <Card title={t("admin.encodes")} description={t("admin.encodesHint")}>
+      <div className="mb-5">
+        <div className="mb-1.5 flex justify-between text-xs text-muted">
+          <span>{t("admin.cache")}</span>
+          <span>
+            {formatBytes(data?.cache_bytes, i18n.language)} /{" "}
+            {formatBytes(data?.budget_bytes, i18n.language)}
+          </span>
+        </div>
+        <ProgressBar value={used} />
+      </div>
+      {data?.variants.length ? (
+        <ul className="divide-y divide-line">
+          {data.variants.map((v) => (
+            <li key={v.id} className="flex items-center gap-3 py-2.5 text-sm">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-mono text-xs">{v.file}</p>
+                <p className="text-xs text-faint">
+                  {t(`downloads.profile.${v.profile}`)} · {v.codec.toUpperCase()}
+                  {v.size_bytes ? ` · ${formatBytes(v.size_bytes, i18n.language)}` : ""}
+                  {v.waiting_devices
+                    ? ` · ${t("admin.waiting", { count: v.waiting_devices })}`
+                    : ""}
+                </p>
+                {v.status === "encoding" ? (
+                  <ProgressBar value={v.progress} className="mt-1.5" />
+                ) : null}
+                {v.error ? <p className="mt-1 text-xs text-danger">{v.error}</p> : null}
+              </div>
+              <Badge
+                tone={
+                  v.status === "ready" ? "success" : v.status === "encoding" ? "accent" : "neutral"
+                }
+              >
+                {t(`admin.encodeStatus.${v.status}`)}
+              </Badge>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => remove.mutate(v.id)}
+                aria-label={t("downloads.remove")}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted">{t("admin.noEncodes")}</p>
+      )}
     </Card>
   );
 }

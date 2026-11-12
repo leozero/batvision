@@ -33,6 +33,10 @@ pub struct Config {
     pub secure_cookies: bool,
     /// Fixed first-run setup token (otherwise a random one is printed in the logs).
     pub setup_token: Option<String>,
+    /// Size budget of the encoded-versions cache, in GB.
+    pub encode_cache_gb: u64,
+    /// How many download versions may encode at the same time.
+    pub encode_concurrency: usize,
 }
 
 impl Config {
@@ -68,6 +72,12 @@ impl Config {
             secure_cookies: parse_bool(&get("BATVISION_SECURE_COOKIES", "true"))
                 .context("BATVISION_SECURE_COOKIES must be true or false")?,
             setup_token: lookup("BATVISION_SETUP_TOKEN").filter(|t| t.trim().len() >= 16),
+            encode_cache_gb: get("BATVISION_ENCODE_CACHE_GB", "50")
+                .parse()
+                .context("BATVISION_ENCODE_CACHE_GB must be a number")?,
+            encode_concurrency: get("BATVISION_ENCODE_CONCURRENCY", "1")
+                .parse()
+                .context("BATVISION_ENCODE_CONCURRENCY must be a number")?,
         })
     }
 }
@@ -96,6 +106,8 @@ impl std::fmt::Debug for Config {
                 "setup_token",
                 &self.setup_token.as_ref().map(|_| "<redacted>"),
             )
+            .field("encode_cache_gb", &self.encode_cache_gb)
+            .field("encode_concurrency", &self.encode_concurrency)
             .finish()
     }
 }

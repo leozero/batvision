@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod config;
 pub mod db;
+pub mod downloads;
 pub mod error;
 pub mod ffmpeg;
 pub mod library;
@@ -30,6 +31,7 @@ use crate::{
     auth::AuthState,
     config::Config,
     db::Db,
+    downloads::encode::Encoder,
     ffmpeg::FfmpegInfo,
     library::scanner::ScanManager,
     metadata::tmdb::TmdbClient,
@@ -95,6 +97,22 @@ use crate::{
         routes::playback::stream,
         routes::playback::subtitle,
         routes::playback::hls,
+        routes::downloads::plan,
+        routes::downloads::request,
+        routes::downloads::confirm,
+        routes::downloads::file,
+        routes::downloads::progress_batch,
+        routes::downloads::overview,
+        routes::downloads::put_settings,
+        routes::downloads::get_watchlist,
+        routes::downloads::add_to_watchlist,
+        routes::downloads::remove_from_watchlist,
+        routes::downloads::subscribe,
+        routes::downloads::unsubscribe,
+        routes::downloads::add_manual,
+        routes::downloads::remove_manual,
+        routes::downloads::encodes,
+        routes::downloads::delete_encode,
     ),
     tags(
         (name = "system", description = "Server status"),
@@ -103,6 +121,7 @@ use crate::{
         (name = "admin", description = "Administration (admins with 2FA only)"),
         (name = "library", description = "Browsing movies and series"),
         (name = "playback", description = "Playback, progress and watched state"),
+        (name = "downloads", description = "Offline downloads: expected sets, watchlist, subscriptions"),
     )
 )]
 pub struct ApiDoc;
@@ -132,6 +151,8 @@ pub struct AppState {
     /// Signs media URLs. Random per process unless replaced by the persisted key.
     pub signer: MediaSigner,
     pub transcodes: Arc<TranscodeManager>,
+    /// Encodes download versions on request.
+    pub encoder: Arc<Encoder>,
 }
 
 impl AppState {
@@ -149,7 +170,16 @@ impl AppState {
             config.cache_dir.join("transcodes"),
             config.ffmpeg.clone(),
         ));
+        let encoder = Arc::new(Encoder::new(
+            db.clone(),
+            config.cache_dir.join("variants"),
+            config.media_dir.clone(),
+            config.ffmpeg.clone(),
+            config.encode_concurrency,
+            (config.encode_cache_gb as i64) * 1_000_000_000,
+        ));
         Self {
+            encoder,
             tmdb,
             scans: Arc::new(ScanManager::default()),
             signer: MediaSigner::new(key),
@@ -179,7 +209,7 @@ impl AppState {
 }
 
 pub fn app(state: AppState) -> Router {
-    use routes::{admin, auth, home, library, me, playback, system};
+    use routes::{admin, auth, downloads, home, library, me, playback, system};
 
     let api = Router::new()
         .route("/health", get(system::health))
@@ -249,6 +279,31 @@ pub fn app(state: AppState) -> Router {
         .route("/search", get(home::search))
         .route("/progress", post(home::report_progress))
         .route("/played/{kind}/{id}", axum::routing::put(home::set_played))
+        .route("/downloads/plan", post(downloads::plan))
+        .route("/downloads/request", post(downloads::request))
+        .route("/downloads/confirm", post(downloads::confirm))
+        .route("/downloads/file/{token}", get(downloads::file))
+        .route("/progress/batch", post(downloads::progress_batch))
+        .route("/downloads/overview", get(downloads::overview))
+        .route(
+            "/downloads/devices/{id}/settings",
+            axum::routing::put(downloads::put_settings),
+        )
+        .route("/watchlist", get(downloads::get_watchlist))
+        .route(
+            "/watchlist/{movie_id}",
+            axum::routing::put(downloads::add_to_watchlist)
+                .delete(downloads::remove_from_watchlist),
+        )
+        .route("/downloads/subscriptions", post(downloads::subscribe))
+        .route(
+            "/downloads/subscriptions/{id}",
+            delete(downloads::unsubscribe),
+        )
+        .route("/downloads/manual", post(downloads::add_manual))
+        .route("/downloads/manual/{id}", delete(downloads::remove_manual))
+        .route("/admin/encodes", get(downloads::encodes))
+        .route("/admin/encodes/{id}", delete(downloads::delete_encode))
         .route("/playback", post(playback::start))
         .route("/playback/stop", post(playback::stop))
         .route("/stream/{token}", get(playback::stream))

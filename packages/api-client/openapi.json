@@ -9,6 +9,58 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/api/admin/encodes": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "encodes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EncodeQueue"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/encodes/{id}": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Deletes an encoded version (or cancels a queued one). Devices can request it again.",
+        "operationId": "delete_encode",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/invitations": {
       "get": {
         "tags": [
@@ -847,6 +899,357 @@
             }
           }
         }
+      }
+    },
+    "/api/downloads/confirm": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "The device finished downloading: the server can drop its cache copy.",
+        "operationId": "confirm",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/devices/{id}/settings": {
+      "put": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "put_settings",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceSettings"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/file/{token}": {
+      "get": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "An encoded file (video or subtitle), with Range support to resume downloads.",
+        "operationId": "file",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {},
+          "206": {},
+          "404": {}
+        }
+      }
+    },
+    "/api/downloads/manual": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "add_manual",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "404": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/manual/{id}": {
+      "delete": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "remove_manual",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/overview": {
+      "get": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "overview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadsOverview"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/plan": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "What this device should have on disk. Call on start, when back online, periodically.",
+        "operationId": "plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadPlan"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/request": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "Asks the server to prepare an expected item (encoding starts only now).",
+        "operationId": "request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ItemRef"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Requested"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/subscriptions": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "subscribe",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubscribeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/downloads/subscriptions/{id}": {
+      "delete": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "unsubscribe",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
       }
     },
     "/api/episodes/{id}": {
@@ -1725,6 +2128,44 @@
         ]
       }
     },
+    "/api/progress/batch": {
+      "post": {
+        "tags": [
+          "downloads"
+        ],
+        "summary": "Progress made offline, uploaded in one go. The most recent watch wins.",
+        "operationId": "progress_batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/OfflineProgress"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchResult"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/search": {
       "get": {
         "tags": [
@@ -2067,6 +2508,104 @@
           }
         ]
       }
+    },
+    "/api/watchlist": {
+      "get": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "get_watchlist",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WatchlistItem"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/watchlist/{movie_id}": {
+      "put": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "add_to_watchlist",
+        "parameters": [
+          {
+            "name": "movie_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchlistAdd"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "downloads"
+        ],
+        "operationId": "remove_from_watchlist",
+        "parameters": [
+          {
+            "name": "movie_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -2177,6 +2716,18 @@
           }
         }
       },
+      "BatchResult": {
+        "type": "object",
+        "required": [
+          "applied"
+        ],
+        "properties": {
+          "applied": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "Capabilities": {
         "type": "object",
         "description": "What a client says it can play.",
@@ -2242,6 +2793,18 @@
           }
         }
       },
+      "ConfirmRequest": {
+        "type": "object",
+        "required": [
+          "variant_id"
+        ],
+        "properties": {
+          "variant_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "CreateInvitationRequest": {
         "type": "object",
         "required": [
@@ -2301,6 +2864,68 @@
           }
         }
       },
+      "Created": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "DeviceDownloads": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "platform",
+          "last_seen_at",
+          "settings",
+          "items",
+          "subscriptions",
+          "manual"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanItem"
+            }
+          },
+          "last_seen_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "manual": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManualInfo"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "$ref": "#/components/schemas/Platform"
+          },
+          "settings": {
+            "$ref": "#/components/schemas/DeviceSettings"
+          },
+          "subscriptions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubscriptionInfo"
+            }
+          }
+        }
+      },
       "DeviceInfo": {
         "type": "object",
         "description": "What a client says about itself when signing in.",
@@ -2315,6 +2940,48 @@
           },
           "platform": {
             "$ref": "#/components/schemas/Platform"
+          }
+        }
+      },
+      "DeviceSettings": {
+        "type": "object",
+        "required": [
+          "auto_download",
+          "profile",
+          "mobile_data",
+          "storage"
+        ],
+        "properties": {
+          "auto_download": {
+            "type": "boolean",
+            "description": "Download watchlist movies automatically."
+          },
+          "mobile_cap_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Monthly mobile data cap."
+          },
+          "mobile_data": {
+            "type": "boolean",
+            "description": "Allow downloads over mobile data (lighter versions only)."
+          },
+          "profile": {
+            "$ref": "#/components/schemas/Profile"
+          },
+          "quota_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Space downloads may use on the device; `None` = no limit."
+          },
+          "storage": {
+            "$ref": "#/components/schemas/Storage",
+            "description": "Android: app storage or SD card."
           }
         }
       },
@@ -2350,6 +3017,149 @@
           },
           "platform": {
             "$ref": "#/components/schemas/Platform"
+          }
+        }
+      },
+      "DownloadPlan": {
+        "type": "object",
+        "required": [
+          "settings",
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlanItem"
+            },
+            "description": "In priority order: keep the longest prefix that fits the quota, delete the rest."
+          },
+          "settings": {
+            "$ref": "#/components/schemas/DeviceSettings"
+          }
+        }
+      },
+      "DownloadStatus": {
+        "type": "string",
+        "enum": [
+          "not_requested",
+          "queued",
+          "encoding",
+          "ready",
+          "failed",
+          "downloaded",
+          "unavailable"
+        ]
+      },
+      "DownloadsOverview": {
+        "type": "object",
+        "required": [
+          "devices",
+          "watchlist"
+        ],
+        "properties": {
+          "devices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeviceDownloads"
+            },
+            "description": "The user's devices able to download (apps, not browsers)."
+          },
+          "watchlist": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WatchlistItem"
+            }
+          }
+        }
+      },
+      "EncodeInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "item_kind",
+          "item_id",
+          "file",
+          "profile",
+          "codec",
+          "status",
+          "progress",
+          "created_at",
+          "waiting_devices"
+        ],
+        "properties": {
+          "codec": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "item_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "item_kind": {
+            "type": "string"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/Profile"
+          },
+          "progress": {
+            "type": "number",
+            "format": "double"
+          },
+          "size_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "status": {
+            "type": "string"
+          },
+          "waiting_devices": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Devices that asked and haven't confirmed the download yet."
+          }
+        }
+      },
+      "EncodeQueue": {
+        "type": "object",
+        "required": [
+          "variants",
+          "cache_bytes",
+          "budget_bytes"
+        ],
+        "properties": {
+          "budget_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cache_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "variants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EncodeInfo"
+            }
           }
         }
       },
@@ -2501,6 +3311,48 @@
           },
           "message": {
             "type": "string"
+          }
+        }
+      },
+      "ExpectedItem": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id",
+          "profile",
+          "source",
+          "watched"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "keep_until": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlayableKind"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/Profile"
+          },
+          "source": {
+            "$ref": "#/components/schemas/Source"
+          },
+          "watched": {
+            "type": "boolean",
+            "description": "Watched: kept until `keep_until`, and the first to go when space runs out."
           }
         }
       },
@@ -2801,6 +3653,22 @@
           }
         }
       },
+      "ItemRef": {
+        "type": "object",
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlayableKind"
+          }
+        }
+      },
       "Library": {
         "type": "object",
         "required": [
@@ -2925,6 +3793,84 @@
           }
         ]
       },
+      "ManualInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "item_id",
+          "title"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "item_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Profile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "ManualRequest": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlayableKind"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Profile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
       "MarkableKind": {
         "type": "string",
         "enum": [
@@ -3045,7 +3991,8 @@
           "title",
           "added_at",
           "position_ms",
-          "played"
+          "played",
+          "in_watchlist"
         ],
         "properties": {
           "added_at": {
@@ -3071,6 +4018,9 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "in_watchlist": {
+            "type": "boolean"
           },
           "library_id": {
             "type": "integer",
@@ -3200,6 +4150,152 @@
               "null"
             ],
             "format": "int64"
+          }
+        }
+      },
+      "OfflineProgress": {
+        "type": "object",
+        "description": "One progress record made offline, uploaded when the device is back online.",
+        "required": [
+          "kind",
+          "id",
+          "position_ms",
+          "played",
+          "at"
+        ],
+        "properties": {
+          "at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it happened on the device, Unix seconds."
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PlayableKind"
+          },
+          "played": {
+            "type": "boolean"
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "PlanItem": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/ExpectedItem"
+          },
+          {
+            "type": "object",
+            "required": [
+              "title",
+              "status",
+              "progress",
+              "subtitles"
+            ],
+            "properties": {
+              "duration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "episode_number": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "episode_title": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "poster_path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "progress": {
+                "type": "number",
+                "format": "double",
+                "description": "Encoding progress, 0 to 1."
+              },
+              "season_number": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "series_id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "size_bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              },
+              "status": {
+                "$ref": "#/components/schemas/DownloadStatus"
+              },
+              "subtitles": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SubtitleFile"
+                }
+              },
+              "title": {
+                "type": "string",
+                "description": "Movie title, or series title for an episode."
+              },
+              "url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "variant_id": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "format": "int64"
+              }
+            }
+          }
+        ]
+      },
+      "PlanRequest": {
+        "type": "object",
+        "properties": {
+          "av1": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "The device decodes AV1 in hardware (then lighter versions use AV1)."
           }
         }
       },
@@ -3372,6 +4468,14 @@
           }
         }
       },
+      "Profile": {
+        "type": "string",
+        "enum": [
+          "max",
+          "mobile",
+          "saver"
+        ]
+      },
       "ProgressReport": {
         "type": "object",
         "required": [
@@ -3540,6 +4644,18 @@
           "code": {
             "type": "string",
             "description": "Current TOTP code."
+          }
+        }
+      },
+      "Requested": {
+        "type": "object",
+        "required": [
+          "variant_id"
+        ],
+        "properties": {
+          "variant_id": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -3925,6 +5041,15 @@
           }
         }
       },
+      "Source": {
+        "type": "string",
+        "enum": [
+          "rolling",
+          "season",
+          "manual",
+          "watchlist"
+        ]
+      },
       "StopRequest": {
         "type": "object",
         "required": [
@@ -3935,6 +5060,129 @@
             "type": "string"
           }
         }
+      },
+      "Storage": {
+        "type": "string",
+        "enum": [
+          "internal",
+          "sd"
+        ]
+      },
+      "SubscribeRequest": {
+        "type": "object",
+        "required": [
+          "device_id",
+          "series_id",
+          "mode"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "rolling: number of unwatched episodes to keep (1 to 20)."
+          },
+          "device_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/SubscriptionMode"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Profile",
+                "description": "Omitted: the device's profile."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "season_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "season: the season to download."
+          },
+          "series_id": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "SubscriptionInfo": {
+        "type": "object",
+        "required": [
+          "id",
+          "series_id",
+          "series_title",
+          "mode"
+        ],
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "profile": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Profile"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "season_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "series_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "series_title": {
+            "type": "string"
+          }
+        }
+      },
+      "SubscriptionMode": {
+        "type": "string",
+        "enum": [
+          "rolling",
+          "season"
+        ]
       },
       "SubtitleChoice": {
         "type": "object",
@@ -3969,6 +5217,27 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "SubtitleFile": {
+        "type": "object",
+        "required": [
+          "url",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/TrackKind"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
           }
         }
       },
@@ -4212,6 +5481,58 @@
             "format": "int64"
           }
         }
+      },
+      "WatchlistAdd": {
+        "type": "object",
+        "properties": {
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "ISO 639-2 audio language to download; omitted = the preferred one."
+          }
+        }
+      },
+      "WatchlistItem": {
+        "type": "object",
+        "required": [
+          "movie_id",
+          "title",
+          "added_at"
+        ],
+        "properties": {
+          "added_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "audio_language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "movie_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
       }
     },
     "securitySchemes": {
@@ -4245,6 +5566,10 @@
     {
       "name": "playback",
       "description": "Playback, progress and watched state"
+    },
+    {
+      "name": "downloads",
+      "description": "Offline downloads: expected sets, watchlist, subscriptions"
     }
   ]
 }

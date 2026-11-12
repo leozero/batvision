@@ -1,0 +1,557 @@
+mod common;
+
+use std::{path::Path, process::Command, time::Duration};
+
+use axum::http::{Method, StatusCode};
+use batvision_server::downloads::encode::Encoders;
+use common::{PASSWORD, TestApp, device, test_config};
+use serde_json::{Value, json};
+
+struct Fixture {
+    app: TestApp,
+    admin: String,
+    /// Alice signed in on an Android phone (a download device).
+    phone: String,
+    phone_id: i64,
+    media: tempfile::TempDir,
+    _cache: tempfile::TempDir,
+}
+
+fn ffmpeg_available() -> bool {
+    Command::new("ffmpeg").arg("-version").output().is_ok()
+        && Command::new("ffprobe").arg("-version").output().is_ok()
+}
+
+fn touch(root: &Path, relative: &str) {
+    let full = root.join(relative);
+    std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+    std::fs::write(full, b"fake").unwrap();
+}
+
+/// A real 3 s MKV with English then French audio.
+fn make_video(root: &Path, relative: &str) {
+    let full = root.join(relative);
+    std::fs::create_dir_all(full.parent().unwrap()).unwrap();
+    let status = Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=duration=3:size=640x360:rate=25",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=440:duration=3",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=frequency=660:duration=3",
+            "-map",
+            "0:v",
+            "-map",
+            "1:a",
+            "-map",
+            "2:a",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            "-metadata:s:a:0",
+            "language=eng",
+            "-metadata:s:a:1",
+            "language=fre",
+            "-shortest",
+        ])
+        .arg(&full)
+        .status()
+        .unwrap();
+    assert!(status.success());
+}
+
+async fn fixture() -> Fixture {
+    let media = tempfile::tempdir().unwrap();
+    let cache = tempfile::tempdir().unwrap();
+    let mut config = test_config();
+    config.media_dir = media.path().to_path_buf();
+    config.cache_dir = cache.path().to_path_buf();
+    let app = TestApp::with_config(config).await;
+    let (admin, _) = app.ready_admin().await;
+    let phone = app.create_user(&admin, "alice").await;
+    let (_, devices) = app.get("/api/me/devices", Some(&phone)).await;
+    let phone_id = devices[0]["id"].as_i64().unwrap();
+    Fixture {
+        app,
+        admin,
+        phone,
+        phone_id,
+        media,
+        _cache: cache,
+    }
+}
+
+impl Fixture {
+    async fn library(&self, kind: &str, path: &str) {
+        let (status, body) = self
+            .app
+            .post(
+                "/api/admin/libraries",
+                Some(&self.admin),
+                json!({ "name": path, "kind": kind, "path": path }),
+            )
+            .await;
+        assert_eq!(status, StatusCode::CREATED, "{body}");
+        let id = body["id"].as_i64().unwrap();
+        for _ in 0..1000 {
+            if !self.app.state.scans.is_running(id) {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("scan did not finish");
+    }
+
+    async fn plan(&self) -> Value {
+        let (status, body) = self
+            .app
+            .post("/api/downloads/plan", Some(&self.phone), json!({}))
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        body
+    }
+
+    async fn first_id(&self, uri: &str) -> i64 {
+        let (_, body) = self.app.get(uri, Some(&self.phone)).await;
+        body["items"][0]["id"].as_i64().unwrap()
+    }
+
+    async fn set_auto(&self, auto: bool) {
+        let (status, body) = self
+            .app
+            .request(
+                Method::PUT,
+                &format!("/api/downloads/devices/{}/settings", self.phone_id),
+                Some(&self.phone),
+                Some(json!({ "auto_download": auto, "profile": "mobile", "quota_bytes": null,
+                             "mobile_data": false, "mobile_cap_bytes": null, "storage": "internal" })),
+            )
+            .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+    }
+}
+
+fn ids(plan: &Value) -> Vec<i64> {
+    plan["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["id"].as_i64().unwrap())
+        .collect()
+}
+
+#[tokio::test]
+async fn browsers_cannot_download() {
+    let f = fixture().await;
+    let (_, headers, _) = f
+        .app
+        .request_with_headers(
+            Method::POST,
+            "/api/auth/login",
+            &[],
+            Some(json!({ "username": "alice", "password": PASSWORD, "device": device("Firefox", "web") })),
+        )
+        .await;
+    let cookie = headers["set-cookie"]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let (status, _, err) = f
+        .app
+        .request_with_headers(
+            Method::POST,
+            "/api/downloads/plan",
+            &[("cookie", &cookie)],
+            Some(json!({})),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(err["code"], "not_a_download_device");
+}
+
+#[tokio::test]
+async fn device_settings_defaults_and_ownership() {
+    let f = fixture().await;
+    let plan = f.plan().await;
+    assert_eq!(plan["settings"]["auto_download"], false, "off by default");
+    assert_eq!(
+        plan["settings"]["profile"], "mobile",
+        "Android defaults to the mobile profile"
+    );
+
+    f.set_auto(true).await;
+    assert_eq!(f.plan().await["settings"]["auto_download"], true);
+
+    // Someone else's device can't be configured.
+    let (status, _) = f
+        .app
+        .request(
+            Method::PUT,
+            &format!("/api/downloads/devices/{}/settings", f.phone_id),
+            Some(&f.admin),
+            Some(
+                json!({ "auto_download": true, "profile": "max", "quota_bytes": null,
+                         "mobile_data": false, "mobile_cap_bytes": null, "storage": "internal" }),
+            ),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn watchlist_downloads_only_with_auto_and_leaves_once_watched() {
+    let f = fixture().await;
+    touch(f.media.path(), "Movies/Heat (1995)/Heat.mkv");
+    f.library("movies", "Movies").await;
+    let movie = f.first_id("/api/movies").await;
+
+    let (status, _) = f
+        .app
+        .request(
+            Method::PUT,
+            &format!("/api/watchlist/{movie}"),
+            Some(&f.phone),
+            Some(json!({ "audio_language": "fr" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, list) = f.app.get("/api/watchlist", Some(&f.phone)).await;
+    assert_eq!(list[0]["audio_language"], "fre", "normalized");
+    let (_, detail) = f
+        .app
+        .get(&format!("/api/movies/{movie}"), Some(&f.phone))
+        .await;
+    assert_eq!(detail["in_watchlist"], true);
+
+    assert!(
+        ids(&f.plan().await).is_empty(),
+        "automatic downloads are off"
+    );
+    f.set_auto(true).await;
+    let plan = f.plan().await;
+    assert_eq!(ids(&plan), vec![movie]);
+    assert_eq!(plan["items"][0]["source"], "watchlist");
+    assert_eq!(plan["items"][0]["title"], "Heat");
+    assert_eq!(
+        plan["items"][0]["status"], "unavailable",
+        "fake file can't be encoded"
+    );
+
+    // Watched long ago (offline, synced later): it leaves the device.
+    let (status, res) = f
+        .app
+        .post(
+            "/api/progress/batch",
+            Some(&f.phone),
+            json!([{ "kind": "movie", "id": movie, "position_ms": 0, "played": true,
+                     "at": chrono_now() - 2 * 86_400 }]),
+        )
+        .await;
+    assert_eq!((status, res["applied"].as_i64()), (StatusCode::OK, Some(1)));
+    assert!(ids(&f.plan().await).is_empty());
+}
+
+fn chrono_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+#[tokio::test]
+async fn rolling_subscription_follows_progress() {
+    let f = fixture().await;
+    for e in ["01", "02", "03", "04"] {
+        touch(
+            f.media.path(),
+            &format!("Shows/Dark (2017)/Season 01/Dark S01E{e}.mkv"),
+        );
+    }
+    f.library("series", "Shows").await;
+    let series = f.first_id("/api/series").await;
+    let (_, episodes) = f
+        .app
+        .get(&format!("/api/series/{series}/seasons/1"), Some(&f.phone))
+        .await;
+    let ep: Vec<i64> = episodes
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["id"].as_i64().unwrap())
+        .collect();
+
+    let (status, err) = f
+        .app
+        .post(
+            "/api/downloads/subscriptions",
+            Some(&f.phone),
+            json!({ "device_id": f.phone_id, "series_id": series, "mode": "rolling", "count": 99 }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "{err}");
+
+    let (status, _) = f
+        .app
+        .post(
+            "/api/downloads/subscriptions",
+            Some(&f.phone),
+            json!({ "device_id": f.phone_id, "series_id": series, "mode": "rolling", "count": 2,
+                      "audio_language": "eng" }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(
+        ids(&f.plan().await),
+        vec![ep[0], ep[1]],
+        "works even with auto downloads off"
+    );
+
+    // E1 watched offline an hour ago: E2, E3 next, E1 kept for 24 h at the end.
+    f.app
+        .post("/api/progress/batch", Some(&f.phone),
+              json!([{ "kind": "episode", "id": ep[0], "position_ms": 0, "played": true, "at": chrono_now() - 3600 }]))
+        .await;
+    let plan = f.plan().await;
+    assert_eq!(ids(&plan), vec![ep[1], ep[2], ep[0]]);
+    assert_eq!(plan["items"][2]["watched"], true);
+
+    // A new rolling subscription replaces the old one.
+    f.app
+        .post(
+            "/api/downloads/subscriptions",
+            Some(&f.phone),
+            json!({ "device_id": f.phone_id, "series_id": series, "mode": "rolling", "count": 1 }),
+        )
+        .await;
+    let (_, overview) = f.app.get("/api/downloads/overview", Some(&f.phone)).await;
+    assert_eq!(
+        overview["devices"][0]["subscriptions"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        overview["devices"][0]["subscriptions"][0]["series_title"],
+        "Dark"
+    );
+
+    let sub = overview["devices"][0]["subscriptions"][0]["id"].clone();
+    let (status, _) = f
+        .app
+        .request(
+            Method::DELETE,
+            &format!("/api/downloads/subscriptions/{sub}"),
+            Some(&f.phone),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let remaining = ids(&f.plan().await);
+    assert_eq!(remaining, vec![] as Vec<i64>);
+}
+
+#[tokio::test]
+async fn season_subscription_needs_an_existing_season() {
+    let f = fixture().await;
+    touch(
+        f.media.path(),
+        "Shows/Dark (2017)/Season 01/Dark S01E01.mkv",
+    );
+    f.library("series", "Shows").await;
+    let series = f.first_id("/api/series").await;
+    let (status, _) = f
+        .app
+        .post("/api/downloads/subscriptions", Some(&f.phone),
+              json!({ "device_id": f.phone_id, "series_id": series, "mode": "season", "season_number": 9 }))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn offline_progress_never_overwrites_a_more_recent_watch() {
+    let f = fixture().await;
+    touch(f.media.path(), "Movies/Heat (1995)/Heat.mkv");
+    f.library("movies", "Movies").await;
+    let movie = f.first_id("/api/movies").await;
+    sqlx::query("UPDATE media_files SET duration_ms = 3600000")
+        .execute(&f.app.state.db)
+        .await
+        .unwrap();
+    // Watched on the web just now…
+    f.app
+        .post(
+            "/api/progress",
+            Some(&f.phone),
+            json!({ "kind": "movie", "id": movie, "position_ms": 1_800_000 }),
+        )
+        .await;
+    // …then an older offline record arrives.
+    let (_, res) = f
+        .app
+        .post("/api/progress/batch", Some(&f.phone),
+              json!([{ "kind": "movie", "id": movie, "position_ms": 600_000, "played": false, "at": chrono_now() - 3600 },
+                     { "kind": "movie", "id": 999_999, "position_ms": 1, "played": false, "at": chrono_now() }]))
+        .await;
+    assert_eq!(res["applied"], 0);
+    let (_, detail) = f
+        .app
+        .get(&format!("/api/movies/{movie}"), Some(&f.phone))
+        .await;
+    assert_eq!(detail["position_ms"], 1_800_000);
+}
+
+#[tokio::test]
+async fn request_encode_download_confirm_and_cache_cleanup() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    make_video(f.media.path(), "Movies/Clip (2020)/Clip (2020).mkv");
+    std::fs::write(
+        f.media.path().join("Movies/Clip (2020)/Clip (2020).fr.srt"),
+        "1\n00:00:00,500 --> 00:00:01,500\nBonjour\n",
+    )
+    .unwrap();
+    f.library("movies", "Movies").await;
+    let movie = f.first_id("/api/movies").await;
+    f.app
+        .state
+        .encoder
+        .clone()
+        .start(Encoders::default)
+        .await
+        .unwrap();
+
+    // Watchlist in French, automatic downloads on, Max profile.
+    f.app
+        .request(
+            Method::PUT,
+            &format!("/api/watchlist/{movie}"),
+            Some(&f.phone),
+            Some(json!({ "audio_language": "fre" })),
+        )
+        .await;
+    f.app
+        .request(
+            Method::PUT,
+            &format!("/api/downloads/devices/{}/settings", f.phone_id),
+            Some(&f.phone),
+            Some(
+                json!({ "auto_download": true, "profile": "max", "quota_bytes": null,
+                         "mobile_data": false, "mobile_cap_bytes": null, "storage": "internal" }),
+            ),
+        )
+        .await;
+    assert_eq!(
+        f.plan().await["items"][0]["status"],
+        "not_requested",
+        "no encoding before a request"
+    );
+    let (_, admin_queue) = f.app.get("/api/admin/encodes", Some(&f.admin)).await;
+    assert!(admin_queue["variants"].as_array().unwrap().is_empty());
+
+    let (status, requested) = f
+        .app
+        .post(
+            "/api/downloads/request",
+            Some(&f.phone),
+            json!({ "kind": "movie", "id": movie }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{requested}");
+    let variant = requested["variant_id"].as_i64().unwrap();
+
+    let mut item = Value::Null;
+    for _ in 0..300 {
+        item = f.plan().await["items"][0].clone();
+        if item["status"] == "ready" || item["status"] == "failed" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(item["status"], "ready", "{item}");
+    let url = item["url"].as_str().unwrap().to_owned();
+    let size = item["size_bytes"].as_i64().unwrap();
+    assert!(size > 1000);
+
+    // Resumable download.
+    let (status, headers, _) = f
+        .app
+        .request_with_headers(Method::GET, &url, &[("range", "bytes=0-99")], None)
+        .await;
+    assert_eq!(status, StatusCode::PARTIAL_CONTENT);
+    assert_eq!(headers["content-length"], "100");
+
+    // The video is an MP4 with only the French track, as AAC.
+    let out = f.app.state.encoder.dir(variant).join("video.mp4");
+    let probe = Command::new("ffprobe")
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "stream=codec_type,codec_name:stream_tags=language",
+            "-of",
+            "json",
+        ])
+        .arg(&out)
+        .output()
+        .unwrap();
+    let probe: Value = serde_json::from_slice(&probe.stdout).unwrap();
+    let streams = probe["streams"].as_array().unwrap();
+    let audio: Vec<&Value> = streams
+        .iter()
+        .filter(|s| s["codec_type"] == "audio")
+        .collect();
+    assert_eq!(audio.len(), 1);
+    assert_eq!(audio[0]["codec_name"], "aac");
+    assert_eq!(audio[0]["tags"]["language"], "fre");
+    assert!(
+        streams
+            .iter()
+            .any(|s| s["codec_type"] == "video" && s["codec_name"] == "h264"),
+        "Max copies video"
+    );
+
+    // The sidecar subtitle ships as WebVTT.
+    assert_eq!(item["subtitles"][0]["language"], "fre");
+    let (status, vtt) = f
+        .app
+        .get(item["subtitles"][0]["url"].as_str().unwrap(), None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(vtt.as_str().unwrap().contains("Bonjour"));
+
+    // Confirmed: shown as downloaded, the cache copy is gone.
+    let (status, _) = f
+        .app
+        .post(
+            "/api/downloads/confirm",
+            Some(&f.phone),
+            json!({ "variant_id": variant }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert!(!out.exists());
+    assert_eq!(f.plan().await["items"][0]["status"], "downloaded");
+    let (status, _, _) = f
+        .app
+        .request_with_headers(Method::GET, &url, &[], None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

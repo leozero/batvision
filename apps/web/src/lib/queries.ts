@@ -146,3 +146,24 @@ export function invalidateLibrary(qc: ReturnType<typeof useQueryClient>) {
     qc.invalidateQueries({ queryKey: [key] });
   }
 }
+
+// Downloads
+export const downloadsQuery = queryOptions({
+  queryKey: ["downloads"],
+  queryFn: () => call(api.GET("/api/downloads/overview")),
+  refetchInterval: (q) =>
+    q.state.data?.devices.some((d) =>
+      d.items.some((i) => i.status === "queued" || i.status === "encoding"),
+    )
+      ? 4000
+      : false,
+});
+
+export const encodesQuery = queryOptions({
+  queryKey: ["admin", "encodes"],
+  queryFn: () => call(api.GET("/api/admin/encodes")),
+  refetchInterval: (q) =>
+    q.state.data?.variants.some((v) => v.status === "queued" || v.status === "encoding")
+      ? 3000
+      : false,
+});

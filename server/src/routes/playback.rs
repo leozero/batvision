@@ -481,7 +481,7 @@ pub async fn subtitle(
                 .ok_or(ApiError::NotFound)?;
             (format!("x{x}.vtt"), path, None, o)
         }
-        Grant::File { .. } => return Err(ApiError::NotFound),
+        Grant::File { .. } | Grant::Variant { .. } => return Err(ApiError::NotFound),
     };
     let cache = state.config.cache_dir.join("subtitles").join(&cache_name);
     let vtt = match tokio::fs::read_to_string(&cache).await {

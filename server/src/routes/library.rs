@@ -574,6 +574,7 @@ pub struct MovieDetail {
     pub added_at: i64,
     pub position_ms: i64,
     pub played: bool,
+    pub in_watchlist: bool,
     #[sqlx(skip)]
     pub file: Option<FileInfo>,
 }
@@ -609,7 +610,8 @@ pub async fn load_movie_detail(
            COALESCE((SELECT position_ms FROM user_item_data u
               WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS position_ms,
            COALESCE((SELECT played FROM user_item_data u
-              WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played
+              WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played,
+           EXISTS (SELECT 1 FROM watchlist w WHERE w.user_id = ?4 AND w.movie_id = m.id) AS in_watchlist
          FROM movies m WHERE m.id = ?3 AND m.missing_since IS NULL",
     )
     .bind(&user.language)

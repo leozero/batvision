@@ -12,6 +12,7 @@ import { InvitePage, LoginPage, SetupPage } from "./pages/AuthPages";
 import { AccountPage } from "./pages/account/AccountPage";
 import { AdminPage } from "./pages/admin/AdminPage";
 import { MoviesPage, SeriesListPage } from "./pages/BrowsePages";
+import { DownloadsPage } from "./pages/DownloadsPage";
 import { HomePage } from "./pages/HomePage";
 import { MovieDetailPage } from "./pages/MovieDetailPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -98,6 +99,11 @@ const search = createRoute({
     typeof s.q === "string" ? { q: s.q } : {},
   component: SearchPage,
 });
+const downloads = createRoute({
+  getParentRoute: () => shell,
+  path: "/downloads",
+  component: DownloadsPage,
+});
 const account = createRoute({
   getParentRoute: () => shell,
   path: "/account",
@@ -131,7 +137,7 @@ const watch = createRoute({
 const routeTree = root.addChildren([
   publicLayout.addChildren([login, setup, invite]),
   app.addChildren([
-    shell.addChildren([home, movies, movie, seriesList, series, search, account, admin]),
+    shell.addChildren([home, movies, movie, seriesList, series, search, downloads, account, admin]),
     watch,
   ]),
 ]);
