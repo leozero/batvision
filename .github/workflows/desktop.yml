@@ -1,6 +1,7 @@
 name: Desktop installers
 
-# Unsigned builds (D55): download them from the run's artifacts.
+# Unsigned builds (D55): download them from the run's artifacts, or from the
+# GitHub release a v* tag creates (the tag must match apps/desktop/package.json).
 on:
   push:
     branches: [main]
@@ -47,3 +48,33 @@ jobs:
           path: apps/desktop/${{ matrix.artifact }}
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check the tag matches the app version
+        run: |
+          version=$(node -p 'require("./apps/desktop/package.json").version')
+          test "$GITHUB_REF_NAME" = "v$version" || {
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match apps/desktop/package.json ($version)"
+            exit 1
+          }
+      - uses: actions/download-artifact@v7
+        with:
+          path: installers
+          pattern: batvision-desktop-*
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" installers/* \
+            --title "batvision $GITHUB_REF_NAME" \
+            --notes-file .github/release-notes.md \
+            --generate-notes
