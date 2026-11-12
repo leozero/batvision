@@ -11,7 +11,7 @@
 //! Everything here is pure: it works on relative paths, never on the filesystem.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     path::{Component, Path, PathBuf},
     sync::LazyLock,
 };
@@ -111,6 +111,10 @@ static SEASON_FOLDER: LazyLock<Regex> = LazyLock::new(|| {
 const SPECIALS_FOLDERS: &[&str] = &["specials", "special", "extras specials", "season 0"];
 
 static YEAR: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^(?:19|20)\d{2}$").unwrap());
+/// A part of a movie split in several files (`Film CD1`, `Film - part2`, `Film.disc1`).
+static PART_SUFFIX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)[\s._-]+(?:cd|dvd|part|pt|disc|disk)[\s._-]?\d{1,2}$").unwrap()
+});
 static PAREN_GROUP: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\((?P<inner>[^()]*)\)").unwrap());
 /// A dot with a letter or digit on both sides: the word is dot-separated.
@@ -504,44 +508,84 @@ fn first_component(relative: &Path) -> Option<&str> {
     }
 }
 
+/// A file path with its size in bytes.
+type SizedFile = (PathBuf, u64);
+
 /// Groups the video files of a movies library (paths relative to the library,
 /// with sizes) into movies. `library_path` is prefixed to produce media-root paths.
 ///
-/// A folder with video files is one movie (its largest file is the main one);
-/// loose files at the library root are one movie each; folders without videos
-/// are walked through (collections).
+/// A folder with video files is one movie (its largest file is the main one),
+/// unless its files name two dated movies or more (a saga, a box set): then each
+/// file is a movie, its parts (`CD1`, `CD2`) and copies grouped by name. Loose
+/// files at the library root are one movie each; folders without videos are walked
+/// through (collections); videos in a folder inside a movie's folder are bonuses.
 pub fn detect_movies(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<DetectedMovie> {
-    let mut by_folder: BTreeMap<PathBuf, (PathBuf, u64)> = BTreeMap::new();
+    let videos: Vec<&(PathBuf, u64)> = files.iter().filter(|(p, _)| !should_ignore(p)).collect();
+    // Folders holding a video directly (the library root aside: it holds loose movies).
+    let movie_folders: HashSet<&Path> = videos
+        .iter()
+        .filter_map(|(p, _)| p.parent())
+        .filter(|p| !p.as_os_str().is_empty())
+        .collect();
+    let mut by_folder: BTreeMap<PathBuf, Vec<(PathBuf, u64)>> = BTreeMap::new();
     let mut movies = Vec::new();
 
-    for (relative, size) in files {
-        if should_ignore(relative) {
-            continue;
-        }
+    for (relative, size) in videos {
         match relative.parent().filter(|p| !p.as_os_str().is_empty()) {
-            None => {
-                let stem = relative
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or_default();
-                movies.push(DetectedMovie {
-                    source_path: library_path.join(relative),
-                    name: parse_name(stem),
-                    file: library_path.join(relative),
-                });
-            }
+            None => movies.push(DetectedMovie {
+                source_path: library_path.join(relative),
+                name: parse_name(file_stem(relative)),
+                file: library_path.join(relative),
+            }),
             Some(folder) => {
-                let entry = by_folder
-                    .entry(folder.to_path_buf())
-                    .or_insert_with(|| (relative.clone(), *size));
-                if *size > entry.1 {
-                    *entry = (relative.clone(), *size);
+                // A folder inside a movie's folder holds its bonus material
+                // (`Apollo 13 1995 …/Apollo 13 BONUS …/…`).
+                if folder
+                    .ancestors()
+                    .skip(1)
+                    .any(|a| movie_folders.contains(a))
+                {
+                    continue;
                 }
+                by_folder
+                    .entry(folder.to_path_buf())
+                    .or_default()
+                    .push((relative.clone(), *size));
             }
         }
     }
 
-    for (folder, (file, _)) in by_folder {
+    for (folder, files) in by_folder {
+        // Files of one movie share a name once parts (`CD1`) and release tags are gone.
+        let mut groups: BTreeMap<(String, Option<i64>), Vec<SizedFile>> = BTreeMap::new();
+        for (file, size) in files {
+            let name = parse_name(&PART_SUFFIX.replace(file_stem(&file), ""));
+            groups
+                .entry((name.title.to_lowercase(), name.year))
+                .or_default()
+                .push((file, size));
+        }
+        let largest = |files: &[(PathBuf, u64)]| {
+            files
+                .iter()
+                .max_by_key(|(_, size)| *size)
+                .map(|(f, _)| f.clone())
+                .expect("a group has files")
+        };
+        // Two dated movies or more: a saga or a box set, one movie per file.
+        if groups.keys().filter(|(_, year)| year.is_some()).count() >= 2 {
+            for files in groups.values() {
+                let file = largest(files);
+                movies.push(DetectedMovie {
+                    source_path: library_path.join(&file),
+                    name: parse_name(&PART_SUFFIX.replace(file_stem(&file), "")),
+                    file: library_path.join(file),
+                });
+            }
+            continue;
+        }
+        // One movie (maybe with copies or odd files): named after its folder.
+        let all: Vec<(PathBuf, u64)> = groups.into_values().flatten().collect();
         let folder_name = folder
             .file_name()
             .and_then(|s| s.to_str())
@@ -549,11 +593,17 @@ pub fn detect_movies(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<Detec
         movies.push(DetectedMovie {
             source_path: library_path.join(&folder),
             name: parse_name(folder_name),
-            file: library_path.join(file),
+            file: library_path.join(largest(&all)),
         });
     }
     movies.sort_by(|a, b| a.source_path.cmp(&b.source_path));
     movies
+}
+
+fn file_stem(path: &Path) -> &str {
+    path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or_default()
 }
 
 /// Groups the video files of a series library into series: each top-level folder is
@@ -968,6 +1018,118 @@ mod tests {
             found[4].source_path,
             PathBuf::from("Films/Inception (2010)")
         );
+    }
+
+    #[test]
+    fn splits_sagas_and_box_sets_into_movies() {
+        let found = detect_movies(
+            Path::new("Films"),
+            &files(&[
+                ("John Wick - Saga/John Wick (2014).mkv", 10),
+                ("John Wick - Saga/John Wick 2 (2017).mkv", 10),
+                ("John Wick - Saga/John Wick - Parabellum (2019).mkv", 10),
+                (
+                    "La.Momie.La.Trilogie.MULTI.1080p-gismo65/La.Momie.1999.MULTI.1080p.BluRay-gismo65.mkv",
+                    10,
+                ),
+                (
+                    "La.Momie.La.Trilogie.MULTI.1080p-gismo65/Le.Retour.De.La.Momie.2001.MULTI.1080p.BluRay-gismo65.mkv",
+                    10,
+                ),
+                // A movie in two parts, among others: one movie.
+                ("Coffret/Dune (1984) CD1.mkv", 5),
+                ("Coffret/Dune (1984) CD2.mkv", 6),
+                ("Coffret/Blade Runner (1982).mkv", 9),
+                // An undated stray in a saga folder is a movie of its own.
+                ("Coffret/[KURISU_] Demon Slayer Film MULTI 1080P.mkv", 4),
+            ]),
+        );
+        let summary: Vec<_> = found
+            .iter()
+            .map(|m| (m.name.title.as_str(), m.name.year, m.file.to_str().unwrap()))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                (
+                    "Blade Runner",
+                    Some(1982),
+                    "Films/Coffret/Blade Runner (1982).mkv"
+                ),
+                ("Dune", Some(1984), "Films/Coffret/Dune (1984) CD2.mkv"),
+                (
+                    "Demon Slayer Film",
+                    None,
+                    "Films/Coffret/[KURISU_] Demon Slayer Film MULTI 1080P.mkv"
+                ),
+                (
+                    "John Wick",
+                    Some(2014),
+                    "Films/John Wick - Saga/John Wick (2014).mkv"
+                ),
+                (
+                    "John Wick - Parabellum",
+                    Some(2019),
+                    "Films/John Wick - Saga/John Wick - Parabellum (2019).mkv"
+                ),
+                (
+                    "John Wick 2",
+                    Some(2017),
+                    "Films/John Wick - Saga/John Wick 2 (2017).mkv"
+                ),
+                (
+                    "La Momie",
+                    Some(1999),
+                    "Films/La.Momie.La.Trilogie.MULTI.1080p-gismo65/La.Momie.1999.MULTI.1080p.BluRay-gismo65.mkv"
+                ),
+                (
+                    "Le Retour De La Momie",
+                    Some(2001),
+                    "Films/La.Momie.La.Trilogie.MULTI.1080p-gismo65/Le.Retour.De.La.Momie.2001.MULTI.1080p.BluRay-gismo65.mkv"
+                ),
+            ]
+        );
+        // Each movie of a saga is identified by its own file.
+        assert_eq!(found[0].source_path, found[0].file);
+    }
+
+    #[test]
+    fn copies_of_one_movie_stay_one_movie() {
+        let found = detect_movies(
+            Path::new("Films"),
+            &files(&[
+                ("Heat (1995)/Heat (1995) 1080p.mkv", 5),
+                ("Heat (1995)/Heat (1995) 2160p HDR.mkv", 9),
+            ]),
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].source_path, PathBuf::from("Films/Heat (1995)"));
+        assert_eq!(
+            found[0].file,
+            PathBuf::from("Films/Heat (1995)/Heat (1995) 2160p HDR.mkv")
+        );
+    }
+
+    #[test]
+    fn a_folder_inside_a_movie_folder_holds_bonuses() {
+        let found = detect_movies(
+            Path::new("Films"),
+            &files(&[
+                (
+                    "Apollo 13 1995 MULTi 1080p/Apollo 13 1995 MULTi 1080p.mkv",
+                    9,
+                ),
+                (
+                    "Apollo 13 1995 MULTi 1080p/Apollo 13 BONUS VOST 1080p/Apollo 13 BONUS Vingt Ans Apres.mkv",
+                    2,
+                ),
+                ("Loose (2001).mkv", 3),
+                // Collections still work: their folder holds no video itself.
+                ("Alien Collection/Alien (1979)/Alien.mkv", 7),
+            ]),
+        );
+        let titles: Vec<_> = found.iter().map(|m| m.name.title.as_str()).collect();
+        assert_eq!(titles, vec!["Alien", "Apollo 13", "Loose"]);
     }
 
     #[test]

@@ -101,6 +101,9 @@ docs/
 - Files are recognized using the **Jellyfin/Plex naming convention**:
   - movies: `Movies/Title (Year)/…`;
   - series: `Shows/Name (Year)/Season 01/…S01E01…`.
+  - a folder whose files name two dated movies or more (a saga, a box set) gives one movie per file; parts (`CD1`, `CD2`) and copies of one movie stay one movie (D83);
+  - videos in a folder inside a movie's folder are its bonuses, not movies (D83);
+  - a file whose name isn't UTF-8 (Latin-1) is skipped with a warning in the logs: rename it.
 - An **"Identify manually"** action in the UI fixes a wrong match.
 - Initial scan, then detection of additions, changes and removals.
 - **Metadata and images come from TMDB**, in each user's language (French by default), with English as a fallback. Images are cached in `data`.

@@ -188,6 +188,15 @@ async fn walk(root: PathBuf) -> anyhow::Result<HashMap<PathBuf, ScannedFile>> {
                 continue;
             }
             let relative = entry.path().strip_prefix(&root)?.to_path_buf();
+            // Paths are stored as text: a name in another encoding (Latin-1) couldn't be
+            // opened again from the database, nor its title read.
+            if relative.to_str().is_none() {
+                tracing::warn!(
+                    path = %relative.display(),
+                    "skipping a file whose name isn't UTF-8: rename it"
+                );
+                continue;
+            }
             let is_subtitle = relative
                 .extension()
                 .and_then(|e| e.to_str())
