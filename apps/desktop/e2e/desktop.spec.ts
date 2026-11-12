@@ -37,6 +37,8 @@ test.beforeAll(async () => {
   app = await electron.launch({
     args: [
       resolve(__dirname, ".."),
+      // The assertions use the French interface, whatever the machine's language.
+      "--lang=fr-FR",
       ...(process.env.CI && process.platform === "linux" ? ["--no-sandbox"] : []),
     ],
     env: {
