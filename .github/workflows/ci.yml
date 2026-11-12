@@ -137,10 +137,11 @@ jobs:
         run: pnpm exec expo prebuild --platform android --no-install
       - name: Sync engine unit tests (Kotlin, D64)
         working-directory: apps/mobile/android
-        run: ./gradlew :batvision-sync:testDebugUnitTest
-      - name: Build the release APK
+        run: ./gradlew :batvision-sync:testDebugUnitTest --build-cache
+      # Only the emulator's architecture: native code for all four took ~20 minutes.
+      - name: Build the release APK (x86_64)
         working-directory: apps/mobile/android
-        run: ./gradlew assembleRelease
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=x86_64 --build-cache
       - name: Install Maestro
         run: |
           curl -fsSL -o "$RUNNER_TEMP/maestro.zip" https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.12.1/maestro.zip

@@ -92,7 +92,8 @@ jobs:
           BATVISION_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           BATVISION_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          ./gradlew assembleRelease
+          # Phones only (arm64, armv7): x86 builds only serve emulators, and doubled the build.
+          ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a --build-cache
           version=$(node -p 'require("../app.json").expo.version')
           mv app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/batvision-$version-android.apk"
       - uses: actions/upload-artifact@v7
