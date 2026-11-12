@@ -42,7 +42,7 @@ export default function Connect() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView behavior="height" className="flex-1">
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
         <ScrollView
           contentContainerClassName="flex-grow justify-center gap-6 p-6"
           keyboardShouldPersistTaps="handled"

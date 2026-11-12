@@ -64,7 +64,7 @@ export default function Login() {
 
   return (
     <Screen>
-      <KeyboardAvoidingView behavior="height" className="flex-1">
+      <KeyboardAvoidingView behavior="padding" className="flex-1">
         <ScrollView
           contentContainerClassName="flex-grow justify-center gap-5 p-6"
           keyboardShouldPersistTaps="handled"
