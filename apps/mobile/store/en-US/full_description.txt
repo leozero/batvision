@@ -1,6 +1,6 @@
-batvision is the app for your own media server. Run the free, open-source batvision server at home, point it at your movies and TV series, and watch them anywhere: streamed over the internet, or downloaded to your phone for when you're offline.
+BatVision is the app for your own media server. Run the free, open-source BatVision server at home, point it at your movies and TV series, and watch them anywhere: streamed over the internet, or downloaded to your phone for when you're offline.
 
-This app needs a batvision server. It does not include or sell any content: you watch the files you own, from a server you or your family run.
+This app needs a BatVision server. It does not include or sell any content: you watch the files you own, from a server you or your family run.
 
 WATCH
 • Browse your movies and series with posters, summaries and ratings
@@ -20,4 +20,4 @@ PRIVATE BY DESIGN
 • No account with us, no ads, no tracking: the app only talks to your server
 • Two-factor sign-in, and your device token is kept in the Android keystore
 
-batvision is open source (GPL): https://github.com/leozero/batvision
+BatVision is open source (GPL): https://github.com/leozero/batvision

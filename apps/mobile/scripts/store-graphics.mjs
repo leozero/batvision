@@ -28,7 +28,7 @@ const feature = `<div style="width:1024px;height:500px;display:flex;align-items:
   background:radial-gradient(circle at 20% 30%, #26262f 0%, #09090c 70%);font-family:Inter,system-ui,-apple-system,Roboto,sans-serif">
   <svg width="260" height="260" viewBox="0 0 32 32"><defs>${GRADIENT}</defs>${disc(0, 0, 1)}</svg>
   <div>
-    <div style="color:#f4b740;font-size:92px;font-weight:800;letter-spacing:-2px;line-height:1">batvision</div>
+    <div style="color:#f4b740;font-size:92px;font-weight:800;letter-spacing:-2px;line-height:1">BatVision</div>
     <div style="color:#f4f4f6;font-size:34px;font-weight:600;margin-top:22px;line-height:1.25">Your movies and series,<br>from your own server.</div>
     <div style="color:#a2a2b0;font-size:24px;margin-top:16px">Stream anywhere. Download for offline.</div>
   </div>
