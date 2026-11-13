@@ -212,7 +212,9 @@ jobs:
         run: |
           udid=$(xcrun simctl list devices available --json | node -e '
             const all = Object.values(JSON.parse(require("fs").readFileSync(0)).devices).flat();
-            console.log(all.find((d) => d.name.startsWith("iPad")).udid);')
+            // The 13-inch one: the sign-in flow taps the save-password prompt by position.
+            const ipad = all.find((d) => d.name.startsWith("iPad Pro 13")) ?? all.find((d) => d.name.startsWith("iPad"));
+            console.log(ipad.udid);')
           xcrun simctl boot "$udid"
           xcrun simctl bootstatus "$udid" -b
       - name: End-to-end on the simulator

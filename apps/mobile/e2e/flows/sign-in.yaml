@@ -43,14 +43,15 @@ appId: ${APP_ID}
     commands:
       - pressKey: Enter
       # iOS offers to save the password, over the app: it hides the tabs until closed.
+      # The prompt belongs to another process, so Maestro can't find its buttons: wait
+      # for it, then tap "Not Now" where it is on the 13-inch iPad the CI boots.
       - extendedWaitUntil:
           visible:
-            text: "Not Now"
-          timeout: 20000
+            id: never-shown
+          timeout: 8000
           optional: true
       - tapOn:
-          text: "Not Now"
-          optional: true
+          point: "43%,57%"
 - extendedWaitUntil:
     visible:
       id: tab-movies
