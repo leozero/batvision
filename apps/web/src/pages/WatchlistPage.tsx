@@ -4,7 +4,7 @@ import { Bookmark, DownloadCloud, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PosterCard, PosterGrid } from "../components/media";
-import { Button, cx, EmptyState, Page, Skeleton } from "../components/ui";
+import { Button, cx, EmptyState, LoadError, Page, Skeleton } from "../components/ui";
 import { api, call, type Schemas } from "../lib/api";
 import { syncDesktop } from "../lib/desktop";
 import {
@@ -65,7 +65,7 @@ function AutoBanner() {
 export function WatchlistPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { data: items, isPending } = useQuery(watchlistQuery);
+  const { data: items, isPending, refetch } = useQuery(watchlistQuery);
   const { data: prefs } = useQuery(preferencesQuery);
   const [filter, setFilter] = useState<Filter>("all");
   const remove = useMutation({
@@ -136,6 +136,8 @@ export function WatchlistPage() {
             <Skeleton key={i} className="aspect-[2/3]" />
           ))}
         </PosterGrid>
+      ) : !items ? (
+        <LoadError onRetry={refetch} />
       ) : shown.length === 0 ? (
         <EmptyState icon={<Bookmark className="size-8" />} title={t("watchlist.empty")}>
           <p>{t("watchlist.emptyHint")}</p>

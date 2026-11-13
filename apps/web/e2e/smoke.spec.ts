@@ -83,13 +83,13 @@ test("admin adds libraries and the scan fills the catalog", async () => {
   await add("Films", "Movies", "movies");
   await add("Séries", "Shows", "series");
   await expect(page.getByText("2 films")).toBeVisible();
-  await expect(page.getByText("1 séries · 2 épisodes")).toBeVisible();
+  await expect(page.getByText("1 série · 2 épisodes")).toBeVisible();
 
   await page.getByRole("link", { name: "Films" }).click();
   await expect(page.getByText("2 titres")).toBeVisible();
   await page.getByRole("link", { name: /^Heat/ }).first().click();
   await expect(page.getByRole("heading", { name: "Heat" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Lecture" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Lecture", exact: true })).toBeVisible();
 });
 
 test("series page lists episodes and marks them watched", async () => {
@@ -160,7 +160,7 @@ test("the player switches picture quality and remembers it on the device", async
   await page.goto("/movies");
   await page.getByRole("link", { name: /^Heat/ }).first().click();
   const started = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
-  await page.getByRole("button", { name: "Lecture" }).click();
+  await page.getByRole("link", { name: "Lecture", exact: true }).click();
   // Auto starts at Max: the 720p original, remuxed for the browser.
   expect((await started).request().postDataJSON().quality).toBe("max");
 
@@ -205,7 +205,7 @@ test("Auto lowers the quality when the network can't keep up", async () => {
     );
     await page.goto("/movies");
     await page.getByRole("link", { name: /^Heat/ }).first().click();
-    await page.getByRole("button", { name: "Lecture" }).click();
+    await page.getByRole("link", { name: "Lecture", exact: true }).click();
     await lowered;
     expect(await page.evaluate(() => localStorage.getItem("bv.quality.auto"))).toBe("sos");
   } finally {

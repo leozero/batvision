@@ -57,7 +57,7 @@ export const fr = {
   errors: {
     not_expected: "Cet élément ne fait pas partie des téléchargements de l'appareil.",
     not_a_download_device:
-      "Un navigateur ne peut pas télécharger : utilisez l'app desktop ou Android.",
+      "Un navigateur ne peut pas télécharger : utilisez l'app desktop ou mobile.",
     invalid_count: "Choisissez entre 1 et 20 épisodes.",
     network: "Impossible de joindre le serveur.",
     tooManyAttempts: "Trop de tentatives. Réessayez dans {{seconds}} s.",
@@ -82,6 +82,13 @@ export const fr = {
     totp_mandatory: "La double authentification est obligatoire pour les administrateurs.",
     cannot_delete_self: "Vous ne pouvez pas supprimer votre propre compte.",
     invalid_language: "Langue invalide.",
+    invalid_name: "Le nom doit faire entre 1 et 64 caractères.",
+    invalid_device_name: "Le nom de l'appareil doit faire entre 1 et 64 caractères.",
+    invalid_quota: "L'espace maximum et le plafond ne peuvent pas être négatifs.",
+    invalid_validity: "La durée de validité doit être comprise entre 1 et 720 heures.",
+    missing_season: "Choisissez une saison.",
+    too_many_records: "Trop d'éléments envoyés en une fois (1000 au maximum).",
+    totp_not_set_up: "Commencez par afficher le QR code de la double authentification.",
     unreadable_file: "Ce fichier est illisible.",
     upstream_error: "Le service externe ne répond pas.",
     internal: "Erreur du serveur.",
@@ -141,6 +148,7 @@ export const fr = {
     identify: "Identifier",
     identifyTitle: "Identifier manuellement",
     identifyHint: "Choisissez la bonne fiche TMDB. Les prochains scans la conserveront.",
+    identifyQuery: "Titre à rechercher",
     noMatch: "Aucun résultat.",
   },
   search: {
@@ -159,6 +167,8 @@ export const fr = {
     forward10: "Avancer de 10 s",
     mute: "Couper le son",
     volume: "Volume",
+    seek: "Position de lecture",
+    seekPosition: "{{time}} sur {{duration}}",
     fullscreen: "Plein écran",
     tracks: "Audio et sous-titres",
     audio: "Audio",
@@ -189,7 +199,7 @@ export const fr = {
   downloads: {
     title: "Téléchargements",
     intro:
-      "Ce que vos apps desktop et Android gardent pour regarder hors ligne. Le serveur prépare chaque fichier quand l'appareil le demande.",
+      "Ce que vos apps desktop et mobiles gardent pour regarder hors ligne. Le serveur prépare chaque fichier quand l'appareil le demande.",
     download: "Télécharger",
     downloading: "Téléchargement…",
     downloadMovie: "Télécharger le film",
@@ -224,10 +234,10 @@ export const fr = {
         "Les versions Mobile et Économie passent par les données mobiles ; Max attend le Wi-Fi.",
       all: "Tout passe par les données mobiles, Max compris.",
     },
-    alreadyOn: "Déjà téléchargée sur : {{devices}}",
+    alreadyOn: "Déjà en téléchargement sur : {{devices}}",
     noDeviceTitle: "Aucun appareil pour télécharger",
     noDevice:
-      "Les téléchargements se font depuis les apps desktop et Android (navigateur exclu). Connectez-en une avec votre compte : elle apparaîtra ici.",
+      "Les téléchargements se font depuis les apps desktop et mobiles (navigateur exclu). Connectez-en une avec votre compte : elle apparaîtra ici.",
     auto: "Téléchargements automatiques",
     autoHint: "Télécharge les films et les prochains épisodes des séries de votre watchlist.",
     quota: "Espace maximum (Go)",
@@ -293,7 +303,7 @@ export const fr = {
     autoDevices_one: "Téléchargée automatiquement sur {{count}} appareil.",
     autoDevices_other: "Téléchargée automatiquement sur {{count}} appareils.",
     autoNone:
-      "Aucun de vos appareils ne télécharge la watchlist. Activez les téléchargements automatiques dans l'app desktop ou Android.",
+      "Aucun de vos appareils ne télécharge la watchlist. Activez les téléchargements automatiques dans l'app desktop ou mobile.",
     add: "Watchlist",
     addLong: "Ajouter à la watchlist",
     inWatchlist: "Dans la watchlist",
@@ -338,6 +348,9 @@ export const fr = {
       charging: "En attente de la charge",
       mobile_cap: "Plafond de données mobiles atteint : en attente du Wi-Fi",
     },
+    saveError: "Le réglage n'a pas pu être enregistré.",
+    insecureAddress:
+      "Adresse en http:// sur Internet : votre mot de passe circulera en clair. Préférez https://.",
   },
   desktop: {
     updateReady: "La version {{version}} est prête : cliquez pour redémarrer et l'installer.",
@@ -386,6 +399,15 @@ export const fr = {
       failed: "Échec",
       overQuota: "Dépasse l'espace maximum",
       paused: "En pause",
+    },
+    tray: {
+      open: "Ouvrir BatVision",
+      restartToUpdate: "Redémarrer pour passer à la version {{version}}",
+      downloadUpdate: "Télécharger la version {{version}}",
+      syncNow: "Synchroniser maintenant",
+      pause: "Mettre en pause",
+      resume: "Reprendre les téléchargements",
+      quit: "Quitter",
     },
   },
   account: {
@@ -467,7 +489,8 @@ export const fr = {
     scanning: "Scan en cours…",
     scanReportMovies_one: "{{count}} film",
     scanReportMovies_other: "{{count}} films",
-    scanReportSeries: "{{series}} séries · {{episodes}} épisodes",
+    scanReportSeries_one: "{{count}} série",
+    scanReportSeries_other: "{{count}} séries",
     noTmdb: "sans métadonnées (jeton TMDB absent)",
     probeErrors_one: "{{count}} fichier illisible",
     probeErrors_other: "{{count}} fichiers illisibles",

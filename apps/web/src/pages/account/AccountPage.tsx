@@ -488,6 +488,7 @@ function QuickConnectCard() {
           value={code}
           onChange={(e) => setCode(e.target.value.toUpperCase())}
           maxLength={6}
+          aria-label={t("auth.code")}
           placeholder="ABC123"
           className="max-w-44 text-center font-mono text-lg uppercase tracking-[0.3em]"
           required

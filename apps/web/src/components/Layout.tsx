@@ -17,7 +17,15 @@ import { api } from "../lib/api";
 import { desktop, useUpdateState } from "../lib/desktop";
 import { meQuery } from "../lib/queries";
 import { Logo } from "./Logo";
-import { cx, IconButton, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "./ui";
+import {
+  cx,
+  iconButtonClass,
+  MenuContent,
+  MenuItem,
+  MenuRoot,
+  MenuSeparator,
+  MenuTrigger,
+} from "./ui";
 
 function NavLink({
   to,
@@ -98,10 +106,13 @@ export function AppLayout() {
           <NavLink to="/downloads">{t("nav.downloads")}</NavLink>
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Link to="/search" aria-label={t("nav.search")}>
-            <IconButton label={t("nav.search")} tabIndex={-1}>
-              <Search className="size-5" />
-            </IconButton>
+          <Link
+            to="/search"
+            aria-label={t("nav.search")}
+            title={t("nav.search")}
+            className={iconButtonClass()}
+          >
+            <Search className="size-5" />
           </Link>
           <MenuRoot>
             <MenuTrigger asChild>

@@ -1,7 +1,7 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as Menu from "@radix-ui/react-dropdown-menu";
 import * as TabsPrimitive from "@radix-ui/react-tabs";
-import { X } from "lucide-react";
+import { CloudOff, X } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
   type ButtonHTMLAttributes,
@@ -26,33 +26,42 @@ const variants: Record<Variant, string> = {
   danger: "bg-danger/15 text-danger hover:bg-danger/25",
 };
 
+const sizes = {
+  sm: "h-8 px-3 text-sm gap-1.5",
+  md: "h-10 px-4 text-sm gap-2",
+  lg: "h-12 px-6 text-base gap-2.5",
+};
+
+type ButtonLook = { variant?: Variant; size?: keyof typeof sizes; className?: string };
+
+/** Button looks, also worn by links that navigate: one focusable element, not a button in a link. */
+export function buttonClass({ variant = "secondary", size = "md", className }: ButtonLook = {}) {
+  return cx(
+    "inline-flex items-center justify-center rounded-full font-semibold transition-all duration-200",
+    "active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none cursor-pointer select-none",
+    variants[variant],
+    sizes[size],
+    className,
+  );
+}
+
+export function iconButtonClass(className?: string) {
+  return cx(
+    "inline-flex size-10 items-center justify-center rounded-full text-fg/90 transition-all",
+    "hover:bg-white/10 hover:text-fg active:scale-90 cursor-pointer disabled:opacity-40",
+    className,
+  );
+}
+
 export const Button = forwardRef<
   HTMLButtonElement,
-  ButtonHTMLAttributes<HTMLButtonElement> & {
-    variant?: Variant;
-    size?: "sm" | "md" | "lg";
-    loading?: boolean;
-  }
->(function Button(
-  { variant = "secondary", size = "md", loading, className, children, disabled, ...props },
-  ref,
-) {
-  const sizes = {
-    sm: "h-8 px-3 text-sm gap-1.5",
-    md: "h-10 px-4 text-sm gap-2",
-    lg: "h-12 px-6 text-base gap-2.5",
-  };
+  ButtonHTMLAttributes<HTMLButtonElement> & ButtonLook & { loading?: boolean }
+>(function Button({ variant, size, loading, className, children, disabled, ...props }, ref) {
   return (
     <button
       ref={ref}
       disabled={disabled || loading}
-      className={cx(
-        "inline-flex items-center justify-center rounded-full font-semibold transition-all duration-200",
-        "active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none cursor-pointer select-none",
-        variants[variant],
-        sizes[size],
-        className,
-      )}
+      className={buttonClass({ variant, size, className })}
       {...props}
     >
       {loading ? <Spinner className="size-4" /> : null}
@@ -72,11 +81,7 @@ export function IconButton({
       type="button"
       aria-label={label}
       title={label}
-      className={cx(
-        "inline-flex size-10 items-center justify-center rounded-full text-fg/90 transition-all",
-        "hover:bg-white/10 hover:text-fg active:scale-90 cursor-pointer disabled:opacity-40",
-        className,
-      )}
+      className={iconButtonClass(className)}
       {...props}
     >
       {children}
@@ -238,6 +243,18 @@ export function EmptyState({
       <h2 className="text-lg font-semibold">{title}</h2>
       {children ? <div className="text-sm text-muted">{children}</div> : null}
     </motion.div>
+  );
+}
+
+/** A query that failed: says so and offers to try again, instead of an empty page. */
+export function LoadError({ onRetry }: { onRetry: () => unknown }) {
+  const { t } = useTranslation();
+  return (
+    <EmptyState icon={<CloudOff className="size-8" />} title={t("common.loadError")}>
+      <Button variant="primary" className="mt-2" onClick={() => void onRetry()}>
+        {t("common.retry")}
+      </Button>
+    </EmptyState>
   );
 }
 

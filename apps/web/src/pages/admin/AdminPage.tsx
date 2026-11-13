@@ -118,7 +118,7 @@ function ScanBadge({
     <span className="text-xs text-faint">
       {kind === "movies"
         ? t("admin.scanReportMovies", { count: r.movies })
-        : t("admin.scanReportSeries", { series: r.series, episodes: r.episodes })}
+        : `${t("admin.scanReportSeries", { count: r.series })} · ${t("detail.episodeCount", { count: r.episodes })}`}
       {r.metadata_skipped ? ` · ${t("admin.noTmdb")}` : ""}
       {r.probe_errors ? ` · ${t("admin.probeErrors", { count: r.probe_errors })}` : ""}
     </span>
@@ -174,30 +174,39 @@ function LibrariesCard() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-4 py-3"
+                  // Phones: the text gets the full width, the actions sit below it.
+                  className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:gap-4"
                 >
-                  <span className="flex size-10 items-center justify-center rounded-xl bg-surface-2 text-accent">
-                    <Icon className="size-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{lib.name}</p>
-                    <p className="truncate font-mono text-xs text-faint">/media/{lib.path}</p>
-                    <ScanBadge status={status} kind={lib.kind} />
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-accent">
+                      <Icon className="size-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{lib.name}</p>
+                      <p className="truncate font-mono text-xs text-faint">/media/{lib.path}</p>
+                      <ScanBadge status={status} kind={lib.kind} />
+                    </div>
                   </div>
-                  <Button size="sm" onClick={() => scan.mutate(lib.id)} disabled={status?.running}>
-                    <RefreshCw className={status?.running ? "size-4 animate-spin" : "size-4"} />
-                    {t("admin.scan")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`${t("common.delete")} ${lib.name}`}
-                    onClick={() =>
-                      confirm(t("admin.confirmRemoveLibrary")) && remove.mutate(lib.id)
-                    }
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <div className="flex items-center gap-2 pl-14 sm:pl-0">
+                    <Button
+                      size="sm"
+                      onClick={() => scan.mutate(lib.id)}
+                      disabled={status?.running}
+                    >
+                      <RefreshCw className={status?.running ? "size-4 animate-spin" : "size-4"} />
+                      {t("admin.scan")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`${t("common.delete")} ${lib.name}`}
+                      onClick={() =>
+                        confirm(t("admin.confirmRemoveLibrary")) && remove.mutate(lib.id)
+                      }
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </motion.li>
               );
             })}
