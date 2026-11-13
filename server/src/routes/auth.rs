@@ -240,6 +240,7 @@ pub async fn logout(State(state): State<AppState>, current: CurrentDevice) -> Ap
         .bind(current.device_id)
         .execute(&state.db)
         .await?;
+    crate::downloads::service::release_revoked_devices(&state).await?;
     Ok((
         StatusCode::NO_CONTENT,
         [(
@@ -352,13 +353,14 @@ pub struct QuickConnectStarted {
     responses((status = 200, body = QuickConnectStarted), (status = 429, body = crate::error::ErrorBody)))]
 pub async fn quick_connect_start(
     State(state): State<AppState>,
+    ClientIp(ip): ClientIp,
     Json(req): Json<QuickConnectStartRequest>,
 ) -> ApiResult<Json<QuickConnectStarted>> {
     req.device.validate()?;
     let started = state
         .auth
         .quick_connect
-        .start(req.device, Instant::now())
+        .start(req.device, &ip, Instant::now())
         .ok_or(ApiError::TooManyAttempts {
             retry_after_secs: 60,
         })?;

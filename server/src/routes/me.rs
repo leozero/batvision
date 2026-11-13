@@ -29,13 +29,19 @@ pub struct UpdateMeRequest {
     pub language: Option<String>,
 }
 
+/// Languages TMDB translates into. A closed list: every distinct language among the
+/// users is fetched for every item, so a made-up tag would cost a whole library of
+/// requests for nothing.
+const LANGUAGES: &[&str] = &[
+    "ar-SA", "bg-BG", "ca-ES", "cs-CZ", "da-DK", "de-AT", "de-CH", "de-DE", "el-GR", "en-AU",
+    "en-CA", "en-GB", "en-US", "es-ES", "es-MX", "et-EE", "fi-FI", "fr-BE", "fr-CA", "fr-CH",
+    "fr-FR", "he-IL", "hi-IN", "hr-HR", "hu-HU", "id-ID", "it-IT", "ja-JP", "ko-KR", "lt-LT",
+    "lv-LV", "nb-NO", "nl-BE", "nl-NL", "pl-PL", "pt-BR", "pt-PT", "ro-RO", "ru-RU", "sk-SK",
+    "sl-SI", "sr-RS", "sv-SE", "th-TH", "tr-TR", "uk-UA", "vi-VN", "zh-CN", "zh-HK", "zh-TW",
+];
+
 pub fn validate_language(language: &str) -> ApiResult<()> {
-    let bytes = language.as_bytes();
-    let ok = bytes.len() == 5
-        && bytes[0..2].iter().all(u8::is_ascii_lowercase)
-        && bytes[2] == b'-'
-        && bytes[3..5].iter().all(u8::is_ascii_uppercase);
-    if ok {
+    if LANGUAGES.contains(&language) {
         Ok(())
     } else {
         Err(ApiError::bad_request(
@@ -140,6 +146,7 @@ pub async fn change_password(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
+    crate::downloads::service::release_revoked_devices(&state).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -361,6 +368,7 @@ pub async fn revoke_device(
     .execute(&state.db)
     .await?;
     if result.rows_affected() == 1 {
+        crate::downloads::service::release_revoked_devices(&state).await?;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

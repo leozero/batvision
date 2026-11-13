@@ -632,6 +632,25 @@ async fn scan_library(state: &AppState, library_id: i64) -> anyhow::Result<ScanR
     }
     let listing: Vec<(PathBuf, u64)> = files.iter().map(|(p, f)| (p.clone(), f.size)).collect();
 
+    // A file replaced at the same path keeps its row: the versions encoded from the
+    // old one must not be handed out as the new one.
+    let encoded: Vec<(i64, String, i64, i64)> = sqlx::query_as(
+        "SELECT v.id, mf.path, mf.size_bytes, mf.modified_at
+         FROM variants v JOIN media_files mf ON mf.id = v.media_file_id",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    for (variant, path, size, modified) in encoded {
+        let replaced = Path::new(&path)
+            .strip_prefix(&library_path)
+            .ok()
+            .and_then(|relative| files.get(relative))
+            .is_some_and(|f| f.size as i64 != size || f.modified != modified);
+        if replaced {
+            state.encoder.delete(variant).await?;
+        }
+    }
+
     let mut report = ScanReport::default();
     match kind.as_str() {
         "movies" => {

@@ -156,6 +156,16 @@ pub async fn delete_library(
         ));
     }
     let mut tx = state.db.begin().await?;
+    // Encoded versions go with their files (foreign key): their folders are removed after.
+    let variants: Vec<i64> = sqlx::query_scalar(
+        "SELECT v.id FROM variants v JOIN media_files mf ON mf.id = v.media_file_id WHERE
+           (mf.item_kind = 'movie' AND mf.item_id IN (SELECT id FROM movies WHERE library_id = ?1))
+           OR (mf.item_kind = 'episode' AND mf.item_id IN (
+               SELECT e.id FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.library_id = ?1))",
+    )
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await?;
     // Files, translations and ratings point to items without a foreign key: clean them first.
     sqlx::query(
         "DELETE FROM media_files WHERE
@@ -216,6 +226,7 @@ pub async fn delete_library(
         .await?;
     tx.commit().await?;
     if deleted.rows_affected() == 1 {
+        state.encoder.forget(&variants).await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

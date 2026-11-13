@@ -138,14 +138,16 @@ pub async fn file(
     Path(token): Path<String>,
     request: Request,
 ) -> ApiResult<axum::response::Response> {
-    let Some(Grant::Variant { v, f }) = state.signer.verify(&token, now()) else {
+    let Some(Grant::Variant { v, f, c }) = state.signer.verify(&token, now()) else {
         return Err(ApiError::NotFound);
     };
-    let row: Option<(String, Option<String>)> =
-        sqlx::query_as("SELECT status, subtitles_json FROM variants WHERE id = ?")
-            .bind(v)
-            .fetch_optional(&state.db)
-            .await?;
+    let row: Option<(String, Option<String>)> = sqlx::query_as(
+        "SELECT status, subtitles_json FROM variants WHERE id = ? AND created_at = ?",
+    )
+    .bind(v)
+    .bind(c)
+    .fetch_optional(&state.db)
+    .await?;
     let Some((status, subtitles)) = row.filter(|(s, _)| s == "ready") else {
         return Err(ApiError::NotFound);
     };

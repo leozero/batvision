@@ -337,6 +337,7 @@ pub async fn start(
             encoder,
             gpu,
             source_width: info.video.as_ref().and_then(|v| v.width),
+            source_hevc: info.video.as_ref().is_some_and(|v| v.codec == "hevc"),
         };
         let source_height = info.video.as_ref().and_then(|v| v.height);
         let session = state
@@ -510,7 +511,7 @@ pub async fn subtitle(
                 .fetch_optional(&state.db)
                 .await?
                 .ok_or(ApiError::NotFound)?;
-            (format!("{f}_{s}.vtt"), path, Some(s), o)
+            (format!("{f}_{s}"), path, Some(s), o)
         }
         Grant::External { x, o } => {
             let path: String = sqlx::query_scalar("SELECT path FROM subtitle_files WHERE id = ?")
@@ -518,30 +519,49 @@ pub async fn subtitle(
                 .fetch_optional(&state.db)
                 .await?
                 .ok_or(ApiError::NotFound)?;
-            (format!("x{x}.vtt"), path, None, o)
+            (format!("x{x}"), path, None, o)
         }
         Grant::File { .. } | Grant::Variant { .. } => return Err(ApiError::NotFound),
     };
-    let cache = state.config.cache_dir.join("subtitles").join(&cache_name);
+    let input = state.config.media_dir.join(input);
+    // The file's date is part of the name: a replaced movie or a corrected .srt must
+    // not keep serving the subtitles of the old one.
+    let modified = tokio::fs::metadata(&input)
+        .await
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_secs());
+    let cache = state
+        .config
+        .cache_dir
+        .join("subtitles")
+        .join(format!("{cache_name}_{modified}.vtt"));
     let vtt = match tokio::fs::read_to_string(&cache).await {
         Ok(vtt) => vtt,
         Err(_) => {
-            let vtt = subtitles::to_webvtt(
-                &state.config.ffmpeg,
-                &state.config.media_dir.join(input),
-                stream,
-            )
+            // In a task of its own: reading a big file takes minutes, and it must go on
+            // (and be kept) if this request gives up. One at a time per subtitle.
+            let ffmpeg = state.config.ffmpeg.clone();
+            tokio::spawn(async move {
+                let lock = subtitle_lock(&cache);
+                let _guard = lock.lock().await;
+                if let Ok(vtt) = tokio::fs::read_to_string(&cache).await {
+                    return Ok(vtt);
+                }
+                let vtt = subtitles::to_webvtt(&ffmpeg, &input, stream).await?;
+                if let Some(dir) = cache.parent() {
+                    tokio::fs::create_dir_all(dir).await?;
+                }
+                // Write then rename: a concurrent reader never sees a partial file.
+                let tmp = cache.with_extension("tmp");
+                tokio::fs::write(&tmp, &vtt).await?;
+                tokio::fs::rename(&tmp, &cache).await?;
+                anyhow::Ok(vtt)
+            })
             .await
-            .map_err(ApiError::Internal)?;
-            if let Some(dir) = cache.parent() {
-                tokio::fs::create_dir_all(dir)
-                    .await
-                    .map_err(anyhow::Error::from)?;
-            }
-            tokio::fs::write(&cache, &vtt)
-                .await
-                .map_err(anyhow::Error::from)?;
-            vtt
+            .map_err(anyhow::Error::from)?
+            .map_err(ApiError::Internal)?
         }
     };
     Ok((
@@ -606,10 +626,27 @@ pub async fn hls(
                     .into_response());
             }
         }
-        if Instant::now() > deadline || !state.transcodes.is_running(&session) {
+        if Instant::now() > deadline
+            || (!state.transcodes.is_running(&session) && !state.transcodes.retry_on_cpu(&session))
+        {
             return Err(ApiError::NotFound);
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
         state.transcodes.touch(&session);
     }
+}
+
+/// One lock per subtitle being converted, so that two requests for the same one don't
+/// both read the whole file.
+fn subtitle_lock(cache: &std::path::Path) -> std::sync::Arc<tokio::sync::Mutex<()>> {
+    static LOCKS: std::sync::Mutex<
+        Option<
+            std::collections::HashMap<std::path::PathBuf, std::sync::Arc<tokio::sync::Mutex<()>>>,
+        >,
+    > = std::sync::Mutex::new(None);
+    let mut locks = LOCKS.lock().unwrap();
+    let locks = locks.get_or_insert_default();
+    // Those nobody holds any more.
+    locks.retain(|_, lock| std::sync::Arc::strong_count(lock) > 1);
+    locks.entry(cache.to_owned()).or_default().clone()
 }

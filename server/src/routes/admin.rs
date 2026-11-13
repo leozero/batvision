@@ -78,6 +78,8 @@ pub async fn delete_user(
         .execute(&state.db)
         .await?;
     if result.rows_affected() == 1 {
+        // Its devices' requests went with it: their encodes have nobody left.
+        crate::downloads::service::release_revoked_devices(&state).await?;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)

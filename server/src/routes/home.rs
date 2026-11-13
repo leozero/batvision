@@ -260,33 +260,30 @@ pub async fn search(
             series: vec![],
         }));
     }
-    let pattern = format!(
-        "%{}%",
-        needle
-            .replace('\\', "\\\\")
-            .replace('%', "\\%")
-            .replace('_', "\\_")
+    // Matched here, not with LIKE: SQLite only folds ASCII case, so "étoile" missed "Étoile".
+    let needle = fold(needle);
+    let movie_ids = matching(
+        sqlx::query_as(
+            "SELECT m.id, m.parsed_title FROM movies m WHERE m.missing_since IS NULL
+             UNION ALL
+             SELECT m.id, t.title FROM movies m JOIN translations t
+               ON t.item_kind = 'movie' AND t.item_id = m.id WHERE m.missing_since IS NULL",
+        )
+        .fetch_all(&state.db)
+        .await?,
+        &needle,
     );
-    let movie_ids: Vec<i64> = sqlx::query_scalar(
-        "SELECT m.id FROM movies m WHERE m.missing_since IS NULL AND (
-           m.parsed_title LIKE ?1 ESCAPE '\\'
-           OR EXISTS (SELECT 1 FROM translations t WHERE t.item_kind = 'movie' AND t.item_id = m.id
-                      AND t.title LIKE ?1 ESCAPE '\\'))
-         LIMIT 30",
-    )
-    .bind(&pattern)
-    .fetch_all(&state.db)
-    .await?;
-    let series_ids: Vec<i64> = sqlx::query_scalar(
-        "SELECT s.id FROM series s WHERE s.missing_since IS NULL AND (
-           s.parsed_title LIKE ?1 ESCAPE '\\'
-           OR EXISTS (SELECT 1 FROM translations t WHERE t.item_kind = 'series' AND t.item_id = s.id
-                      AND t.title LIKE ?1 ESCAPE '\\'))
-         LIMIT 30",
-    )
-    .bind(&pattern)
-    .fetch_all(&state.db)
-    .await?;
+    let series_ids = matching(
+        sqlx::query_as(
+            "SELECT s.id, s.parsed_title FROM series s WHERE s.missing_since IS NULL
+             UNION ALL
+             SELECT s.id, t.title FROM series s JOIN translations t
+               ON t.item_kind = 'series' AND t.item_id = s.id WHERE s.missing_since IS NULL",
+        )
+        .fetch_all(&state.db)
+        .await?,
+        &needle,
+    );
 
     let all = BrowseQuery {
         library_id: None,
@@ -384,4 +381,70 @@ pub async fn put_preferences(
     .execute(&state.db)
     .await?;
     Ok(Json(load_preferences(&state, current.user.id).await?))
+}
+
+/// Lower case without accents, to compare titles the way people type them.
+fn fold(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for c in text.chars().flat_map(char::to_lowercase) {
+        match c {
+            'à' | 'á' | 'â' | 'ã' | 'ä' | 'å' => out.push('a'),
+            'ç' => out.push('c'),
+            'è' | 'é' | 'ê' | 'ë' => out.push('e'),
+            'ì' | 'í' | 'î' | 'ï' => out.push('i'),
+            'ñ' => out.push('n'),
+            'ò' | 'ó' | 'ô' | 'õ' | 'ö' | 'ø' => out.push('o'),
+            'ù' | 'ú' | 'û' | 'ü' => out.push('u'),
+            'ý' | 'ÿ' => out.push('y'),
+            'œ' => out.push_str("oe"),
+            'æ' => out.push_str("ae"),
+            'ß' => out.push_str("ss"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// Ids of the 30 best titles containing `needle` (already folded): those starting
+/// with it first, then the others, each group in title order.
+fn matching(titles: Vec<(i64, Option<String>)>, needle: &str) -> Vec<i64> {
+    let mut found: Vec<(bool, String, i64)> = titles
+        .into_iter()
+        .filter_map(|(id, title)| {
+            let title = fold(&title?);
+            title
+                .contains(needle)
+                .then(|| (!title.starts_with(needle), title, id))
+        })
+        .collect();
+    found.sort();
+    let mut ids = Vec::new();
+    for (_, _, id) in found {
+        if !ids.contains(&id) {
+            ids.push(id);
+            if ids.len() == 30 {
+                break;
+            }
+        }
+    }
+    ids
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_ignores_case_and_accents() {
+        let titles = vec![
+            (1, Some("L'Étoile du Nord".to_owned())),
+            (2, Some("Amélie".to_owned())),
+            (3, Some("Etoile".to_owned())),
+            (3, Some("Étoile".to_owned())),
+            (4, None),
+        ];
+        assert_eq!(matching(titles.clone(), &fold("étoile")), vec![3, 1]);
+        assert_eq!(matching(titles.clone(), &fold("AMELIE")), vec![2]);
+        assert_eq!(matching(titles, &fold("zz")), Vec::<i64>::new());
+    }
 }

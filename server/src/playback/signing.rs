@@ -20,8 +20,15 @@ pub enum Grant {
     Subtitle { f: i64, s: i64, o: i64 },
     /// An external subtitle file, as WebVTT shifted by `o` ms.
     External { x: i64, o: i64 },
-    /// File `f` of an encoded variant: 0 = the video, n = its n-th subtitle.
-    Variant { v: i64, f: i64 },
+    /// File `f` of an encoded variant: 0 = the video, n = its n-th subtitle. `c` is when
+    /// the variant was created: SQLite reuses the id of a deleted one, and a download
+    /// resumed with an old link must not continue with another file's bytes.
+    Variant {
+        v: i64,
+        f: i64,
+        #[serde(default)]
+        c: i64,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
