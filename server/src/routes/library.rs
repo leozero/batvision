@@ -190,6 +190,26 @@ pub async fn delete_library(
     .bind(id)
     .execute(&mut *tx)
     .await?;
+    // Watch state and downloads too: SQLite gives a later item the id of a deleted one,
+    // which would then inherit them.
+    macro_rules! of_this_library {
+        ($table:literal) => {
+            concat!(
+                "DELETE FROM ",
+                $table,
+                " WHERE (item_kind = 'movie' AND item_id IN (SELECT id FROM movies WHERE library_id = ?1))
+                  OR (item_kind = 'episode' AND item_id IN (
+                      SELECT e.id FROM episodes e JOIN series s ON s.id = e.series_id WHERE s.library_id = ?1))"
+            )
+        };
+    }
+    for sql in [
+        of_this_library!("user_item_data"),
+        of_this_library!("manual_downloads"),
+        of_this_library!("device_downloads"),
+    ] {
+        sqlx::query(sql).bind(id).execute(&mut *tx).await?;
+    }
     let deleted = sqlx::query("DELETE FROM libraries WHERE id = ?")
         .bind(id)
         .execute(&mut *tx)
@@ -308,24 +328,30 @@ pub async fn identify_movie(
     Json(req): Json<IdentifyRequest>,
 ) -> ApiResult<StatusCode> {
     let tmdb = require_tmdb(&state)?;
+    // Before anything is erased: a mistyped id must leave the movie as it was.
+    tmdb.movie(req.tmdb_id, &state.config.default_language)
+        .await
+        .map_err(identify_error)?;
+    let mut tx = state.db.begin().await?;
     let updated = sqlx::query(
         "UPDATE movies SET tmdb_id = ?, identify_locked = 1, metadata_updated_at = NULL WHERE id = ?",
     )
     .bind(req.tmdb_id)
     .bind(id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
     if updated.rows_affected() == 0 {
         return Err(ApiError::NotFound);
     }
     sqlx::query("DELETE FROM translations WHERE item_kind = 'movie' AND item_id = ?")
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
     sqlx::query("DELETE FROM ratings WHERE item_kind = 'movie' AND item_id = ?")
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     let languages = metadata::languages(&state.db, &state.config.default_language).await?;
     metadata::refresh_movie(&state.db, tmdb, id, &languages)
         .await
@@ -344,12 +370,17 @@ pub async fn identify_series(
     Json(req): Json<IdentifyRequest>,
 ) -> ApiResult<StatusCode> {
     let tmdb = require_tmdb(&state)?;
+    // Before anything is erased: a mistyped id must leave the series as it was.
+    tmdb.tv(req.tmdb_id, &state.config.default_language)
+        .await
+        .map_err(identify_error)?;
+    let mut tx = state.db.begin().await?;
     let updated = sqlx::query(
         "UPDATE series SET tmdb_id = ?, identify_locked = 1, metadata_updated_at = NULL WHERE id = ?",
     )
     .bind(req.tmdb_id)
     .bind(id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
     if updated.rows_affected() == 0 {
         return Err(ApiError::NotFound);
@@ -361,7 +392,7 @@ pub async fn identify_series(
            OR (item_kind = 'episode' AND item_id IN (SELECT id FROM episodes WHERE series_id = ?1))",
     )
     .bind(id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
     sqlx::query(
         "DELETE FROM ratings WHERE
@@ -370,17 +401,26 @@ pub async fn identify_series(
            OR (item_kind = 'episode' AND item_id IN (SELECT id FROM episodes WHERE series_id = ?1))",
     )
     .bind(id)
-    .execute(&state.db)
+    .execute(&mut *tx)
     .await?;
     sqlx::query("UPDATE episodes SET air_date = NULL, runtime_minutes = NULL, still_path = NULL WHERE series_id = ?")
         .bind(id)
-        .execute(&state.db)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     let languages = metadata::languages(&state.db, &state.config.default_language).await?;
     metadata::refresh_series(&state.db, tmdb, id, &languages)
         .await
         .map_err(|e| ApiError::Upstream(format!("{e:#}")))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// A TMDB id that doesn't exist is the caller's mistake; anything else is TMDB's.
+fn identify_error(err: metadata::tmdb::TmdbError) -> ApiError {
+    match err {
+        metadata::tmdb::TmdbError::NotFound => ApiError::NotFound,
+        other => ApiError::Upstream(other.to_string()),
+    }
 }
 
 // ---- Browsing ---------------------------------------------------------------------------
@@ -1162,7 +1202,9 @@ pub async fn image(
                     .map_err(anyhow::Error::from)?;
             }
             // Write then rename: a concurrent reader never sees a partial file.
-            let tmp = cached.with_extension(format!("{}.tmp", now()));
+            // A name of its own: two first requests for one image don't share it.
+            let tmp =
+                cached.with_extension(format!("{}.tmp", crate::auth::crypto::random_token("")));
             tokio::fs::write(&tmp, &bytes)
                 .await
                 .map_err(anyhow::Error::from)?;

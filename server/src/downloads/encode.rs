@@ -11,7 +11,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 use tokio::{
-    io::{AsyncBufReadExt, BufReader},
+    io::{AsyncBufReadExt, AsyncReadExt, BufReader},
     process::Command,
     sync::{Notify, Semaphore},
 };
@@ -539,6 +539,24 @@ impl Encoder {
             .kill_on_drop(true)
             .spawn()?;
         let stdout = child.stdout.take().expect("piped");
+        // Read while ffmpeg runs: a damaged source fills the pipe with errors, and ffmpeg
+        // would then wait for a reader for ever. Only the end is kept for the report.
+        let mut stderr = child.stderr.take().expect("piped");
+        let errors = tokio::spawn(async move {
+            const KEPT: usize = 8 * 1024;
+            let mut tail = Vec::new();
+            let mut chunk = [0u8; 4096];
+            while let Ok(read) = stderr.read(&mut chunk).await {
+                if read == 0 {
+                    break;
+                }
+                tail.extend_from_slice(&chunk[..read]);
+                if tail.len() > 2 * KEPT {
+                    tail.drain(..tail.len() - KEPT);
+                }
+            }
+            tail
+        });
         let mut lines = BufReader::new(stdout).lines();
         let mut last_update = Instant::now();
         loop {
@@ -566,17 +584,20 @@ impl Encoder {
                     .await?;
             }
         }
-        let output = child.wait_with_output().await?;
+        let status = child.wait().await?;
+        let errors = errors.await.unwrap_or_default();
         anyhow::ensure!(
-            output.status.success(),
+            status.success(),
             "ffmpeg: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
+            String::from_utf8_lossy(&errors).trim()
         );
         Ok(())
     }
 
     /// Deletes a variant's files and row.
     pub async fn delete(&self, id: i64) -> anyhow::Result<()> {
+        // Its encode, if one runs, would otherwise hold a slot to the end for nothing.
+        self.abort(id);
         let _ = tokio::fs::remove_dir_all(self.dir(id)).await;
         sqlx::query("DELETE FROM variants WHERE id = ?")
             .bind(id)

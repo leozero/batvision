@@ -64,8 +64,30 @@ impl RateLimiter {
         }
     }
 
+    /// Checks `keys` and counts the attempt as a failure in one step, so that requests
+    /// sent at the same time can't all pass the check before any of them is counted.
+    /// A successful attempt takes its count back with `record_success` or `forgive`.
+    pub fn attempt(&self, keys: &[&str], now: Instant) -> Result<(), Duration> {
+        let mut entries = self.entries.lock().unwrap();
+        let wait = keys
+            .iter()
+            .filter_map(|key| entries.get(*key)?.locked_until)
+            .filter(|until| *until > now)
+            .map(|until| until - now)
+            .max();
+        if let Some(wait) = wait {
+            return Err(wait);
+        }
+        self.count(&mut entries, keys, now);
+        Ok(())
+    }
+
     pub fn record_failure(&self, keys: &[&str], now: Instant) {
         let mut entries = self.entries.lock().unwrap();
+        self.count(&mut entries, keys, now);
+    }
+
+    fn count(&self, entries: &mut HashMap<String, Entry>, keys: &[&str], now: Instant) {
         let policy = self.policy;
         entries.retain(|_, e| now.duration_since(e.last_failure) < policy.forget_after);
         for key in keys {
@@ -83,6 +105,22 @@ impl RateLimiter {
                     .saturating_mul(1 << exponent)
                     .min(policy.max_lock);
                 entry.locked_until = Some(now + lock);
+            }
+        }
+    }
+
+    /// Takes back one counted attempt without forgetting the earlier failures.
+    pub fn forgive(&self, keys: &[&str]) {
+        let mut entries = self.entries.lock().unwrap();
+        for key in keys {
+            let Some(entry) = entries.get_mut(*key) else {
+                continue;
+            };
+            entry.failures = entry.failures.saturating_sub(1);
+            if entry.failures == 0 {
+                entries.remove(*key);
+            } else if entry.failures < self.policy.free_failures {
+                entry.locked_until = None;
             }
         }
     }
@@ -149,5 +187,31 @@ mod tests {
         assert!(rl.check(&["ip:1", "user:b"], t0).is_err());
         rl.record_success(&["ip:1", "user:a"]);
         assert!(rl.check(&["ip:1", "user:a"], t0).is_ok());
+    }
+
+    #[test]
+    fn attempts_are_counted_before_their_outcome() {
+        let limiter = limiter();
+        let now = Instant::now();
+        // Three requests sent together: all counted, so a fourth is refused whatever
+        // the first three turn out to be.
+        for _ in 0..3 {
+            assert!(limiter.attempt(&["ip"], now).is_ok());
+        }
+        assert!(limiter.attempt(&["ip"], now).is_err());
+    }
+
+    #[test]
+    fn a_forgiven_attempt_keeps_earlier_failures() {
+        let limiter = limiter();
+        let now = Instant::now();
+        limiter.attempt(&["ip"], now).unwrap();
+        limiter.attempt(&["ip"], now).unwrap();
+        // The third one succeeds: it lifts its own lock, not the two failures.
+        limiter.attempt(&["ip"], now).unwrap();
+        limiter.forgive(&["ip"]);
+        assert!(limiter.check(&["ip"], now).is_ok());
+        limiter.attempt(&["ip"], now).unwrap();
+        assert!(limiter.check(&["ip"], now).is_err());
     }
 }

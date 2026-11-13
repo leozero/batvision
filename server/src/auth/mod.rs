@@ -162,12 +162,16 @@ impl AuthState {
         token
     }
 
-    /// User behind a live challenge.
-    pub fn challenge_user(&self, token: &str) -> ApiResult<i64> {
+    /// User behind a live challenge, counting one try at its code: the challenge dies
+    /// once the tries are spent.
+    pub fn challenge_attempt(&self, token: &str) -> ApiResult<i64> {
         let key = crypto::hash_token(token);
         let mut challenges = self.challenges.lock().unwrap();
-        match challenges.get(&key) {
-            Some(c) if c.expires_at > Instant::now() => Ok(c.user_id),
+        match challenges.get_mut(&key) {
+            Some(c) if c.expires_at > Instant::now() && c.attempts < CHALLENGE_MAX_ATTEMPTS => {
+                c.attempts += 1;
+                Ok(c.user_id)
+            }
             Some(_) => {
                 challenges.remove(&key);
                 Err(challenge_expired())
@@ -183,18 +187,6 @@ impl AuthState {
             .unwrap()
             .remove(&crypto::hash_token(token))
             .ok_or_else(challenge_expired)
-    }
-
-    /// Counts a wrong code; the challenge dies after too many.
-    pub fn fail_challenge(&self, token: &str) {
-        let key = crypto::hash_token(token);
-        let mut challenges = self.challenges.lock().unwrap();
-        if let Some(c) = challenges.get_mut(&key) {
-            c.attempts += 1;
-            if c.attempts >= CHALLENGE_MAX_ATTEMPTS {
-                challenges.remove(&key);
-            }
-        }
     }
 }
 

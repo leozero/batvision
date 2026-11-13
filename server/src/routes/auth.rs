@@ -153,8 +153,9 @@ pub async fn login(
     let ip_key = format!("ip:{ip}");
     let user_key = format!("user:{}", req.username.to_lowercase());
     let limiter = &state.auth.login_limiter;
+    // Counted before the password is checked: a burst can't outrun the limiter.
     limiter
-        .check(&[&ip_key, &user_key], Instant::now())
+        .attempt(&[&ip_key, &user_key], Instant::now())
         .map_err(too_many)?;
 
     let row: Option<(i64, String, bool)> =
@@ -171,13 +172,12 @@ pub async fn login(
 
     let (user_id, totp_enabled) = match row {
         Some((id, _, totp)) if valid => (id, totp),
-        _ => {
-            limiter.record_failure(&[&ip_key, &user_key], Instant::now());
-            return Err(ApiError::InvalidCredentials);
-        }
+        _ => return Err(ApiError::InvalidCredentials),
     };
-    // Only the account key is cleared: one valid account must not reset an IP's counter.
+    // Only the account key is cleared: one valid account must not reset an IP's counter,
+    // which only gets this attempt back.
     limiter.record_success(&[&user_key]);
+    limiter.forgive(&[&ip_key]);
 
     if totp_enabled {
         let challenge = state.auth.create_challenge(user_id, req.device);
@@ -210,14 +210,13 @@ pub async fn login_totp(
     State(state): State<AppState>,
     Json(req): Json<TotpLoginRequest>,
 ) -> ApiResult<Response> {
-    let user_id = state.auth.challenge_user(&req.challenge)?;
+    // Both counted before the code is checked: a burst can't outrun either cap.
+    let user_id = state.auth.challenge_attempt(&req.challenge)?;
     let key = format!("totp:{user_id}");
     let limiter = &state.auth.login_limiter;
-    limiter.check(&[&key], Instant::now()).map_err(too_many)?;
+    limiter.attempt(&[&key], Instant::now()).map_err(too_many)?;
 
     if !auth::verify_second_factor(&state.db, user_id, &req.code).await? {
-        state.auth.fail_challenge(&req.challenge);
-        limiter.record_failure(&[&key], Instant::now());
         return Err(ApiError::InvalidCredentials);
     }
     limiter.record_success(&[&key]);

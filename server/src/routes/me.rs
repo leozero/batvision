@@ -67,7 +67,7 @@ pub async fn update_me(
 async fn check_password(state: &AppState, user_id: i64, password: &str) -> ApiResult<()> {
     let key = format!("reauth:{user_id}");
     let limiter = &state.auth.login_limiter;
-    if let Err(wait) = limiter.check(&[&key], Instant::now()) {
+    if let Err(wait) = limiter.attempt(&[&key], Instant::now()) {
         return Err(ApiError::TooManyAttempts {
             retry_after_secs: wait.as_secs().max(1),
         });
@@ -80,9 +80,31 @@ async fn check_password(state: &AppState, user_id: i64, password: &str) -> ApiRe
         limiter.record_success(&[&key]);
         Ok(())
     } else {
-        limiter.record_failure(&[&key], Instant::now());
         Err(ApiError::InvalidCredentials)
     }
+}
+
+/// Checks a second factor for a signed-in user, under the limiter sign-in uses: a
+/// stolen session can't try every code.
+async fn check_second_factor(state: &AppState, user_id: i64, code: &str) -> ApiResult<()> {
+    let key = format!("totp:{user_id}");
+    let limiter = &state.auth.login_limiter;
+    if let Err(wait) = limiter.attempt(&[&key], Instant::now()) {
+        return Err(ApiError::TooManyAttempts {
+            retry_after_secs: wait.as_secs().max(1),
+        });
+    }
+    if auth::verify_second_factor(&state.db, user_id, code).await? {
+        limiter.record_success(&[&key]);
+        Ok(())
+    } else {
+        Err(ApiError::InvalidCredentials)
+    }
+}
+
+/// A TOTP code (not a recovery code), however the app spaced it.
+fn is_totp_code(code: &str) -> bool {
+    code.chars().filter(|c| !c.is_whitespace()).count() == 6
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -209,11 +231,10 @@ pub async fn totp_enable(
         ));
     }
     // Only TOTP codes here: no recovery codes exist yet.
-    if req.code.trim().len() != 6
-        || !auth::verify_second_factor(&state.db, current.user.id, &req.code).await?
-    {
+    if !is_totp_code(&req.code) {
         return Err(ApiError::InvalidCredentials);
     }
+    check_second_factor(&state, current.user.id, &req.code).await?;
     sqlx::query("UPDATE users SET totp_enabled = 1 WHERE id = ?")
         .bind(current.user.id)
         .execute(&state.db)
@@ -250,9 +271,7 @@ pub async fn totp_disable(
         return Ok(StatusCode::NO_CONTENT);
     }
     check_password(&state, current.user.id, &req.password).await?;
-    if !auth::verify_second_factor(&state.db, current.user.id, &req.code).await? {
-        return Err(ApiError::InvalidCredentials);
-    }
+    check_second_factor(&state, current.user.id, &req.code).await?;
     let mut tx = state.db.begin().await?;
     sqlx::query(
         "UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_last_step = NULL WHERE id = ?",
@@ -283,12 +302,10 @@ pub async fn regenerate_recovery_codes(
     current: CurrentDevice,
     Json(req): Json<RegenerateRecoveryCodesRequest>,
 ) -> ApiResult<Json<RecoveryCodes>> {
-    if !current.user.totp_enabled
-        || req.code.trim().len() != 6
-        || !auth::verify_second_factor(&state.db, current.user.id, &req.code).await?
-    {
+    if !current.user.totp_enabled || !is_totp_code(&req.code) {
         return Err(ApiError::InvalidCredentials);
     }
+    check_second_factor(&state, current.user.id, &req.code).await?;
     let codes = auth::regenerate_recovery_codes(&state.db, current.user.id).await?;
     Ok(Json(RecoveryCodes { codes }))
 }
