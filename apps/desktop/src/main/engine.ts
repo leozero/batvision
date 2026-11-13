@@ -216,8 +216,11 @@ export class Engine extends EventEmitter {
     void this.sync();
   }
 
-  setFolder(folder: string) {
+  async setFolder(folder: string) {
     this.abort?.abort();
+    // The download in progress lets go of its file before the folder moves, and the
+    // loop has ended by the time `kick` starts a new one.
+    await this.loop;
     this.library.moveTo(folder);
     this.config.folder = folder;
     this.emitState();
@@ -242,6 +245,9 @@ export class Engine extends EventEmitter {
         av1 === null ? {} : { av1 },
       );
       this.online = true;
+      // Each sync gives failed downloads another try: a dropped connection or a full
+      // disk doesn't last, and nothing else would retry them before a restart.
+      this.failed.clear();
       this.plan = plan.items;
       this.quota = plan.settings.quota_bytes ?? null;
       await this.apply();

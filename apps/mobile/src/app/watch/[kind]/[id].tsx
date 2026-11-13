@@ -88,6 +88,7 @@ export default function Player() {
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<"tracks" | "quality" | null>(null);
   const [mode, setMode] = useState<QualityMode>("auto");
+  const modeLoaded = useRef(false);
   const [ended, setEnded] = useState(false);
   const positionRef = useRef(0); // absolute ms
   const barWidth = useRef(0);
@@ -139,7 +140,9 @@ export default function Player() {
         return;
       }
       try {
-        const quality = opts.quality ?? (mode === "auto" ? await readAutoLevel() : mode);
+        // The first start runs before the saved mode is in the state: read it here.
+        const chosen = modeLoaded.current ? mode : await readQualityMode();
+        const quality = opts.quality ?? (chosen === "auto" ? await readAutoLevel() : chosen);
         const next = await call(
           api().POST("/api/playback", {
             body: {
@@ -168,7 +171,10 @@ export default function Player() {
   );
 
   useEffect(() => {
-    void readQualityMode().then(setMode);
+    void readQualityMode().then((saved) => {
+      modeLoaded.current = true;
+      setMode(saved);
+    });
   }, []);
 
   // Start once; later restarts come from the controls.

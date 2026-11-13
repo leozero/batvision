@@ -94,7 +94,8 @@ app.whenReady().then(() => {
   );
   ipcMain.handle("bv:setServer", async (_e, input: string): Promise<SetServerResult> => {
     const origin = normalizeServer(String(input));
-    if (!origin) return { ok: false, error: "invalid_url" };
+    // Signed in, the server can't change: the token would follow to the new address.
+    if (!origin || config.token) return { ok: false, error: "invalid_url" };
     try {
       const response = await fetchWithTimeout(`${origin}/api/health`, {}, 10_000);
       const body = (await response.json().catch(() => null)) as { status?: string } | null;
@@ -141,7 +142,8 @@ app.whenReady().then(() => {
       properties: ["openDirectory", "createDirectory"],
     });
     const folder = result.filePaths[0];
-    if (!result.canceled && folder && folder !== engine.library.folder) engine.setFolder(folder);
+    if (!result.canceled && folder && folder !== engine.library.folder)
+      await engine.setFolder(folder);
     return settings();
   });
   ipcMain.handle("bv:openFolder", () => shell.openPath(engine.library.folder));

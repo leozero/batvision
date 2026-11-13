@@ -1,4 +1,5 @@
 import { Image } from "expo-image";
+import { router } from "expo-router";
 import { Film } from "lucide-react-native";
 import type { ComponentProps, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -188,6 +189,27 @@ export function Loading() {
     <View className="flex-1 items-center justify-center bg-bg">
       <ActivityIndicator color={COLORS.accent} size="large" />
     </View>
+  );
+}
+
+/** A screen whose data didn't load: says so, with a way back and another try. */
+export function LoadError({ onRetry }: { onRetry: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Screen>
+      <View className="flex-1 justify-center">
+        <EmptyState title={t("common.loadError")}>
+          <View className="flex-row gap-3">
+            <Button onPress={() => (router.canGoBack() ? router.back() : router.replace("/home"))}>
+              {t("common.back")}
+            </Button>
+            <Button variant="primary" onPress={onRetry}>
+              {t("common.retry")}
+            </Button>
+          </View>
+        </EmptyState>
+      </View>
+    </Screen>
   );
 }
 
