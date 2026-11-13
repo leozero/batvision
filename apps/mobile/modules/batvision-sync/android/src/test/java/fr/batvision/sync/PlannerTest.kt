@@ -116,4 +116,18 @@ class PlannerTest {
     val d = Planner.decide(listOf(entry(1, "failed"), entry(2, "unavailable")), emptyMap(), null)
     assertEquals(emptyList<String>(), d.steps())
   }
+
+  @Test
+  fun `the next download skips settled items and follows a changed decision`() {
+    val plan = listOf(entry(1, "ready"), entry(2, "ready"), entry(3, "not_requested"), entry(4, "ready"))
+    val d = Planner.decide(plan, emptyMap(), null)
+    assertEquals("episode-1", Planner.nextDownload(d.actions) { false }?.key)
+    // Done, failed or waiting items are passed over, in the plan's order.
+    assertEquals("episode-4", Planner.nextDownload(d.actions) { it in setOf("episode-1", "episode-2") }?.key)
+    assertEquals(null, Planner.nextDownload(d.actions) { true })
+    // Dropped by hand (D74): the decision made again no longer offers it.
+    val after = Planner.decide(plan.filter { it.id != 1L }, emptyMap(), null)
+    assertEquals("episode-2", Planner.nextDownload(after.actions) { false }?.key)
+    assertEquals(null, Planner.nextDownload(emptyList()) { false })
+  }
 }

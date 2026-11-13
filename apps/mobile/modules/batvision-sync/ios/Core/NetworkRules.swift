@@ -67,3 +67,30 @@ enum NetworkRules {
     return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
   }
 }
+
+/// What to do when a transfer ends without the file.
+enum TransferEnd: Equatable {
+  /// The server is down or restarting: nothing wrong with the item, try again later.
+  case unreachable
+  /// The URL is stale: fetch a fresh plan and try once more.
+  case refresh
+  case failed
+}
+
+enum TransferRules {
+  /// `refreshed`: a fresh plan was already fetched for this item, without a success since.
+  static func end(status: Int, refreshed: Bool) -> TransferEnd {
+    // Behind a reverse proxy, a stopped server answers 502/503/504.
+    if (502...504).contains(status) { return .unreachable }
+    // Signed URL expired or variant gone. Once only: a file the server lost for good
+    // would otherwise refetch the plan and retry without end.
+    if [403, 404, 410].contains(status) { return refreshed ? .failed : .refresh }
+    return .failed
+  }
+
+  /// Seconds before retrying after the `attempt`-th error in a row (from 0): further apart
+  /// each time, so a server that stays down isn't asked in a loop.
+  static func retryDelay(attempt: Int) -> TimeInterval {
+    min(15 * pow(2, Double(max(0, min(attempt, 10)))), 300)
+  }
+}

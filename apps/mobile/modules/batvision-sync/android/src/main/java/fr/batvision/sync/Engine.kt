@@ -10,11 +10,16 @@ import android.os.Environment
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -40,18 +45,22 @@ class Engine private constructor(private val context: Context) {
     private set
   private val mutex = Mutex()
   private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-  private var plan: List<PlanEntry> = emptyList()
-  private var decision: Decision? = null
+  // Written by the sync and by `cancel`, on different threads: together, under `planLock`.
+  private val planLock = Any()
+  @Volatile private var plan: List<PlanEntry> = emptyList()
+  @Volatile private var decision: Decision? = null
   private var quota: Long? = null
   private var online = true
   private var syncing = false
   private var lastSyncAt: Long? = null
   private var lastError: String? = null
-  private val waits = mutableMapOf<String, Wait>()
-  private val failed = mutableMapOf<String, String>()
+  private val waits: MutableMap<String, Wait> = ConcurrentHashMap()
+  private val failed: MutableMap<String, String> = ConcurrentHashMap()
   @Volatile var current: Current? = null
     private set
   @Volatile private var cancelDownload = false
+  /** An item was dropped: the running sync stops downloading and fetches the plan again. */
+  @Volatile private var replan = false
   /** Items dropped by hand: a download of one stops at its next check (D74). */
   private val cancelled = java.util.Collections.synchronizedSet(mutableSetOf<String>())
   private var flushJob: Job? = null
@@ -68,8 +77,10 @@ class Engine private constructor(private val context: Context) {
   fun reset() {
     cancelDownload = true
     store.clearSession()
-    plan = emptyList()
-    decision = null
+    synchronized(planLock) {
+      plan = emptyList()
+      decision = null
+    }
     failed.clear()
     waits.clear()
     emit()
@@ -91,7 +102,7 @@ class Engine private constructor(private val context: Context) {
   private fun followStorage(setting: String) {
     val target = if (setting == "sd" && sdRoot() == null) "internal" else setting
     if (target == currentStorage() && library.folder == folderFor(target)) return
-    cancelDownload = true
+    // Called within a sync, before its downloads: no transfer to stop first.
     library.moveTo(folderFor(target))
     context.getSharedPreferences("batvision.sync", Context.MODE_PRIVATE).edit().putString("storageCurrent", target).apply()
   }
@@ -131,19 +142,28 @@ class Engine private constructor(private val context: Context) {
     try {
       val api = api()
       flushProgress(api)
-      var plan = api.plan(store.av1)
-      online = true
-      store.settings = plan.settings
-      quota = if (plan.settings.isNull("quota_bytes")) null else plan.settings.getLong("quota_bytes")
-      followStorage(plan.settings.optString("storage", "internal"))
-      this.plan = plan.items
-      plan = apply(api, plan)
-      refreshPositions(api)
-      lastSyncAt = System.currentTimeMillis()
-      lastError = null
-      syncing = false
-      emit()
-      downloadAll(api, onDownload)
+      do {
+        replan = false
+        val plan = api.plan(store.av1)
+        online = true
+        // Each sync gives failed downloads another try: a dropped connection or a full
+        // disk doesn't last, and nothing else would retry them before a restart.
+        failed.clear()
+        store.settings = plan.settings
+        quota = if (plan.settings.isNull("quota_bytes")) null else plan.settings.getLong("quota_bytes")
+        followStorage(plan.settings.optString("storage", "internal"))
+        apply(api, plan)
+        refreshPositions(api)
+        lastSyncAt = System.currentTimeMillis()
+        lastError = null
+        syncing = false
+        emit()
+        downloadAll(api, onDownload)
+        // An item dropped meanwhile (D74) can take others with it (a season): ask again.
+      } while (replan && !store.paused && !cancelDownload)
+    } catch (e: CancellationException) {
+      // The worker was stopped: not an error, and the caller must see it.
+      throw e
     } catch (e: Unreachable) {
       online = false
       lastError = null
@@ -166,9 +186,13 @@ class Engine private constructor(private val context: Context) {
     )
   }
 
-  private fun apply(api: Api, plan: Plan): Plan {
-    val decision = Planner.decide(plan.items, library.records(), quota)
-    this.decision = decision
+  private fun setPlan(items: List<PlanEntry>): Decision = synchronized(planLock) {
+    plan = items
+    Planner.decide(items, library.records(), quota).also { decision = it }
+  }
+
+  private fun apply(api: Api, plan: Plan) {
+    val decision = setPlan(plan.items)
     for (key in decision.remove) library.remove(key)
     for (action in decision.actions) {
       try {
@@ -183,11 +207,8 @@ class Engine private constructor(private val context: Context) {
       }
     }
     // Requests change statuses: show them now rather than at the next sync.
-    if (decision.actions.none { it is Action.Request }) return plan
-    val fresh = api.plan(store.av1)
-    this.plan = fresh.items
-    this.decision = Planner.decide(fresh.items, library.records(), quota)
-    return fresh
+    if (decision.actions.none { it is Action.Request }) return
+    setPlan(api.plan(store.av1).items)
   }
 
   /** Watched elsewhere since: bring the server's positions to the local copies. */
@@ -206,10 +227,13 @@ class Engine private constructor(private val context: Context) {
 
   private suspend fun downloadAll(api: Api, onDownload: suspend (Current?) -> Unit) {
     waits.clear()
-    val downloads = decision?.actions?.filterIsInstance<Action.Download>() ?: return
-    for (action in downloads) {
-      if (store.paused || cancelDownload) return
-      if (library.get(action.key)?.complete == true || action.key in failed) continue
+    // The decision is read again each time: `cancel` changes it while this runs.
+    while (true) {
+      currentCoroutineContext().ensureActive()
+      if (store.paused || cancelDownload || replan) return
+      val action = Planner.nextDownload(decision?.actions.orEmpty()) { key ->
+        library.get(key)?.complete == true || key in failed || key in waits || key in cancelled
+      } ?: return
       val wait = NetworkRules.check(action.entry.profile, rules(), conditions(), store.mobileBytes(month()))
       if (wait != null) {
         waits[action.key] = wait
@@ -218,6 +242,9 @@ class Engine private constructor(private val context: Context) {
       }
       try {
         download(api, action.entry, onDownload)
+      } catch (e: CancellationException) {
+        // The worker was stopped: end here rather than mark every item failed.
+        throw e
       } catch (e: Unreachable) {
         throw e
       } catch (e: HttpError) {
@@ -225,8 +252,8 @@ class Engine private constructor(private val context: Context) {
         if (e.status == 404) return
         failed[action.key] = e.message ?: "download failed"
       } catch (e: StopDownload) {
+        // Without a wait (paused, dropped), the check at the top of the loop decides.
         e.wait?.let { waits[action.key] = it }
-        if (e.wait == null) return
       } catch (e: Exception) {
         failed[action.key] = e.message ?: "download failed"
         Log.e(TAG, "download ${action.key} failed", e)
@@ -269,7 +296,17 @@ class Engine private constructor(private val context: Context) {
           var lastCheck = System.currentTimeMillis()
           var meteredBytes = 0L
           while (true) {
-            val n = input.read(buffer)
+            val n = try {
+              input.read(buffer)
+            } catch (e: IOException) {
+              // The connection dropped mid-file (Wi-Fi gone): not a failure of the item.
+              // On a network the rules refuse, wait for Wi-Fi; else the server is out of reach.
+              val now = conditions()
+              if (now.metered) store.addMobileBytes(month(), meteredBytes)
+              val wait = NetworkRules.check(entry.profile, rules(), now, store.mobileBytes(month()))
+              if (wait != null && wait != Wait.OFFLINE) throw StopDownload(wait)
+              throw Unreachable(e)
+            }
             if (n < 0) break
             out.write(buffer, 0, n)
             received += n
@@ -280,7 +317,8 @@ class Engine private constructor(private val context: Context) {
               val now = conditions()
               if (now.metered) store.addMobileBytes(month(), meteredBytes)
               meteredBytes = 0
-              if (store.paused || cancelDownload || key in cancelled) throw StopDownload(null)
+              currentCoroutineContext().ensureActive()
+              if (store.paused || cancelDownload || replan || key in cancelled) throw StopDownload(null)
               NetworkRules.check(entry.profile, rules(), now, store.mobileBytes(month()))?.let { throw StopDownload(it) }
               current = Current(key, displayTitle(entry), received, total)
               onDownload(current)
@@ -363,12 +401,15 @@ class Engine private constructor(private val context: Context) {
     api().cancel(kind, id)
     val key = itemKey(kind, id)
     cancelled += key
+    // A running sync stops its download and asks for the plan again, instead of
+    // going on with what was queued before (the rest of a dropped season).
+    replan = true
     // Wait for a download of it to let go of the partial file.
     while (current?.key == key) delay(100)
     library.remove(key)
     failed.remove(key)
     waits.remove(key)
-    plan = plan.filter { it.key != key }
+    setPlan(plan.filter { it.key != key })
     cancelled -= key
     emit()
   }

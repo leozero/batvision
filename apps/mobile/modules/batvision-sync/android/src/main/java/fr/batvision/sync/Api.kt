@@ -16,6 +16,14 @@ class Unreachable(cause: Throwable) : IOException(cause.message, cause)
 /** The server answered with an error status. */
 class HttpError(val status: Int, message: String) : IOException("HTTP $status: $message")
 
+/** Reads an answer's body: a connection lost midway is the server out of reach, not a failure. */
+inline fun <T> reading(block: () -> T): T =
+  try {
+    block()
+  } catch (e: IOException) {
+    throw Unreachable(e)
+  }
+
 class Plan(val settings: JSONObject, val items: List<PlanEntry>)
 
 /** Calls to the BatVision server with the device token. */
@@ -43,7 +51,7 @@ class Api(private val server: String, private val token: String) {
     val payload = body?.toString()?.toRequestBody(json)
     val request = Request.Builder().url(url(path)).method(method, payload).build()
     call(request).use { response ->
-      val text = response.body?.string().orEmpty()
+      val text = reading { response.body?.string() }.orEmpty()
       if (!response.isSuccessful) throw HttpError(response.code, text.take(200))
       return text
     }
@@ -89,7 +97,7 @@ class Api(private val server: String, private val token: String) {
 
   fun bytes(path: String): ByteArray? =
     try {
-      open(path).use { it.body?.bytes() }
+      open(path).use { response -> reading { response.body?.bytes() } }
     } catch (e: HttpError) {
       null
     }

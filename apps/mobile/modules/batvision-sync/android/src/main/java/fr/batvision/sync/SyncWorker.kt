@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
@@ -22,6 +23,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 private const val CHANNEL = "downloads"
@@ -29,19 +31,37 @@ private const val NOTIFICATION_ID = 4201
 
 /** Runs one sync (D63): the whole cycle, even with the app closed. */
 class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+  private var foregroundRefused = false
+
   override suspend fun doWork(): Result {
     val engine = Engine.get(applicationContext)
     if (!engine.signedIn) return Result.success()
-    var outcome = engine.sync { current -> if (current != null) setForeground(foregroundInfo(current)) }
+    var outcome = engine.sync(::show)
     // The server is encoding for us: look again shortly rather than in a scheduled job,
     // so the download starts as soon as the file is ready (within WorkManager's 10 min).
     var checks = 0
     while (outcome.serverBusy && checks++ < BUSY_CHECKS && !isStopped) {
       delay(BUSY_EVERY_MS)
-      outcome = engine.sync { current -> if (current != null) setForeground(foregroundInfo(current)) }
+      outcome = engine.sync(::show)
     }
     Scheduler.after(applicationContext, outcome)
     return Result.success()
+  }
+
+  /**
+   * The progress notification. Android 12+ may refuse a foreground service to a worker
+   * started in the background: the download goes on without the notification.
+   */
+  private suspend fun show(current: Current?) {
+    if (current == null || foregroundRefused) return
+    try {
+      setForeground(foregroundInfo(current))
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Exception) {
+      foregroundRefused = true
+      Log.w("batvision.sync", "no download notification: foreground refused", e)
+    }
   }
 
   override suspend fun getForegroundInfo(): ForegroundInfo =
