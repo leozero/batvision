@@ -137,7 +137,7 @@ test("downloading a movie encodes, downloads and marks it", async () => {
   await expect(page.getByText("Téléchargé", { exact: true })).toBeVisible({ timeout: 120_000 });
   await page.keyboard.press("Escape");
   await shot("movie");
-  const folder = join(videos, "Batvision");
+  const folder = join(videos, "BatVision");
   const item = JSON.parse(readFileSync(join(folder, "batvision.json"), "utf8")).items[0];
   expect(item.complete).toBe(true);
   expect(existsSync(join(folder, item.key, "video.mp4"))).toBe(true);
@@ -229,7 +229,7 @@ test("deleting a download, or cancelling one, frees this computer", async () => 
   await expect(dialog.getByText("Le fichier est supprimé de cet appareil.")).toBeVisible();
   await dialog.getByRole("button", { name: "Supprimer" }).click();
   await expect(card.getByText(/Rien de prévu sur cet ordinateur/)).toBeVisible();
-  const folder = join(videos, "Batvision");
+  const folder = join(videos, "BatVision");
   const library = JSON.parse(readFileSync(join(folder, "batvision.json"), "utf8"));
   expect(library.items).toEqual([]);
 
