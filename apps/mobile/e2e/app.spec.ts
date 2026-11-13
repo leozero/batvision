@@ -28,9 +28,9 @@ let server: TestServer;
 let movieId = 0;
 let userToken = "";
 
-async function api(path: string, token: string | null, body?: unknown) {
+async function api(path: string, token: string | null, body?: unknown, method?: string) {
   const response = await fetch(`${server.origin}${path}`, {
-    method: body === undefined ? "GET" : "POST",
+    method: method ?? (body === undefined ? "GET" : "POST"),
     headers: {
       "content-type": "application/json",
       ...(token ? { authorization: `Bearer ${token}` } : {}),
@@ -136,13 +136,23 @@ test("first launch connects and signs in", () => {
 
 test("a movie downloads to the device in the background engine", async () => {
   test.setTimeout(400_000);
-  maestro("download.yaml");
   const login = await api("/api/auth/login", null, {
     ...USER,
     device: { name: "check", platform: "other" },
   });
   userToken = login.token;
-  // The engine confirmed it: the server lists it as downloaded on the phone.
+  // CI emulators sometimes come up on mobile data only: let the test device use it,
+  // or the download waits for Wi-Fi (D68).
+  const before = await api("/api/downloads/overview", userToken);
+  const device = before.devices.find((d: { platform: string }) => d.platform === PLATFORM);
+  await api(
+    `/api/downloads/devices/${device.id}/settings`,
+    userToken,
+    { ...device.settings, mobile_data: "all" },
+    "PUT",
+  );
+  maestro("download.yaml");
+  // The engine confirmed it: the server lists it as downloaded on the device.
   const overview = await api("/api/downloads/overview", userToken);
   const phone = overview.devices.find((d: { platform: string }) => d.platform === PLATFORM);
   expect(phone.items[0].status).toBe("downloaded");

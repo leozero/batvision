@@ -10,19 +10,43 @@ appId: ${APP_ID}
 - tapOn:
     id: server-address
 - inputText: ${SERVER}
-- hideKeyboard
-- tapOn:
-    id: connect
+# Android: the keyboard hides the button. iOS: Return submits; hiding the keyboard on an
+# iPad is a gesture that can leave the screen.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+      - tapOn:
+          id: connect
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - pressKey: Enter
 - tapOn:
     id: username
 - inputText: ${USERNAME}
 - tapOn:
     id: password
 - inputText: ${PASSWORD}
-- hideKeyboard
-- tapOn:
-    id: sign-in
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+      - tapOn:
+          id: sign-in
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - pressKey: Enter
 - extendedWaitUntil:
     visible:
       id: tab-movies
     timeout: 20000
+# iOS offers to save the password, over the app.
+- tapOn:
+    text: "Not Now"
+    optional: true
