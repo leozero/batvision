@@ -201,13 +201,17 @@ jobs:
             console.log(ipad.udid);')
           echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
-      - name: Install ffmpeg (encodes the test movie) and ccache
+      # ccache now; ffmpeg (encodes the test movie, ~8 min of bottles) while the app builds.
+      - name: Install ccache, then ffmpeg in the background
         env:
           # The runner's formulas are recent enough: skip Homebrew's own update.
           HOMEBREW_NO_AUTO_UPDATE: "1"
           HOMEBREW_NO_INSTALL_CLEANUP: "1"
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
-        run: brew install ffmpeg ccache
+        run: |
+          brew install ccache
+          # Detached from the step's output, so the step ends without waiting for it.
+          nohup sh -c 'brew install ffmpeg > "$RUNNER_TEMP/ffmpeg.log" 2>&1; echo $? > "$RUNNER_TEMP/ffmpeg.status"' > /dev/null 2>&1 &
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -231,9 +235,10 @@ jobs:
         working-directory: apps/mobile/ios
         run: |
           # arm64 only: the runner's simulator doesn't need the Intel half.
+          # No explicit clang modules: Xcode 26 then bypasses the ccache wrapper (CC).
           xcodebuild -workspace BatVision.xcworkspace -scheme BatVision -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CLANG_ENABLE_EXPLICIT_MODULES=NO \
             -derivedDataPath build/dd build | tail -30
           ccache --show-stats
       - if: always()
@@ -246,11 +251,17 @@ jobs:
           curl -fsSL -o "$RUNNER_TEMP/maestro.zip" https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.12.1/maestro.zip
           unzip -q "$RUNNER_TEMP/maestro.zip" -d "$HOME"
           echo "$HOME/maestro/bin" >> "$GITHUB_PATH"
-      - name: Wait for the simulator
-        run: xcrun simctl bootstatus "$SIMULATOR" -b
+      - name: Wait for the simulator and ffmpeg
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR" -b
+          while [ ! -f "$RUNNER_TEMP/ffmpeg.status" ]; do sleep 5; done
+          tail -5 "$RUNNER_TEMP/ffmpeg.log"
+          exit "$(cat "$RUNNER_TEMP/ffmpeg.status")"
       - name: End-to-end on the simulator
         env:
           PLATFORM: ios
+          # The server's own steps (encodes, plans), to see where the time goes.
+          RUST_LOG: warn,batvision_server=info
           MAESTRO_OUTPUT: ${{ github.workspace }}/apps/mobile/maestro-output
         run: pnpm --filter @batvision/mobile test:e2e
       - if: failure()

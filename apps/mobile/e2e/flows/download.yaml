@@ -1,4 +1,4 @@
-# The movie is downloaded to the phone by the Kotlin engine (encode, download, confirm).
+# The movie is downloaded to the device by the native engine (encode, download, confirm).
 appId: ${APP_ID}
 ---
 - stopApp
@@ -8,6 +8,11 @@ appId: ${APP_ID}
 # iOS reads the poster as one element, "Test Movie, 2020".
 - tapOn:
     text: "Test Movie.*"
+# The page is loaded (slow CI runners): only then is a missing button meaningful.
+- extendedWaitUntil:
+    visible:
+      id: play
+    timeout: 60000
 # Optional: when the flow is retried, the request already went out.
 - tapOn:
     id: download

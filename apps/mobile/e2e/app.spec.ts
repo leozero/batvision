@@ -135,7 +135,8 @@ test("first launch connects and signs in", () => {
 });
 
 test("a movie downloads to the device in the background engine", async () => {
-  test.setTimeout(400_000);
+  // The macOS runners are slower (a simulator next to the server's encode).
+  test.setTimeout(IOS ? 900_000 : 400_000);
   const login = await api("/api/auth/login", null, {
     ...USER,
     device: { name: "check", platform: "other" },
