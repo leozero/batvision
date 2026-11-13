@@ -30,6 +30,10 @@ fn touch(root: &Path, relative: &str) {
 
 /// A real 3 s MKV with English then French audio.
 fn make_video(root: &Path, relative: &str) {
+    make_video_of(root, relative, 3);
+}
+
+fn make_video_of(root: &Path, relative: &str, seconds: u32) {
     let full = root.join(relative);
     std::fs::create_dir_all(full.parent().unwrap()).unwrap();
     let status = Command::new("ffmpeg")
@@ -39,15 +43,15 @@ fn make_video(root: &Path, relative: &str) {
             "-f",
             "lavfi",
             "-i",
-            "testsrc2=duration=3:size=640x360:rate=25",
+            &format!("testsrc2=duration={seconds}:size=640x360:rate=25"),
             "-f",
             "lavfi",
             "-i",
-            "sine=frequency=440:duration=3",
+            &format!("sine=frequency=440:duration={seconds}"),
             "-f",
             "lavfi",
             "-i",
-            "sine=frequency=660:duration=3",
+            &format!("sine=frequency=660:duration={seconds}"),
             "-map",
             "0:v",
             "-map",
@@ -658,6 +662,92 @@ async fn cancel_removes_what_asks_for_the_item() {
 
     // Nothing asks for it any more: nothing to remove.
     assert!(cancel(&f, "episode", ep[0]).await.is_empty());
+}
+
+/// A long movie in the phone's watchlist, encoding for it. Returns (movie, variant).
+async fn long_encode(f: &Fixture) -> (i64, i64) {
+    // Long enough to still be encoding when the test stops it.
+    make_video_of(f.media.path(), "Movies/Long (2020)/Long (2020).mkv", 600);
+    f.library("movies", "Movies").await;
+    let movie = f.first_id("/api/movies").await;
+    f.app
+        .state
+        .encoder
+        .clone()
+        .start(Encoders::default)
+        .await
+        .unwrap();
+    f.set_auto(true).await;
+    f.app
+        .request(
+            Method::PUT,
+            &format!("/api/watchlist/{movie}"),
+            Some(&f.phone),
+            Some(json!({})),
+        )
+        .await;
+    let (status, requested) = f
+        .app
+        .post(
+            "/api/downloads/request",
+            Some(&f.phone),
+            json!({ "kind": "movie", "id": movie }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{requested}");
+    let variant = requested["variant_id"].as_i64().unwrap();
+    for _ in 0..100 {
+        if f.app.state.encoder.is_encoding(variant) {
+            return (movie, variant);
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    panic!("the encode didn't start");
+}
+
+/// ffmpeg is stopped, not left to finish a 10-minute encode, and the variant goes.
+async fn assert_stopped(f: &Fixture, variant: i64) {
+    for _ in 0..50 {
+        if !f.app.state.encoder.is_encoding(variant) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(!f.app.state.encoder.is_encoding(variant));
+    assert!(!f.app.state.encoder.dir(variant).exists());
+    let (_, queue) = f.app.get("/api/admin/encodes", Some(&f.admin)).await;
+    assert!(queue["variants"].as_array().unwrap().is_empty(), "{queue}");
+}
+
+#[tokio::test]
+async fn cancelling_stops_an_encode_nobody_waits_for() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    let (movie, variant) = long_encode(&f).await;
+    cancel(&f, "movie", movie).await;
+    assert_stopped(&f, variant).await;
+}
+
+#[tokio::test]
+async fn an_item_leaving_the_plan_stops_its_encode() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    let (movie, variant) = long_encode(&f).await;
+    // Removed from the watchlist on the web: the phone's next plan withdraws its request.
+    f.app
+        .request(
+            Method::DELETE,
+            &format!("/api/watchlist/{movie}"),
+            Some(&f.phone),
+            None,
+        )
+        .await;
+    assert!(ids(&f.plan().await).is_empty());
+    assert_stopped(&f, variant).await;
 }
 
 #[tokio::test]

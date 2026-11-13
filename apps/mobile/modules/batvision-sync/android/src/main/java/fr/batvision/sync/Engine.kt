@@ -518,10 +518,15 @@ class Engine private constructor(private val context: Context) {
       "source" to entry?.source,
       "wait" to waits[key]?.name?.lowercase(),
       "error" to (failed[key] ?: entry?.error),
-      "meta" to if (stored != null) metaMap(stored) else metaMap(StoredMeta(
+      "meta" to (if (stored != null) metaMap(stored) else metaMap(StoredMeta(
         title = entry?.title.orEmpty(), episodeTitle = entry?.episodeTitle, seriesId = entry?.seriesId,
         seasonNumber = entry?.seasonNumber, episodeNumber = entry?.episodeNumber, durationMs = entry?.durationMs,
-      )) + mapOf("poster" to if (posterPath != null && server != null) "$server/api/images/w342$posterPath" else null),
+      ))).let { meta ->
+        // The local picture once downloaded, the server's until then (in progress too).
+        if (meta["poster"] == null && posterPath != null && server != null) {
+          meta + ("poster" to "$server/api/images/w342$posterPath")
+        } else meta
+      },
     )
   }
 

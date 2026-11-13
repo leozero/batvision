@@ -1,12 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
+import { Link, router } from "expo-router";
+import { ArrowLeft } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FlatList, Pressable, Text, View } from "react-native";
-import { EmptyState, Input, Poster, Screen } from "../../components/ui";
-import { imageUrl } from "../../lib/api";
-import { searchQuery } from "../../lib/queries";
+import { COLORS, EmptyState, Input, Poster, Screen } from "../components/ui";
+import { imageUrl } from "../lib/api";
+import { searchQuery } from "../lib/queries";
 
+/** Over the tabs (a tab of its own reset the tabs to Home on Android). */
 export default function SearchScreen() {
   const { t } = useTranslation();
   const [text, setText] = useState("");
@@ -35,7 +37,18 @@ export default function SearchScreen() {
   return (
     <Screen>
       <View className="gap-3 p-4">
-        <Text className="text-2xl font-bold text-fg">{t("nav.search")}</Text>
+        <View className="flex-row items-center gap-3">
+          <Pressable
+            testID="back"
+            accessibilityLabel="back"
+            hitSlop={8}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/home"))}
+            className="size-10 items-center justify-center rounded-full bg-surface-2 active:opacity-70"
+          >
+            <ArrowLeft color={COLORS.fg} size={20} />
+          </Pressable>
+          <Text className="text-2xl font-bold text-fg">{t("nav.search")}</Text>
+        </View>
         <Input
           testID="search"
           value={text}

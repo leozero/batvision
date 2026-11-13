@@ -2,9 +2,10 @@
 //! track, plus its text subtitles as WebVTT. Encoded only when a device asks.
 
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     process::Stdio,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -244,6 +245,18 @@ pub struct VariantSubtitle {
 }
 
 /// Sizes and runs the encode queue. One worker per allowed concurrent encode.
+/// An encode stopped because nobody waits for it any more.
+#[derive(Debug)]
+pub struct Cancelled;
+
+impl std::fmt::Display for Cancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("encode cancelled")
+    }
+}
+
+impl std::error::Error for Cancelled {}
+
 pub struct Encoder {
     db: Db,
     root: PathBuf,
@@ -252,6 +265,8 @@ pub struct Encoder {
     wake: Notify,
     slots: Arc<Semaphore>,
     budget_bytes: i64,
+    /// Encodes in progress, each with what stops its ffmpeg.
+    running: Mutex<HashMap<i64, Arc<Notify>>>,
 }
 
 impl Encoder {
@@ -271,6 +286,20 @@ impl Encoder {
             wake: Notify::new(),
             slots: Arc::new(Semaphore::new(concurrency.max(1))),
             budget_bytes,
+            running: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Whether ffmpeg is encoding `id` right now.
+    pub fn is_encoding(&self, id: i64) -> bool {
+        self.running.lock().unwrap().contains_key(&id)
+    }
+
+    /// Stops the encode of `id` if one runs; its worker then moves on.
+    pub fn abort(&self, id: i64) {
+        if let Some(stop) = self.running.lock().unwrap().get(&id) {
+            // A stored permit: the encode sees it even between two reads.
+            stop.notify_one();
         }
     }
 
@@ -313,6 +342,14 @@ impl Encoder {
                         tokio::spawn(async move {
                             let _permit = permit;
                             if let Err(err) = this.encode(id, encoders).await {
+                                if err.is::<Cancelled>() {
+                                    tracing::info!(
+                                        variant = id,
+                                        "encode cancelled: nobody waits for it"
+                                    );
+                                    this.wake.notify_waiters();
+                                    return;
+                                }
                                 tracing::error!(variant = id, error = %format!("{err:#}"), "encode failed");
                                 let _ = sqlx::query(
                                     "UPDATE variants SET status = 'failed', error = ? WHERE id = ?",
@@ -412,16 +449,21 @@ impl Encoder {
             "encoding"
         );
 
-        if let Err(err) = self.run(id, &job, &partial, duration_us).await {
-            if !job.on_gpu() {
-                return Err(err);
+        let stop = Arc::new(Notify::new());
+        self.running.lock().unwrap().insert(id, stop.clone());
+        let result = self.run(id, &job, &partial, duration_us, &stop).await;
+        let result = match result {
+            Err(err) if job.on_gpu() && !err.is::<Cancelled>() => {
+                // A source the GPU chain can't take: the CPU filters handle anything.
+                tracing::warn!(variant = id, error = %format!("{err:#}"), "GPU encode failed, retrying on the CPU");
+                let mut cpu = job.clone();
+                cpu.encoders.gpu_filters = false;
+                self.run(id, &cpu, &partial, duration_us, &stop).await
             }
-            // A source the GPU chain can't take: the CPU filters handle anything.
-            tracing::warn!(variant = id, error = %format!("{err:#}"), "GPU encode failed, retrying on the CPU");
-            let mut cpu = job.clone();
-            cpu.encoders.gpu_filters = false;
-            self.run(id, &cpu, &partial, duration_us).await?;
-        }
+            other => other,
+        };
+        self.running.lock().unwrap().remove(&id);
+        result?;
         tokio::fs::rename(&partial, &out).await?;
 
         // Every text subtitle, embedded or external, as WebVTT next to the video.
@@ -487,6 +529,7 @@ impl Encoder {
         job: &EncodeJob,
         partial: &Path,
         duration_us: i64,
+        stop: &Notify,
     ) -> anyhow::Result<()> {
         let mut child = Command::new(&self.ffmpeg)
             .args(ffmpeg_args(job, partial))
@@ -498,7 +541,16 @@ impl Encoder {
         let stdout = child.stdout.take().expect("piped");
         let mut lines = BufReader::new(stdout).lines();
         let mut last_update = Instant::now();
-        while let Some(line) = lines.next_line().await? {
+        loop {
+            let line = tokio::select! {
+                line = lines.next_line() => line?,
+                _ = stop.notified() => {
+                    let _ = child.start_kill();
+                    let _ = child.wait().await;
+                    return Err(Cancelled.into());
+                }
+            };
+            let Some(line) = line else { break };
             if let Some(us) = line
                 .strip_prefix("out_time_us=")
                 .and_then(|v| v.parse::<i64>().ok())

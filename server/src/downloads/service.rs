@@ -439,6 +439,20 @@ pub async fn plan_for_device(
     .bind(serde_json::to_string(&keep).expect("serializable"))
     .execute(&state.db)
     .await?;
+    // Requests for items it no longer expects (removed from the watchlist, subscription
+    // stopped from the web): withdrawn, and their encodes stop if nobody else waits.
+    let stale = sqlx::query(
+        "DELETE FROM variant_requests WHERE device_id = ? AND confirmed_at IS NULL
+         AND variant_id IN (SELECT v.id FROM variants v JOIN media_files mf ON mf.id = v.media_file_id
+             WHERE (mf.item_kind || ':' || mf.item_id) NOT IN (SELECT value FROM json_each(?)))",
+    )
+    .bind(device_id)
+    .bind(serde_json::to_string(&keep).expect("serializable"))
+    .execute(&state.db)
+    .await?;
+    if stale.rows_affected() > 0 {
+        drop_unwanted_encodes(state).await?;
+    }
     let downloaded: HashMap<(String, i64), (Profile, Option<i64>)> = sqlx::query_as::<
         _,
         (String, i64, Profile, Option<i64>),
@@ -648,9 +662,25 @@ pub async fn confirm(state: &AppState, device_id: i64, variant_id: i64) -> ApiRe
     Ok(())
 }
 
+/// Queued or running encodes no device asks for any more: stopped and deleted, so a
+/// cancelled download doesn't keep the GPU busy.
+async fn drop_unwanted_encodes(state: &AppState) -> ApiResult<()> {
+    let orphans: Vec<i64> = sqlx::query_scalar(
+        "SELECT v.id FROM variants v WHERE v.status IN ('queued', 'encoding')
+           AND NOT EXISTS (SELECT 1 FROM variant_requests r WHERE r.variant_id = v.id)",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    for variant in orphans {
+        state.encoder.abort(variant);
+        state.encoder.delete(variant).await?;
+    }
+    Ok(())
+}
+
 /// The device drops an item (D74): removes each source that asks for it on this
 /// device (manual download, subscription, watchlist entry) until none does, then
-/// withdraws the device's pending request. A queued encode nobody else waits for goes.
+/// withdraws the device's pending request. An encode nobody else waits for stops.
 pub async fn cancel(
     state: &AppState,
     user: &crate::auth::User,
@@ -685,18 +715,7 @@ pub async fn cancel(
     .bind(id)
     .execute(&state.db)
     .await?;
-    let orphans: Vec<i64> = sqlx::query_scalar(
-        "SELECT v.id FROM variants v JOIN media_files mf ON mf.id = v.media_file_id
-         WHERE mf.item_kind = ? AND mf.item_id = ? AND v.status = 'queued'
-           AND NOT EXISTS (SELECT 1 FROM variant_requests r WHERE r.variant_id = v.id)",
-    )
-    .bind(kind.as_str())
-    .bind(id)
-    .fetch_all(&state.db)
-    .await?;
-    for variant in orphans {
-        state.encoder.delete(variant).await?;
-    }
+    drop_unwanted_encodes(state).await?;
     sqlx::query(
         "DELETE FROM device_downloads WHERE device_id = ? AND item_kind = ? AND item_id = ?",
     )

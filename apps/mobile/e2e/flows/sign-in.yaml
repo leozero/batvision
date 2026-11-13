@@ -42,11 +42,16 @@ appId: ${APP_ID}
       platform: iOS
     commands:
       - pressKey: Enter
+      # iOS offers to save the password, over the app: it hides the tabs until closed.
+      - extendedWaitUntil:
+          visible:
+            text: "Not Now"
+          timeout: 20000
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true
 - extendedWaitUntil:
     visible:
       id: tab-movies
     timeout: 20000
-# iOS offers to save the password, over the app.
-- tapOn:
-    text: "Not Now"
-    optional: true

@@ -29,6 +29,8 @@ appId: ${APP_ID}
 # Device settings: mobile data, picked in a sheet with an explanation per option.
 - tapOn:
     id: tab-downloads
+- tapOn:
+    id: downloads-settings
 - scrollUntilVisible:
     element:
       id: setting-mobile-data

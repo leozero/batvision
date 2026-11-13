@@ -61,8 +61,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ color }) => <Bookmark color={color} size={22} />,
         }}
       />
-      {/* Reached from the magnifier at the top of Home, Movies and Series. */}
-      <Tabs.Screen name="search" options={{ href: null, title: t("nav.search") }} />
       <Tabs.Screen
         name="downloads"
         options={{

@@ -295,6 +295,7 @@ export const en: Shape<typeof fr> = {
     inWatchlist: "In watchlist",
   },
   mobile: {
+    inProgress: "In progress",
     thisPhone: "On this device",
     offlineEmpty: "Nothing is downloaded on this device.",
     signOut: "Sign out",

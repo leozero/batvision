@@ -294,6 +294,7 @@ export const fr = {
     inWatchlist: "Dans la watchlist",
   },
   mobile: {
+    inProgress: "En cours",
     thisPhone: "Sur cet appareil",
     offlineEmpty: "Rien n'est téléchargé sur cet appareil.",
     signOut: "Se déconnecter",

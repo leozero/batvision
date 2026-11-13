@@ -686,7 +686,8 @@ final class Engine: NSObject {
         seasonNumber: entry?.seasonNumber, episodeNumber: entry?.episodeNumber, durationMs: entry?.durationMs
       ))
     }
-    if let posterPath = entry?.posterPath, let server = store.server {
+    // The local picture once downloaded, the server's until then (in progress too).
+    if meta["poster"] is NSNull, let posterPath = entry?.posterPath, let server = store.server {
       meta["poster"] = "\(server)/api/images/w342\(posterPath)"
     }
     let total: Int64? = stored?.complete == true ? stored?.sizeBytes : (now?.total ?? entry?.sizeBytes)
