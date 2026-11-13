@@ -26,6 +26,7 @@ import {
   Text,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Video, {
   type ISO639_1,
   SelectedTrackType,
@@ -83,6 +84,8 @@ export default function Player() {
   const [, setTime] = useState(0);
   const [seekable, setSeekable] = useState(0);
   const [controls, setControls] = useState(true);
+  // iPadOS keeps its status bar and window controls over the top corners.
+  const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<"tracks" | "quality" | null>(null);
   const [mode, setMode] = useState<QualityMode>("auto");
   const [ended, setEnded] = useState(false);
@@ -101,12 +104,14 @@ export default function Player() {
     lastUpAt: 0,
   });
 
-  // Landscape, full screen.
+  // Landscape, full screen. Not on iPad: iPadOS leaves rotation to the user, and a lock
+  // it doesn't apply leaves the screen upright with its touches turned.
   useEffect(() => {
-    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+    const lock = !(Platform.OS === "ios" && Platform.isPad);
+    if (lock) void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     void NavigationBar.setVisibilityAsync("hidden").catch(() => {});
     return () => {
-      void ScreenOrientation.unlockAsync();
+      if (lock) void ScreenOrientation.unlockAsync();
       void NavigationBar.setVisibilityAsync("visible").catch(() => {});
     };
   }, []);
@@ -399,7 +404,16 @@ export default function Player() {
       ) : null}
 
       {controls ? (
-        <View pointerEvents="box-none" className="absolute inset-0 justify-between bg-black/40 p-4">
+        <View
+          pointerEvents="box-none"
+          className="absolute inset-0 justify-between bg-black/40"
+          style={{
+            paddingTop: insets.top + 16,
+            paddingBottom: insets.bottom + 16,
+            paddingLeft: insets.left + 16,
+            paddingRight: insets.right + 16,
+          }}
+        >
           <View className="flex-row items-center gap-3">
             <Pressable
               testID="player-back"
