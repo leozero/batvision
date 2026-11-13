@@ -507,10 +507,11 @@ pub async fn plan_for_device(
                 size_bytes: Option<i64>,
                 subtitles_json: Option<String>,
                 error: Option<String>,
+                created_at: i64,
                 confirmed: Option<i64>,
             }
             let variant: Option<V> = sqlx::query_as(
-                "SELECT v.id, v.status, v.progress, v.size_bytes, v.subtitles_json, v.error,
+                "SELECT v.id, v.status, v.progress, v.size_bytes, v.subtitles_json, v.error, v.created_at,
                    (SELECT confirmed_at FROM variant_requests r WHERE r.variant_id = v.id AND r.device_id = ?5)
                      AS confirmed
                  FROM variants v WHERE v.media_file_id = ?1 AND v.profile = ?2 AND v.codec = ?3
@@ -540,7 +541,14 @@ pub async fn plan_for_device(
                     if out.status == DownloadStatus::Ready {
                         out.url = Some(format!(
                             "/api/downloads/file/{}",
-                            state.signer.sign(Grant::Variant { v: v.id, f: 0 }, expires)
+                            state.signer.sign(
+                                Grant::Variant {
+                                    v: v.id,
+                                    f: 0,
+                                    c: v.created_at,
+                                },
+                                expires,
+                            )
                         ));
                         let subs: Vec<VariantSubtitle> = v
                             .subtitles_json
@@ -556,7 +564,8 @@ pub async fn plan_for_device(
                                     state.signer.sign(
                                         Grant::Variant {
                                             v: v.id,
-                                            f: i as i64 + 1
+                                            f: i as i64 + 1,
+                                            c: v.created_at,
                                         },
                                         expires
                                     )
@@ -598,7 +607,7 @@ pub async fn request(
     let variant_id: i64 = sqlx::query_scalar(
         "INSERT INTO variants (media_file_id, profile, codec, audio_index, status, created_at)
          VALUES (?, ?, ?, ?, 'queued', ?)
-         ON CONFLICT (media_file_id, profile, codec, audio_index) DO UPDATE SET
+         ON CONFLICT (media_file_id, profile, codec, COALESCE(audio_index, -1)) DO UPDATE SET
            status = CASE WHEN variants.status = 'failed' THEN 'queued' ELSE variants.status END,
            error = CASE WHEN variants.status = 'failed' THEN NULL ELSE variants.error END
          RETURNING id",
@@ -619,6 +628,23 @@ pub async fn request(
     .bind(now())
     .execute(&state.db)
     .await?;
+    // The version it asked for before (another profile, codec or audio track since):
+    // withdrawn, or that request would keep its encode in the cache for ever.
+    let replaced = sqlx::query(
+        "DELETE FROM variant_requests WHERE device_id = ?1 AND confirmed_at IS NULL
+           AND variant_id != ?2 AND variant_id IN (
+             SELECT v.id FROM variants v JOIN media_files mf ON mf.id = v.media_file_id
+             WHERE mf.item_kind = ?3 AND mf.item_id = ?4)",
+    )
+    .bind(device_id)
+    .bind(variant_id)
+    .bind(kind.as_str())
+    .bind(id)
+    .execute(&state.db)
+    .await?;
+    if replaced.rows_affected() > 0 {
+        drop_unwanted_encodes(state).await?;
+    }
     state.encoder.notify();
     Ok(variant_id)
 }
@@ -659,6 +685,20 @@ pub async fn confirm(state: &AppState, device_id: i64, variant_id: i64) -> ApiRe
     if !pending {
         state.encoder.delete(variant_id).await?;
     }
+    Ok(())
+}
+
+/// Devices signed out or revoked never ask for their plan again: their pending requests
+/// would keep encodes running and ready versions in the cache for ever.
+pub async fn release_revoked_devices(state: &AppState) -> ApiResult<()> {
+    sqlx::query(
+        "DELETE FROM variant_requests WHERE confirmed_at IS NULL
+           AND device_id IN (SELECT id FROM devices WHERE revoked_at IS NOT NULL)",
+    )
+    .execute(&state.db)
+    .await?;
+    drop_unwanted_encodes(state).await?;
+    state.encoder.enforce_budget().await?;
     Ok(())
 }
 

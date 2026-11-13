@@ -7,7 +7,16 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { Hero, LocalMark, WatchedMark } from "../../components/Detail";
-import { Button, COLORS, Loading, Muted, ProgressBar, Rating, Screen } from "../../components/ui";
+import {
+  Button,
+  COLORS,
+  LoadError,
+  Loading,
+  Muted,
+  ProgressBar,
+  Rating,
+  Screen,
+} from "../../components/ui";
 import { SeriesWatchlistButton } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { seasonQuery, seriesQuery, useManualDownload, useSubscribe } from "../../lib/queries";
@@ -24,6 +33,8 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
     <View className="flex-row gap-3 py-3">
       <Pressable
         testID={`episode-${e.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`${t("common.play")} ${episodeCode(e.season_number, e.episode_number)}`}
         onPress={() => router.push(`/watch/episode/${e.id}`)}
         className="w-36 active:opacity-70"
       >
@@ -55,6 +66,9 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
         </View>
         <Pressable
           testID={`download-episode-${e.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={t("mobile.downloadHere")}
+          hitSlop={8}
           disabled={requested}
           onPress={() => {
             const deviceId = session().deviceId;
@@ -91,6 +105,7 @@ export default function SeriesScreen() {
       );
   }, [s, season]);
   const episodes = useQuery({ ...seasonQuery(id, season ?? 1), enabled: season !== null });
+  if (series.isError) return <LoadError onRetry={() => void series.refetch()} />;
   if (series.isPending || !s) return <Loading />;
   const playLabel = s.up_next
     ? `${t("common.play")} · ${episodeCode(s.up_next.season_number, s.up_next.episode_number)}`

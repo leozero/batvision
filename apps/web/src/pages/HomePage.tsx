@@ -3,12 +3,12 @@ import { Link } from "@tanstack/react-router";
 import { Clapperboard } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Hero, PosterCard, Row, RowSkeleton, WideCard } from "../components/media";
-import { Button, EmptyState, Page, Skeleton } from "../components/ui";
+import { buttonClass, EmptyState, LoadError, Page, Skeleton } from "../components/ui";
 import { homeQuery, meQuery } from "../lib/queries";
 
 export function HomePage() {
   const { t } = useTranslation();
-  const { data, isPending } = useQuery(homeQuery);
+  const { data, isPending, refetch } = useQuery(homeQuery);
   const { data: me } = useQuery(meQuery);
 
   if (isPending) {
@@ -22,7 +22,13 @@ export function HomePage() {
       </Page>
     );
   }
-  if (!data) return null;
+  if (!data) {
+    return (
+      <Page className="px-4 pt-10">
+        <LoadError onRetry={refetch} />
+      </Page>
+    );
+  }
 
   const empty = !data.hero && data.recent_movies.length === 0 && data.recent_series.length === 0;
   if (empty) {
@@ -31,10 +37,12 @@ export function HomePage() {
         <EmptyState icon={<Clapperboard className="size-8" />} title={t("home.emptyTitle")}>
           <p>{me?.role === "admin" ? t("home.emptyAdmin") : t("home.emptyUser")}</p>
           {me?.role === "admin" ? (
-            <Link to="/admin" search={{ tab: "libraries" }}>
-              <Button variant="primary" className="mt-5">
-                {t("home.addLibrary")}
-              </Button>
+            <Link
+              to="/admin"
+              search={{ tab: "libraries" }}
+              className={buttonClass({ variant: "primary", className: "mt-5" })}
+            >
+              {t("home.addLibrary")}
             </Link>
           ) : null}
         </EmptyState>

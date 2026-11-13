@@ -24,6 +24,8 @@ export function SearchPage() {
 
   const { data, isFetching } = useQuery(searchQuery(debounced));
   const total = (data?.movies.length ?? 0) + (data?.series.length ?? 0);
+  // The query keeps its last answer while the next one loads: not under an emptied field.
+  const results = debounced.trim().length >= 2 ? data : undefined;
 
   return (
     <Page className="mx-auto max-w-[1800px] px-4 pt-6 sm:px-10">
@@ -35,6 +37,7 @@ export function SearchPage() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={t("search.placeholder")}
+          aria-label={t("nav.search")}
           className="h-14 w-full rounded-full border border-line bg-surface-2 pl-14 pr-12 text-lg outline-none transition focus:border-accent/60 focus:ring-4 focus:ring-accent/15"
         />
         {isFetching ? (
@@ -49,21 +52,21 @@ export function SearchPage() {
         />
       ) : null}
 
-      {data && data.movies.length > 0 ? (
+      {results && results.movies.length > 0 ? (
         <section className="mb-12">
           <h2 className="mb-4 text-lg font-semibold">{t("nav.movies")}</h2>
           <PosterGrid>
-            {data.movies.map((movie, i) => (
+            {results.movies.map((movie, i) => (
               <PosterCard key={movie.id} item={movie} kind="movie" index={i} />
             ))}
           </PosterGrid>
         </section>
       ) : null}
-      {data && data.series.length > 0 ? (
+      {results && results.series.length > 0 ? (
         <section>
           <h2 className="mb-4 text-lg font-semibold">{t("nav.series")}</h2>
           <PosterGrid>
-            {data.series.map((series, i) => (
+            {results.series.map((series, i) => (
               <PosterCard key={series.id} item={series} kind="series" index={i} />
             ))}
           </PosterGrid>

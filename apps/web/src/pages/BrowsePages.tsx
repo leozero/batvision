@@ -11,7 +11,7 @@ import { ArrowDownWideNarrow, ArrowUpNarrowWide, Film, Tv } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadMore, PosterCard, PosterGrid } from "../components/media";
-import { Button, EmptyState, Page, Select, Skeleton } from "../components/ui";
+import { Button, EmptyState, LoadError, Page, Select, Skeleton } from "../components/ui";
 import { moviesQuery, seriesListQuery } from "../lib/queries";
 
 type Sorting = { sort: SortOrder; direction: SortDirection };
@@ -127,6 +127,8 @@ export function MoviesPage({ initialSort }: { initialSort?: SortOrder }) {
       />
       {query.isPending ? (
         <GridSkeleton />
+      ) : !query.data ? (
+        <LoadError onRetry={query.refetch} />
       ) : items.length === 0 ? (
         <EmptyState icon={<Film className="size-8" />} title={t("browse.noMovies")} />
       ) : (
@@ -159,6 +161,8 @@ export function SeriesListPage() {
       />
       {query.isPending ? (
         <GridSkeleton />
+      ) : !query.data ? (
+        <LoadError onRetry={query.refetch} />
       ) : items.length === 0 ? (
         <EmptyState icon={<Tv className="size-8" />} title={t("browse.noSeries")} />
       ) : (

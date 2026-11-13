@@ -78,10 +78,73 @@ pub async fn delete_user(
         .execute(&state.db)
         .await?;
     if result.rows_affected() == 1 {
+        // Its devices' requests went with it: their encodes have nobody left.
+        crate::downloads::service::release_revoked_devices(&state).await?;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(ApiError::NotFound)
     }
+}
+
+/// Another account, checked to exist: administrators change their own from their
+/// account page, where their password is asked.
+async fn other_user(state: &AppState, admin: &auth::CurrentDevice, id: i64) -> ApiResult<()> {
+    if id == admin.user.id {
+        return Err(ApiError::conflict(
+            "cannot_reset_self",
+            "change your own password and 2FA from your account",
+        ));
+    }
+    let exists: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE id = ?)")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await?;
+    if exists {
+        Ok(())
+    } else {
+        Err(ApiError::NotFound)
+    }
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TemporaryPassword {
+    /// Shown once: give it to the user, who then chooses their own.
+    pub password: String,
+}
+
+/// Gives a locked-out user a temporary password and signs out their devices.
+#[utoipa::path(post, path = "/api/admin/users/{id}/password", tag = "admin",
+    security(("bearer" = [])), params(("id" = i64, Path)),
+    responses(
+        (status = 200, body = TemporaryPassword),
+        (status = 404, body = crate::error::ErrorBody),
+        (status = 409, body = crate::error::ErrorBody)))]
+pub async fn reset_user_password(
+    State(state): State<AppState>,
+    Admin(admin): Admin,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<TemporaryPassword>> {
+    other_user(&state, &admin, id).await?;
+    let password = auth::reset_password(&state.db, id).await?;
+    crate::downloads::service::release_revoked_devices(&state).await?;
+    Ok(Json(TemporaryPassword { password }))
+}
+
+/// Removes a user's second factor: for a lost phone with no recovery code left.
+#[utoipa::path(delete, path = "/api/admin/users/{id}/totp", tag = "admin",
+    security(("bearer" = [])), params(("id" = i64, Path)),
+    responses(
+        (status = 204),
+        (status = 404, body = crate::error::ErrorBody),
+        (status = 409, body = crate::error::ErrorBody)))]
+pub async fn reset_user_totp(
+    State(state): State<AppState>,
+    Admin(admin): Admin,
+    Path(id): Path<i64>,
+) -> ApiResult<StatusCode> {
+    other_user(&state, &admin, id).await?;
+    auth::reset_totp(&state.db, id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[derive(Deserialize, ToSchema)]

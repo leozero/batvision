@@ -39,6 +39,13 @@ async fn main() -> anyhow::Result<()> {
         );
     }
 
+    if let Some((username, password)) = state.reset_locked_out_admin().await? {
+        tracing::warn!(
+            "BATVISION_RESET_ADMIN: {username} now has the temporary password {password} and no \
+             second factor. Remove the variable, or the account is reset again at the next start"
+        );
+    }
+
     let probe_state = state.clone();
     tokio::spawn(async move {
         let info = ffmpeg::probe(&probe_state.config.ffmpeg).await;

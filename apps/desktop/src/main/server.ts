@@ -28,7 +28,8 @@ export function normalizeServer(input: string): string | null {
 }
 
 /**
- * `fetch` that fails with `Unreachable` when the server doesn't answer in time.
+ * `fetch` that fails with `Unreachable` when the server doesn't answer in time, or
+ * when a reverse proxy answers for it (502–504: the server is stopped or restarting).
  * The timeout covers the response headers only: bodies (videos) may take hours.
  */
 export async function fetchWithTimeout(
@@ -40,13 +41,38 @@ export async function fetchWithTimeout(
   const outer = init.signal;
   outer?.addEventListener("abort", () => controller.abort(outer.reason));
   const timer = setTimeout(() => controller.abort(new Unreachable("timeout")), timeoutMs);
+  let response: Response;
   try {
-    return await net.fetch(url, { ...init, signal: controller.signal });
+    response = await net.fetch(url, { ...init, signal: controller.signal });
   } catch (e) {
     if (outer?.aborted) throw e;
     throw new Unreachable(e instanceof Error ? e.message : String(e));
   } finally {
     clearTimeout(timer);
+  }
+  if (answeredByProxy(response)) {
+    void response.body?.cancel().catch(() => {});
+    throw new Unreachable(`${response.status} ${response.statusText}`.trim());
+  }
+  return response;
+}
+
+/**
+ * 502–504 come from the reverse proxy in front of a stopped server. The server's own
+ * 502 (`upstream_error`: TMDB failed) is JSON like all its errors, and stays an error.
+ */
+function answeredByProxy(response: Response) {
+  if (response.status < 502 || response.status > 504) return false;
+  return !(response.headers.get("content-type") ?? "").includes("application/json");
+}
+
+/** A body that stops arriving (connection lost midway) is `Unreachable` too. */
+export async function readBody<T>(read: () => Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  try {
+    return await read();
+  } catch (e) {
+    if (signal?.aborted || e instanceof SyntaxError) throw e;
+    throw new Unreachable(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -90,6 +116,6 @@ export class ServerClient {
       throw new HttpError(response.status, text || response.statusText);
     }
     if (response.status === 204) return undefined as T;
-    return (await response.json()) as T;
+    return readBody(() => response.json() as Promise<T>);
   }
 }

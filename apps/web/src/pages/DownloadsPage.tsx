@@ -21,8 +21,10 @@ import {
   Badge,
   Button,
   EmptyState,
+  ErrorText,
   Field,
   Input,
+  LoadError,
   Page,
   ProgressBar,
   Select,
@@ -33,6 +35,7 @@ import { formatBytes } from "../lib/bytes";
 import { desktop, syncDesktop } from "../lib/desktop";
 import { episodeCode, languageName } from "../lib/format";
 import { downloadsQuery } from "../lib/queries";
+import { errorText } from "./account/AccountPage";
 
 const PLATFORM_ICON: Record<string, typeof Laptop> = {
   desktop: Laptop,
@@ -88,6 +91,8 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [s, setS] = useState(device.settings);
+  // The number fields are uncontrolled: a new key resets them to the saved value.
+  const [revision, setRevision] = useState(0);
   useEffect(() => setS(device.settings), [device.settings]);
   const save = useMutation({
     mutationFn: (settings: Schemas["DeviceSettings"]) =>
@@ -100,6 +105,11 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
     onSuccess: () => {
       syncDesktop();
       return qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
+    },
+    // Refused: back to what the server has, typed numbers included.
+    onError: () => {
+      setS(device.settings);
+      setRevision((r) => r + 1);
     },
   });
   const update = (patch: Partial<Schemas["DeviceSettings"]>) => {
@@ -136,6 +146,7 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
       </Field>
       <Field label={t("downloads.quota")} hint={t("downloads.quotaHint")}>
         <Input
+          key={revision}
           type="number"
           min={1}
           inputMode="numeric"
@@ -160,6 +171,7 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
           </Field>
           <Field label={t("downloads.mobileCap")}>
             <Input
+              key={revision}
               type="number"
               min={1}
               disabled={s.mobile_data === "off"}
@@ -191,6 +203,11 @@ function SettingsForm({ device }: { device: Schemas["DeviceDownloads"] }) {
             />
           </label>
         </>
+      ) : null}
+      {save.error ? (
+        <div className="sm:col-span-2">
+          <ErrorText>{errorText(t, save.error)}</ErrorText>
+        </div>
       ) : null}
     </div>
   );
@@ -339,7 +356,7 @@ function DeviceCard({ device, index }: { device: Schemas["DeviceDownloads"]; ind
 
 export function DownloadsPage() {
   const { t } = useTranslation();
-  const { data, isPending } = useQuery(downloadsQuery);
+  const { data, isPending, refetch } = useQuery(downloadsQuery);
 
   return (
     <Page className="mx-auto max-w-4xl px-4 pt-8 sm:px-6">
@@ -351,7 +368,9 @@ export function DownloadsPage() {
       ) : (
         <div className="space-y-6">
           {desktop ? <ThisComputerCard /> : null}
-          {data?.devices.length ? (
+          {!data ? (
+            <LoadError onRetry={refetch} />
+          ) : data.devices.length ? (
             data.devices.map((device, i) => (
               <DeviceCard key={device.id} device={device} index={i} />
             ))

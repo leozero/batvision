@@ -621,6 +621,106 @@
         ]
       }
     },
+    "/api/admin/users/{id}/password": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Gives a locked-out user a temporary password and signs out their devices.",
+        "operationId": "reset_user_password",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemporaryPassword"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/users/{id}/totp": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Removes a user's second factor: for a lost phone with no recovery code left.",
+        "operationId": "reset_user_totp",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "204": {},
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/auth/invitations/accept": {
       "post": {
         "tags": [
@@ -5673,6 +5773,18 @@
           },
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "TemporaryPassword": {
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "properties": {
+          "password": {
+            "type": "string",
+            "description": "Shown once: give it to the user, who then chooses their own."
           }
         }
       },

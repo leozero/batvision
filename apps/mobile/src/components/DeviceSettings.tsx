@@ -1,12 +1,12 @@
 import { formatBytes } from "@batvision/core/bytes";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Platform, View } from "react-native";
 import type { Schemas } from "../lib/api";
 import { useSaveSettings } from "../lib/queries";
 import { useSyncState } from "../lib/sync";
 import { type Choice, ChoiceList, SettingRow, Sheet, SwitchRow } from "./Sheet";
-import { Button, Field, Input, Muted } from "./ui";
+import { Button, ErrorText, Field, Input, Muted } from "./ui";
 
 const GB = 1_000_000_000;
 
@@ -71,11 +71,23 @@ export function DeviceSettings({ device }: { device: Schemas["DeviceDownloads"] 
   const save = useSaveSettings(device.id);
   const [s, setS] = useState(device.settings);
   const [sheet, setSheet] = useState<SettingSheet>(null);
-  useEffect(() => setS(device.settings), [device.settings]);
+  const [failed, setFailed] = useState(false);
+  // What the server holds, for when a change doesn't reach it.
+  const saved = useRef(device.settings);
+  useEffect(() => {
+    saved.current = device.settings;
+    setS(device.settings);
+  }, [device.settings]);
   const update = (patch: Partial<Schemas["DeviceSettings"]>) => {
     const next = { ...s, ...patch };
     setS(next);
-    save.mutate(next);
+    setFailed(false);
+    save.mutate(next, {
+      onError: () => {
+        setS(saved.current);
+        setFailed(true);
+      },
+    });
     setSheet(null);
   };
   const size = (bytes: number | null | undefined, none: string) =>
@@ -101,6 +113,7 @@ export function DeviceSettings({ device }: { device: Schemas["DeviceDownloads"] 
   const close = () => setSheet(null);
   return (
     <View className="gap-3 rounded-card border border-line bg-surface p-4">
+      <ErrorText>{failed ? t("mobile.saveError") : null}</ErrorText>
       <SwitchRow
         testID="auto-download"
         label={t("downloads.auto")}

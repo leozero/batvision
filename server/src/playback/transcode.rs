@@ -16,6 +16,9 @@ use super::{Method, Plan, gpu};
 pub const SEGMENT_SECONDS: u32 = 6;
 /// A session nobody fetched from for this long is stopped and deleted.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(120);
+/// Once ffmpeg is done the player has the whole playlist and may fetch nothing for as
+/// long as it's paused: the files only cost disk, so they wait much longer.
+const FINISHED_IDLE_TIMEOUT: Duration = Duration::from_secs(6 * 60 * 60);
 
 /// Which H.264 encoder to use when the video must be re-encoded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +37,8 @@ pub struct TranscodeJob {
     /// Set when the server's GPU filters work (with NVENC): decode, scale and tone-map there.
     pub gpu: Option<gpu::Source>,
     pub source_width: Option<i64>,
+    /// The source video is HEVC (it matters when it's copied as is).
+    pub source_hevc: bool,
 }
 
 /// Output size for a source scaled to `height` (even width, like `scale=-2:h`).
@@ -152,7 +157,13 @@ pub fn ffmpeg_args(job: &TranscodeJob, source_height: Option<i64>, out_dir: &Pat
             ]);
             video_encoder_args(&mut args, job, plan, source_height);
         }
-        (Some(v), false) => args.extend(["-map".into(), v.clone(), "-c:v".into(), "copy".into()]),
+        (Some(v), false) => {
+            args.extend(["-map".into(), v.clone(), "-c:v".into(), "copy".into()]);
+            // Apple players only take HEVC tagged hvc1.
+            if job.source_hevc {
+                args.extend(["-tag:v".into(), "hvc1".into()]);
+            }
+        }
         (None, _) => {}
     }
     audio_and_hls_args(&mut args, plan, out_dir);
@@ -249,6 +260,9 @@ struct Session {
     dir: PathBuf,
     device_id: i64,
     last_access: Instant,
+    /// What ffmpeg was asked, while a failed GPU transcode can still be tried on the
+    /// CPU (D57): taken once.
+    cpu_fallback: Option<(TranscodeJob, Option<i64>)>,
     /// `master.m3u8` and `subs.m3u8`, for players that need subtitles inside the stream.
     playlists: Option<(String, String)>,
 }
@@ -313,6 +327,14 @@ impl TranscodeManager {
                 dir,
                 device_id,
                 last_access: Instant::now(),
+                cpu_fallback: (job.plan.method == Method::Transcode
+                    && (job.encoder == VideoEncoder::Nvenc || job.gpu.is_some()))
+                .then(|| {
+                    let mut cpu = job.clone();
+                    cpu.encoder = VideoEncoder::Software;
+                    cpu.gpu = None;
+                    (cpu, source_height)
+                }),
                 playlists: None,
             },
         );
@@ -353,6 +375,41 @@ impl TranscodeManager {
             .is_some_and(|s| matches!(s.child.try_wait(), Ok(None)))
     }
 
+    /// ffmpeg gave up before its first segment on a GPU transcode (a source the CUDA
+    /// chain rejects, no NVENC session left): the same session starts again on the CPU.
+    /// Returns whether it did.
+    pub fn retry_on_cpu(&self, id: &str) -> bool {
+        let mut sessions = self.sessions.lock().unwrap();
+        let Some(session) = sessions.get_mut(id) else {
+            return false;
+        };
+        let failed = matches!(session.child.try_wait(), Ok(Some(status)) if !status.success());
+        if !failed || session.dir.join("seg00000.m4s").exists() {
+            return false;
+        }
+        let Some((job, source_height)) = session.cpu_fallback.take() else {
+            return false;
+        };
+        tracing::warn!(session = %&id[..8], "GPU transcode failed, retrying on the CPU");
+        let spawned = std::fs::File::create(session.dir.join("ffmpeg.log")).and_then(|log| {
+            Command::new(&self.ffmpeg)
+                .args(ffmpeg_args(&job, source_height, &session.dir))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(log)
+                .kill_on_drop(true)
+                .spawn()
+        });
+        match spawned {
+            Ok(child) => {
+                session.child = child;
+                session.last_access = Instant::now();
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
     pub fn stop(&self, id: &str) {
         if let Some(mut session) = self.sessions.lock().unwrap().remove(id) {
             let _ = session.child.start_kill();
@@ -374,9 +431,16 @@ impl TranscodeManager {
                     .sessions
                     .lock()
                     .unwrap()
-                    .iter()
-                    .filter(|(_, s)| s.last_access.elapsed() > IDLE_TIMEOUT)
-                    .map(|(id, _)| id.clone())
+                    .iter_mut()
+                    .filter_map(|(id, s)| {
+                        let finished = !matches!(s.child.try_wait(), Ok(None));
+                        let timeout = if finished {
+                            FINISHED_IDLE_TIMEOUT
+                        } else {
+                            IDLE_TIMEOUT
+                        };
+                        (s.last_access.elapsed() > timeout).then(|| id.clone())
+                    })
                     .collect();
                 for id in idle {
                     tracing::info!(session = %&id[..8], "stopping idle transcode");
@@ -446,6 +510,7 @@ mod tests {
             encoder: VideoEncoder::Software,
             gpu: None,
             source_width: Some(1920),
+            source_hevc: false,
         }
     }
 

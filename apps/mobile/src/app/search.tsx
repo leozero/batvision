@@ -40,7 +40,8 @@ export default function SearchScreen() {
         <View className="flex-row items-center gap-3">
           <Pressable
             testID="back"
-            accessibilityLabel="back"
+            accessibilityRole="button"
+            accessibilityLabel={t("common.back")}
             hitSlop={8}
             onPress={() => (router.canGoBack() ? router.back() : router.replace("/home"))}
             className="size-10 items-center justify-center rounded-full bg-surface-2 active:opacity-70"

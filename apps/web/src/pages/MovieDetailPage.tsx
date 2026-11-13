@@ -6,8 +6,16 @@ import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
 import { DownloadMovieButton, WatchlistButton } from "../components/downloads";
 import { pickRating, Rating } from "../components/rating";
 import { DownloadedMark } from "../components/ThisComputer";
-import { Badge, Button, Page, ProgressBar, Skeleton } from "../components/ui";
-import type { Schemas } from "../lib/api";
+import {
+  Badge,
+  Button,
+  buttonClass,
+  LoadError,
+  Page,
+  ProgressBar,
+  Skeleton,
+} from "../components/ui";
+import { ApiError, type Schemas } from "../lib/api";
 import { formatRuntime, languageName, progressRatio } from "../lib/format";
 import { movieQuery, useSetPlayed } from "../lib/queries";
 import { NotFoundPage } from "./NotFoundPage";
@@ -63,7 +71,7 @@ function InfoBlock({ label, children }: { label: string; children: React.ReactNo
 export function MovieDetailPage() {
   const { t, i18n } = useTranslation();
   const { id } = useParams({ strict: false }) as { id: string };
-  const { data: movie, isPending, isError } = useQuery(movieQuery(Number(id)));
+  const { data: movie, isPending, error, refetch } = useQuery(movieQuery(Number(id)));
   const setPlayed = useSetPlayed();
 
   if (isPending) {
@@ -74,7 +82,15 @@ export function MovieDetailPage() {
       </Page>
     );
   }
-  if (isError || !movie) return <NotFoundPage />;
+  // Only a 404 means the movie is gone: anything else can be retried.
+  if (error instanceof ApiError && error.status === 404) return <NotFoundPage />;
+  if (!movie) {
+    return (
+      <Page className="px-4 pt-16">
+        <LoadError onRetry={refetch} />
+      </Page>
+    );
+  }
 
   const duration =
     movie.file?.media?.duration_ms ??
@@ -116,18 +132,23 @@ export function MovieDetailPage() {
         }
         actions={
           <>
-            <Link to="/watch/$kind/$id" params={{ kind: "movie", id }}>
-              <Button variant="primary" size="lg">
-                <Play className="size-5" fill="currentColor" />
-                {movie.position_ms > 0 ? t("common.resume") : t("common.play")}
-              </Button>
+            <Link
+              to="/watch/$kind/$id"
+              params={{ kind: "movie", id }}
+              className={buttonClass({ variant: "primary", size: "lg" })}
+            >
+              <Play className="size-5" fill="currentColor" />
+              {movie.position_ms > 0 ? t("common.resume") : t("common.play")}
             </Link>
             {movie.position_ms > 0 ? (
-              <Link to="/watch/$kind/$id" params={{ kind: "movie", id }} search={{ restart: true }}>
-                <Button size="lg">
-                  <RotateCcw className="size-5" />
-                  {t("detail.restart")}
-                </Button>
+              <Link
+                to="/watch/$kind/$id"
+                params={{ kind: "movie", id }}
+                search={{ restart: true }}
+                className={buttonClass({ size: "lg" })}
+              >
+                <RotateCcw className="size-5" />
+                {t("detail.restart")}
               </Link>
             ) : null}
             <Button

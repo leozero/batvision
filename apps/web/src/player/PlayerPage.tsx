@@ -188,15 +188,21 @@ export function PlayerPage() {
   infoRef.current = info;
 
   // ---- Session ---------------------------------------------------------------------------
+  // Counts the calls to `start`: only the answer to the latest one is used.
+  const startSeq = useRef(0);
   const start = useCallback(
     async (opts: StartOptions = {}) => {
       if (localPending) return;
-      setWaiting(true);
+      startSeq.current += 1;
+      const seq = startSeq.current;
       setError(null);
       if (local) {
+        // Same file (new subtitles): nothing reloads, so no `canplay` would end the spinner.
+        if (loadedUrl.current !== local.url) setWaiting(true);
         setInfo(localInfo(local, opts, restart));
         return;
       }
+      setWaiting(true);
       if (offlineRoute) {
         setError(t("player.error"));
         setWaiting(false);
@@ -219,11 +225,19 @@ export function PlayerPage() {
           }),
         );
         const previous = infoRef.current;
+        // A newer request is on its way (held arrow key, double seek): this answer is dropped.
+        if (seq !== startSeq.current) {
+          if (next.session_id && next.session_id !== previous?.session_id) {
+            void api.POST("/api/playback/stop", { body: { session_id: next.session_id } });
+          }
+          return;
+        }
         if (previous?.session_id && previous.session_id !== next.session_id) {
           void api.POST("/api/playback/stop", { body: { session_id: previous.session_id } });
         }
         setInfo(next);
       } catch (e) {
+        if (seq !== startSeq.current) return;
         setError(e instanceof ApiError ? e.message : t("player.error"));
         setWaiting(false);
       }
@@ -234,6 +248,11 @@ export function PlayerPage() {
   useEffect(() => {
     void start();
   }, [start]);
+
+  // Whether the current stream already asked for a new session after losing its own.
+  const resumed = useRef(false);
+  const startRef = useRef(start);
+  startRef.current = start;
 
   // Load the stream into the <video>.
   useEffect(() => {
@@ -251,11 +270,16 @@ export function PlayerPage() {
     auto.loadedAt = Date.now();
     auto.samples = 0;
     auto.switching = false;
+    auto.blocked = false;
 
     const seekAfterLoad = info.hls ? 0 : info.start_ms / 1000;
     const onLoaded = () => {
       if (seekAfterLoad > 0) video.currentTime = seekAfterLoad;
-      void video.play().catch(() => setPlaying(false));
+      void video.play().catch((e: unknown) => {
+        setPlaying(false);
+        // Autoplay refused: the stream waits for the user, not for the network.
+        if (e instanceof DOMException && e.name === "NotAllowedError") auto.blocked = true;
+      });
     };
     video.addEventListener("loadedmetadata", onLoaded, { once: true });
 
@@ -267,7 +291,16 @@ export function PlayerPage() {
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError();
-          else setError(t("player.error"));
+          else if (timeRef.current > 0 && !resumed.current) {
+            // The server dropped the session (a long pause, a restart): a new one takes
+            // over where this one was. Once until it plays again, or a real failure would loop.
+            resumed.current = true;
+            void startRef.current({
+              startMs: timeRef.current,
+              audio: info.audio_index,
+              subtitle: info.subtitle ?? null,
+            });
+          } else setError(t("player.error"));
         }
       });
       hls.loadSource(info.url);
@@ -291,6 +324,7 @@ export function PlayerPage() {
     loadedAt: Date.now(),
     samples: 0,
     switching: false,
+    blocked: false,
   });
 
   const onWaiting = () => {
@@ -314,6 +348,9 @@ export function PlayerPage() {
     setWaiting(false);
     const auto = autoRef.current;
     auto.started = true;
+    auto.blocked = false;
+    // It plays: a later loss of the session may ask for a new one again.
+    resumed.current = false;
     if (auto.stallingSince !== null) {
       auto.stallingSince = null;
       auto.stableSince = Date.now();
@@ -326,7 +363,7 @@ export function PlayerPage() {
       const video = videoRef.current;
       const auto = autoRef.current;
       const current = infoRef.current;
-      if (!video || !current || auto.switching) return;
+      if (!video || !current || auto.switching || auto.blocked) return;
       if (auto.started && video.paused && auto.stallingSince === null) return;
       const hls = hlsRef.current;
       const now = Date.now();
@@ -411,6 +448,8 @@ export function PlayerPage() {
   // Clean up on exit: stop the transcode and save the position.
   useEffect(() => {
     return () => {
+      // An answer still on its way is dropped, and its session stopped, by `start`.
+      startSeq.current += 1;
       hlsRef.current?.destroy();
       const last = infoRef.current;
       const position = Math.round(timeRef.current);
@@ -425,13 +464,18 @@ export function PlayerPage() {
         invalidateLibrary(qc);
         return;
       }
-      const body = JSON.stringify({ kind, id, position_ms: position });
-      void fetch("/api/progress", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-        keepalive: true,
-      });
+      // Nothing played (still loading, or it failed): the saved position stays.
+      const saved =
+        position > 0
+          ? fetch("/api/progress", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ kind, id, position_ms: position }),
+              keepalive: true,
+            })
+          : Promise.resolve();
+      // Once saved: the pages behind must not read the position from before.
+      void saved.catch(() => {}).finally(() => invalidateLibrary(qc));
       if (last?.session_id) {
         void fetch("/api/playback/stop", {
           method: "POST",
@@ -440,7 +484,6 @@ export function PlayerPage() {
           keepalive: true,
         });
       }
-      invalidateLibrary(qc);
     };
   }, [kind, id, qc]);
 
@@ -571,8 +614,13 @@ export function PlayerPage() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Any key shows the controls: Tab must not land on something invisible.
+      poke();
       if (e.target instanceof HTMLInputElement) return;
-      const handled = true;
+      // The browser's own shortcuts (find, back) stay the browser's.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Space and Enter on a focused control press that control.
+      if (e.target instanceof HTMLButtonElement && (e.key === " " || e.key === "Enter")) return;
       switch (e.key) {
         case " ":
         case "k":
@@ -603,8 +651,7 @@ export function PlayerPage() {
         default:
           return;
       }
-      if (handled) e.preventDefault();
-      poke();
+      e.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -664,6 +711,10 @@ export function PlayerPage() {
         onCanPlay={() => setWaiting(false)}
         onTimeUpdate={onTimeUpdate}
         onEnded={onEnded}
+        // Direct play and Safari's own HLS: hls.js reports its errors itself.
+        onError={() => {
+          if (!hlsRef.current) setError(t("player.error"));
+        }}
       >
         {info?.subtitle_url ? (
           <track key={info.subtitle_url} kind="subtitles" src={info.subtitle_url} default />
@@ -708,7 +759,15 @@ export function PlayerPage() {
           <p className="max-w-md text-lg">{error}</p>
           <button
             type="button"
-            onClick={() => start({ startMs: time })}
+            onClick={() => {
+              // The same URL may come back: it has to load again.
+              loadedUrl.current = null;
+              void start({
+                startMs: time,
+                audio: info?.audio_index,
+                subtitle: info ? (info.subtitle ?? null) : undefined,
+              });
+            }}
             className="cursor-pointer rounded-full bg-accent px-5 py-2 font-semibold text-accent-ink"
           >
             {t("player.retry")}
@@ -716,107 +775,107 @@ export function PlayerPage() {
         </div>
       ) : null}
 
-      <AnimatePresence>
-        {showControls ? (
-          <motion.div
-            className="pointer-events-none absolute inset-0 flex flex-col justify-between"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-          >
-            <div className="pointer-events-auto flex items-center gap-3 bg-gradient-to-b from-black/80 to-transparent px-4 pb-16 pt-4 sm:px-8">
-              <IconButton label={t("common.back")} onClick={back}>
-                <ArrowLeft className="size-6" />
-              </IconButton>
-              <div className="min-w-0">
-                <p className="truncate text-lg font-semibold">{title}</p>
-                {subtitle ? <p className="truncate text-sm text-muted">{subtitle}</p> : null}
-              </div>
-            </div>
+      {/* Hidden, the controls stay in the page: unmounting them would drop the keyboard focus. */}
+      <motion.div
+        className={cx(
+          "pointer-events-none absolute inset-0 flex flex-col justify-between",
+          showControls ? "*:pointer-events-auto" : "",
+        )}
+        initial={false}
+        animate={{ opacity: showControls ? 1 : 0 }}
+        transition={{ duration: 0.25 }}
+        onFocus={poke}
+      >
+        <div className="flex items-center gap-3 bg-gradient-to-b from-black/80 to-transparent px-4 pb-16 pt-4 sm:px-8">
+          <IconButton label={t("common.back")} onClick={back}>
+            <ArrowLeft className="size-6" />
+          </IconButton>
+          <div className="min-w-0">
+            <p className="truncate text-lg font-semibold">{title}</p>
+            {subtitle ? <p className="truncate text-sm text-muted">{subtitle}</p> : null}
+          </div>
+        </div>
 
-            <div className="pointer-events-auto bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-5 pt-20 sm:px-8">
-              <SeekBar
-                time={time}
-                duration={duration}
-                buffered={bufferedEnd}
-                offset={offset}
-                onSeek={seekTo}
-              />
-              <div className="mt-3 flex items-center gap-1 sm:gap-2">
-                <IconButton
-                  label={playing ? t("player.pause") : t("player.play")}
-                  onClick={togglePlay}
-                  className="size-12"
-                >
-                  {playing ? (
-                    <Pause className="size-7" fill="currentColor" />
-                  ) : (
-                    <Play className="size-7" fill="currentColor" />
-                  )}
-                </IconButton>
-                <IconButton label={t("player.back10")} onClick={() => seekTo(time - 10_000)}>
-                  <RotateCcw className="size-5" />
-                </IconButton>
-                <IconButton label={t("player.forward10")} onClick={() => seekTo(time + 10_000)}>
-                  <RotateCw className="size-5" />
-                </IconButton>
-                <VolumeControl
-                  volume={muted ? 0 : volume}
-                  onChange={(v) => {
-                    setMuted(false);
-                    setVolume(v);
+        <div className="bg-gradient-to-t from-black/90 via-black/50 to-transparent px-4 pb-5 pt-20 sm:px-8">
+          <SeekBar
+            time={time}
+            duration={duration}
+            buffered={bufferedEnd}
+            offset={offset}
+            onSeek={seekTo}
+          />
+          <div className="mt-3 flex items-center gap-1 sm:gap-2">
+            <IconButton
+              label={playing ? t("player.pause") : t("player.play")}
+              onClick={togglePlay}
+              className="size-12"
+            >
+              {playing ? (
+                <Pause className="size-7" fill="currentColor" />
+              ) : (
+                <Play className="size-7" fill="currentColor" />
+              )}
+            </IconButton>
+            <IconButton label={t("player.back10")} onClick={() => seekTo(time - 10_000)}>
+              <RotateCcw className="size-5" />
+            </IconButton>
+            <IconButton label={t("player.forward10")} onClick={() => seekTo(time + 10_000)}>
+              <RotateCw className="size-5" />
+            </IconButton>
+            <VolumeControl
+              volume={muted ? 0 : volume}
+              onChange={(v) => {
+                setMuted(false);
+                setVolume(v);
+              }}
+              onToggleMute={() => setMuted((m) => !m)}
+            />
+            <span className="ml-2 font-mono text-sm tabular-nums text-fg/80">
+              {formatClock(time / 1000)}{" "}
+              <span className="text-faint">/ {formatClock(duration / 1000)}</span>
+            </span>
+            <div className="ml-auto flex items-center gap-1 sm:gap-2">
+              {info?.next_episode_id ? (
+                <motion.button
+                  type="button"
+                  onClick={goNext}
+                  animate={remainingNext ? { scale: [1, 1.06, 1] } : {}}
+                  transition={{
+                    repeat: remainingNext ? Number.POSITIVE_INFINITY : 0,
+                    duration: 1.6,
                   }}
-                  onToggleMute={() => setMuted((m) => !m)}
-                />
-                <span className="ml-2 font-mono text-sm tabular-nums text-fg/80">
-                  {formatClock(time / 1000)}{" "}
-                  <span className="text-faint">/ {formatClock(duration / 1000)}</span>
-                </span>
-                <div className="ml-auto flex items-center gap-1 sm:gap-2">
-                  {info?.next_episode_id ? (
-                    <motion.button
-                      type="button"
-                      onClick={goNext}
-                      animate={remainingNext ? { scale: [1, 1.06, 1] } : {}}
-                      transition={{
-                        repeat: remainingNext ? Number.POSITIVE_INFINITY : 0,
-                        duration: 1.6,
-                      }}
-                      className={cx(
-                        "flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
-                        remainingNext ? "bg-accent text-accent-ink" : "hover:bg-white/10",
-                      )}
-                    >
-                      <SkipForward className="size-4" fill="currentColor" />
-                      <span className="hidden sm:inline">{t("player.nextEpisode")}</span>
-                    </motion.button>
-                  ) : null}
-                  <IconButton
-                    label={t("player.tracks")}
-                    onClick={() => setPanel((p) => (p === "tracks" ? null : "tracks"))}
-                    className={panel === "tracks" ? "bg-white/15" : ""}
-                  >
-                    <Subtitles className="size-5" />
-                  </IconButton>
-                  {info && !local ? (
-                    <IconButton
-                      label={t("player.quality")}
-                      onClick={() => setPanel((p) => (p === "quality" ? null : "quality"))}
-                      className={panel === "quality" ? "bg-white/15" : ""}
-                    >
-                      <Settings className="size-5" />
-                    </IconButton>
-                  ) : null}
-                  <IconButton label={t("player.fullscreen")} onClick={toggleFullscreen}>
-                    {fullscreen ? <Minimize className="size-5" /> : <Maximize className="size-5" />}
-                  </IconButton>
-                </div>
-              </div>
+                  className={cx(
+                    "flex cursor-pointer items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition",
+                    remainingNext ? "bg-accent text-accent-ink" : "hover:bg-white/10",
+                  )}
+                >
+                  <SkipForward className="size-4" fill="currentColor" />
+                  <span className="hidden sm:inline">{t("player.nextEpisode")}</span>
+                </motion.button>
+              ) : null}
+              <IconButton
+                label={t("player.tracks")}
+                onClick={() => setPanel((p) => (p === "tracks" ? null : "tracks"))}
+                className={panel === "tracks" ? "bg-white/15" : ""}
+              >
+                <Subtitles className="size-5" />
+              </IconButton>
+              {info && !local ? (
+                <IconButton
+                  label={t("player.quality")}
+                  onClick={() => setPanel((p) => (p === "quality" ? null : "quality"))}
+                  className={panel === "quality" ? "bg-white/15" : ""}
+                >
+                  <Settings className="size-5" />
+                </IconButton>
+              ) : null}
+              <IconButton label={t("player.fullscreen")} onClick={toggleFullscreen}>
+                {fullscreen ? <Minimize className="size-5" /> : <Maximize className="size-5" />}
+              </IconButton>
             </div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
 
       <AnimatePresence>
         {panel === "tracks" && info ? (
@@ -869,6 +928,7 @@ function SeekBar({
   offset: number;
   onSeek: (ms: number) => void;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [drag, setDrag] = useState<number | null>(null);
@@ -884,11 +944,24 @@ function SeekBar({
     <div
       ref={ref}
       role="slider"
-      tabIndex={-1}
+      // Focused, ← and → seek through the page's shortcuts; Home and End are handled here.
+      tabIndex={0}
+      aria-label={t("player.seek")}
       aria-valuemin={0}
       aria-valuemax={duration}
       aria-valuenow={Math.round(shown)}
-      className="group relative flex h-5 cursor-pointer items-center"
+      aria-valuetext={t("player.seekPosition", {
+        time: formatClock(shown / 1000),
+        duration: formatClock(duration / 1000),
+      })}
+      // touch-none: a drag on the bar must seek, not scroll or be taken over by the browser.
+      className="group relative flex h-5 cursor-pointer touch-none items-center rounded-full"
+      onKeyDown={(e) => {
+        if (e.key === "Home") onSeek(0);
+        else if (e.key === "End") onSeek(duration);
+        else return;
+        e.preventDefault();
+      }}
       onPointerMove={(e) => {
         const r = ratioAt(e.clientX);
         setHover(r * duration);
@@ -900,10 +973,13 @@ function SeekBar({
         setDrag(ratioAt(e.clientX) * duration);
       }}
       onPointerUp={(e) => {
+        // A release with no drag under way (cancelled, or started elsewhere) seeks nowhere.
+        if (drag === null) return;
         const target = ratioAt(e.clientX) * duration;
         setDrag(null);
         onSeek(target);
       }}
+      onPointerCancel={() => setDrag(null)}
     >
       <div className="relative h-1 w-full overflow-hidden rounded-full bg-white/20 transition-all group-hover:h-1.5">
         {offset > 0 ? (
@@ -916,7 +992,7 @@ function SeekBar({
         <div className="absolute inset-y-0 left-0 bg-accent" style={{ width: pct(shown) }} />
       </div>
       <div
-        className="absolute size-3.5 -translate-x-1/2 scale-0 rounded-full bg-accent shadow-lg transition-transform group-hover:scale-100"
+        className="absolute size-3.5 -translate-x-1/2 scale-0 rounded-full bg-accent shadow-lg transition-transform group-hover:scale-100 group-focus-visible:scale-100"
         style={{ left: pct(shown) }}
       />
       {hover !== null ? (

@@ -171,8 +171,12 @@ export function IdentifyButton({
         wide
       >
         <form onSubmit={search} className="mb-4 flex gap-2">
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} />
-          <Button type="submit" loading={busy === "search"}>
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label={t("detail.identifyQuery")}
+          />
+          <Button type="submit" loading={busy === "search"} aria-label={t("nav.search")}>
             <Search className="size-4" />
           </Button>
         </form>

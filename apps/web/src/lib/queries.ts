@@ -156,7 +156,19 @@ export function useSetPlayed() {
 }
 
 export function invalidateLibrary(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of ["home", "movies", "series", "movie", "series-detail", "season", "episode"]) {
+  // The watchlist and downloads too: a watched movie leaves both.
+  for (const key of [
+    "home",
+    "movies",
+    "series",
+    "movie",
+    "series-detail",
+    "season",
+    "episode",
+    "watchlist",
+    "search",
+    "downloads",
+  ]) {
     qc.invalidateQueries({ queryKey: [key] });
   }
 }

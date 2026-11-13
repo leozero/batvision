@@ -75,6 +75,10 @@ object Planner {
   private fun matches(local: LocalRecord, entry: PlanEntry) =
     local.profile == entry.profile && local.audioLanguage == entry.audioLanguage
 
+  /** The first download still to do, in the plan's order; `skip` says which keys are settled. */
+  fun nextDownload(actions: List<Action>, skip: (String) -> Boolean): Action.Download? =
+    actions.firstOrNull { it is Action.Download && !skip(it.key) } as Action.Download?
+
   fun decide(plan: List<PlanEntry>, local: Map<String, LocalRecord>, quotaBytes: Long?): Decision {
     val quota = quotaBytes ?: Long.MAX_VALUE
     val requests = mutableListOf<Action>()

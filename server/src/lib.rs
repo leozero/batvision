@@ -67,6 +67,8 @@ use crate::{
         routes::admin::list_users,
         routes::admin::create_user,
         routes::admin::delete_user,
+        routes::admin::reset_user_password,
+        routes::admin::reset_user_totp,
         routes::admin::create_invitation,
         routes::admin::list_invitations,
         routes::admin::delete_invitation,
@@ -209,6 +211,26 @@ impl AppState {
         *self.auth.setup_token.lock().unwrap() = Some(token.clone());
         Ok(Some(token))
     }
+
+    /// `BATVISION_RESET_ADMIN=<username>`: the way back in for an administrator nobody
+    /// else can help (the only one, without phone or recovery codes). Gives the account
+    /// a temporary password and removes its second factor; returns that password.
+    pub async fn reset_locked_out_admin(&self) -> anyhow::Result<Option<(String, String)>> {
+        let Some(username) = &self.config.reset_admin else {
+            return Ok(None);
+        };
+        let id: Option<i64> =
+            sqlx::query_scalar("SELECT id FROM users WHERE username = ? AND role = 'admin'")
+                .bind(username)
+                .fetch_optional(&self.db)
+                .await?;
+        let id = id.ok_or_else(|| {
+            anyhow::anyhow!("BATVISION_RESET_ADMIN: no administrator is named {username}")
+        })?;
+        let password = auth::reset_password(&self.db, id).await?;
+        auth::reset_totp(&self.db, id).await?;
+        Ok(Some((username.clone(), password)))
+    }
 }
 
 pub fn app(state: AppState) -> Router {
@@ -248,6 +270,11 @@ pub fn app(state: AppState) -> Router {
             get(admin::list_users).post(admin::create_user),
         )
         .route("/admin/users/{id}", delete(admin::delete_user))
+        .route(
+            "/admin/users/{id}/password",
+            post(admin::reset_user_password),
+        )
+        .route("/admin/users/{id}/totp", delete(admin::reset_user_totp))
         .route(
             "/admin/invitations",
             get(admin::list_invitations).post(admin::create_invitation),

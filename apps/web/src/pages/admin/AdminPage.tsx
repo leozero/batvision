@@ -6,8 +6,10 @@ import {
   Cpu,
   Film,
   FolderPlus,
+  KeyRound,
   Link2,
   RefreshCw,
+  ShieldOff,
   Trash2,
   Tv,
   UserPlus,
@@ -18,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import {
   Badge,
   Button,
+  Dialog,
   ErrorText,
   Field,
   Input,
@@ -30,6 +33,7 @@ import {
 } from "../../components/ui";
 import { ApiError, api, call, type Schemas } from "../../lib/api";
 import { formatBytes } from "../../lib/bytes";
+import { copyText } from "../../lib/clipboard";
 import {
   encodesQuery,
   invalidateLibrary,
@@ -117,7 +121,7 @@ function ScanBadge({
     <span className="text-xs text-faint">
       {kind === "movies"
         ? t("admin.scanReportMovies", { count: r.movies })
-        : t("admin.scanReportSeries", { series: r.series, episodes: r.episodes })}
+        : `${t("admin.scanReportSeries", { count: r.series })} · ${t("detail.episodeCount", { count: r.episodes })}`}
       {r.metadata_skipped ? ` · ${t("admin.noTmdb")}` : ""}
       {r.probe_errors ? ` · ${t("admin.probeErrors", { count: r.probe_errors })}` : ""}
     </span>
@@ -173,29 +177,39 @@ function LibrariesCard() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: "auto" }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center gap-4 py-3"
+                  // Phones: the text gets the full width, the actions sit below it.
+                  className="flex flex-col gap-3 py-3 sm:flex-row sm:items-center sm:gap-4"
                 >
-                  <span className="flex size-10 items-center justify-center rounded-xl bg-surface-2 text-accent">
-                    <Icon className="size-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-medium">{lib.name}</p>
-                    <p className="truncate font-mono text-xs text-faint">/media/{lib.path}</p>
-                    <ScanBadge status={status} kind={lib.kind} />
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-2 text-accent">
+                      <Icon className="size-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium">{lib.name}</p>
+                      <p className="truncate font-mono text-xs text-faint">/media/{lib.path}</p>
+                      <ScanBadge status={status} kind={lib.kind} />
+                    </div>
                   </div>
-                  <Button size="sm" onClick={() => scan.mutate(lib.id)} disabled={status?.running}>
-                    <RefreshCw className={status?.running ? "size-4 animate-spin" : "size-4"} />
-                    {t("admin.scan")}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() =>
-                      confirm(t("admin.confirmRemoveLibrary")) && remove.mutate(lib.id)
-                    }
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
+                  <div className="flex items-center gap-2 pl-14 sm:pl-0">
+                    <Button
+                      size="sm"
+                      onClick={() => scan.mutate(lib.id)}
+                      disabled={status?.running}
+                    >
+                      <RefreshCw className={status?.running ? "size-4 animate-spin" : "size-4"} />
+                      {t("admin.scan")}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      aria-label={`${t("common.delete")} ${lib.name}`}
+                      onClick={() =>
+                        confirm(t("admin.confirmRemoveLibrary")) && remove.mutate(lib.id)
+                      }
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
                 </motion.li>
               );
             })}
@@ -283,10 +297,8 @@ function InvitationsCard() {
               onFocus={(e) => e.target.select()}
             />
             <Button
-              onClick={() => {
-                void navigator.clipboard.writeText(link);
-                setCopied(true);
-              }}
+              aria-label={t("common.copy")}
+              onClick={() => void copyText(link).then(setCopied)}
             >
               {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
             </Button>
@@ -305,7 +317,12 @@ function InvitationsCard() {
                   }),
                 })}
               </span>
-              <Button size="sm" variant="ghost" onClick={() => remove.mutate(inv.id)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t("common.delete")}
+                onClick={() => remove.mutate(inv.id)}
+              >
                 <Trash2 className="size-4" />
               </Button>
             </li>
@@ -337,8 +354,41 @@ function UsersCard() {
       call(api.DELETE("/api/admin/users/{id}", { params: { path: { id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: usersQuery.queryKey }),
   });
+  // Someone locked out: a temporary password, shown once, and no second factor.
+  const [temporary, setTemporary] = useState<{ name: string; password: string } | null>(null);
+  const resetPassword = useMutation({
+    mutationFn: (u: { id: number; username: string }) =>
+      call(api.POST("/api/admin/users/{id}/password", { params: { path: { id: u.id } } })),
+    onSuccess: (data, u) => setTemporary({ name: u.username, password: data.password }),
+  });
+  const resetTotp = useMutation({
+    mutationFn: (id: number) =>
+      call(api.DELETE("/api/admin/users/{id}/totp", { params: { path: { id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: usersQuery.queryKey }),
+  });
+  const resetError = resetPassword.error ?? resetTotp.error ?? remove.error;
   return (
     <Card title={t("admin.users")}>
+      <Dialog
+        open={temporary !== null}
+        onOpenChange={(open) => !open && setTemporary(null)}
+        title={t("admin.temporaryPassword")}
+        description={t("admin.temporaryPasswordHint", { name: temporary?.name ?? "" })}
+      >
+        <div className="flex gap-2">
+          <Input
+            readOnly
+            value={temporary?.password ?? ""}
+            aria-label={t("admin.temporaryPassword")}
+            className="font-mono"
+            onFocus={(e) => e.target.select()}
+          />
+          <Button onClick={() => void copyText(temporary?.password ?? "")}>
+            <Copy className="size-4" />
+            {t("common.copy")}
+          </Button>
+        </div>
+      </Dialog>
       <ul className="mb-6 divide-y divide-line">
         {users?.map((u) => (
           <li key={u.id} className="flex items-center gap-3 py-2.5">
@@ -348,10 +398,40 @@ function UsersCard() {
             <span className="flex-1 font-medium">{u.username}</span>
             {u.role === "admin" ? <Badge tone="accent">{t("account.roleAdmin")}</Badge> : null}
             {u.totp_enabled ? <Badge tone="success">2FA</Badge> : null}
+            {u.id !== me?.id && u.totp_enabled ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                title={t("admin.resetTotp")}
+                aria-label={`${t("admin.resetTotp")} · ${u.username}`}
+                onClick={() =>
+                  confirm(t("admin.confirmResetTotp", { name: u.username })) &&
+                  resetTotp.mutate(u.id)
+                }
+              >
+                <ShieldOff className="size-4" />
+              </Button>
+            ) : null}
             {u.id !== me?.id ? (
               <Button
                 size="sm"
                 variant="ghost"
+                title={t("admin.resetPassword")}
+                aria-label={`${t("admin.resetPassword")} · ${u.username}`}
+                disabled={resetPassword.isPending}
+                onClick={() =>
+                  confirm(t("admin.confirmResetPassword", { name: u.username })) &&
+                  resetPassword.mutate(u)
+                }
+              >
+                <KeyRound className="size-4" />
+              </Button>
+            ) : null}
+            {u.id !== me?.id ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={`${t("common.delete")} ${u.username}`}
                 onClick={() =>
                   confirm(t("admin.confirmRemoveUser", { name: u.username })) && remove.mutate(u.id)
                 }
@@ -362,6 +442,11 @@ function UsersCard() {
           </li>
         ))}
       </ul>
+      {resetError ? (
+        <div className="mb-4">
+          <ErrorText>{errorText(t, resetError)}</ErrorText>
+        </div>
+      ) : null}
       <form
         onSubmit={(e) => {
           e.preventDefault();

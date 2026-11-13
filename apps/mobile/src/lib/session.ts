@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 import { BatvisionSync } from "../../modules/batvision-sync";
 
-export { normalizeServer } from "./address";
+export { isPublicCleartext, normalizeServer } from "./address";
 
 /** Server address and device token, kept by the native engine (token in the Android keystore or the iOS keychain). */
 export function session() {

@@ -76,8 +76,13 @@ pub async fn to_webvtt(
         cmd.args(["-map", &format!("0:{index}")]);
     }
     cmd.args(["-f", "webvtt", "-"]).kill_on_drop(true);
-    // Embedded subtitles mean reading the whole file: allow time.
-    let out = tokio::time::timeout(Duration::from_secs(300), cmd.output()).await??;
+    // Embedded subtitles mean reading the whole file: allow time, more for a big one.
+    let gigabytes = tokio::fs::metadata(input)
+        .await
+        .map(|m| m.len() >> 30)
+        .unwrap_or(0);
+    let limit = Duration::from_secs(300 + gigabytes * 30);
+    let out = tokio::time::timeout(limit, cmd.output()).await??;
     anyhow::ensure!(
         out.status.success(),
         "ffmpeg: {}",

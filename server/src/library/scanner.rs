@@ -210,7 +210,10 @@ async fn walk(root: PathBuf) -> anyhow::Result<HashMap<PathBuf, ScannedFile>> {
             if naming::should_ignore(&relative) {
                 continue;
             }
-            let meta = entry.metadata()?;
+            // Gone since it was listed: the scan goes on without it.
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
             let modified = meta
                 .modified()
                 .ok()
@@ -227,7 +230,9 @@ async fn walk(root: PathBuf) -> anyhow::Result<HashMap<PathBuf, ScannedFile>> {
             );
         }
         // Attach each subtitle file to the video it's named after, in the same folder.
+        // "Film.Extended.fr.srt" also starts with "Film": the longest name wins.
         for subtitle in subtitle_files {
+            let mut best: Option<(usize, &mut ScannedFile, _)> = None;
             for (video, file) in files.iter_mut() {
                 if video.parent() != subtitle.parent() {
                     continue;
@@ -235,10 +240,14 @@ async fn walk(root: PathBuf) -> anyhow::Result<HashMap<PathBuf, ScannedFile>> {
                 let Some(stem) = video.file_stem().and_then(|s| s.to_str()) else {
                     continue;
                 };
-                if let Some(sidecar) = subtitles::parse_sidecar(stem, &subtitle) {
-                    file.subtitles.push((subtitle.clone(), sidecar));
-                    break;
+                if let Some(sidecar) = subtitles::parse_sidecar(stem, &subtitle)
+                    && best.as_ref().is_none_or(|(len, ..)| stem.len() > *len)
+                {
+                    best = Some((stem.len(), file, sidecar));
                 }
+            }
+            if let Some((_, file, sidecar)) = best {
+                file.subtitles.push((subtitle.clone(), sidecar));
             }
         }
         Ok(files)
@@ -606,7 +615,41 @@ async fn scan_library(state: &AppState, library_id: i64) -> anyhow::Result<ScanR
             .await?;
     let library_path = PathBuf::from(&path);
     let files = walk(state.config.media_dir.join(&library_path)).await?;
+    if files.is_empty() {
+        // A disk that isn't mounted looks like an empty folder. Taking it at its word
+        // would mark the whole library missing, and devices would delete their downloads.
+        let known: bool = sqlx::query_scalar(
+            "SELECT EXISTS (SELECT 1 FROM movies WHERE library_id = ?1 AND missing_since IS NULL)
+                 OR EXISTS (SELECT 1 FROM series WHERE library_id = ?1 AND missing_since IS NULL)",
+        )
+        .bind(library_id)
+        .fetch_one(&state.db)
+        .await?;
+        anyhow::ensure!(
+            !known,
+            "library folder {path} has no video any more: is its disk mounted? Nothing was changed"
+        );
+    }
     let listing: Vec<(PathBuf, u64)> = files.iter().map(|(p, f)| (p.clone(), f.size)).collect();
+
+    // A file replaced at the same path keeps its row: the versions encoded from the
+    // old one must not be handed out as the new one.
+    let encoded: Vec<(i64, String, i64, i64)> = sqlx::query_as(
+        "SELECT v.id, mf.path, mf.size_bytes, mf.modified_at
+         FROM variants v JOIN media_files mf ON mf.id = v.media_file_id",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    for (variant, path, size, modified) in encoded {
+        let replaced = Path::new(&path)
+            .strip_prefix(&library_path)
+            .ok()
+            .and_then(|relative| files.get(relative))
+            .is_some_and(|f| f.size as i64 != size || f.modified != modified);
+        if replaced {
+            state.encoder.delete(variant).await?;
+        }
+    }
 
     let mut report = ScanReport::default();
     match kind.as_str() {

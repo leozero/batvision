@@ -4,7 +4,7 @@ import { Bookmark, DownloadCloud, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PosterCard, PosterGrid } from "../components/media";
-import { Button, cx, EmptyState, Page, Skeleton } from "../components/ui";
+import { Button, cx, EmptyState, LoadError, Page, Skeleton } from "../components/ui";
 import { api, call, type Schemas } from "../lib/api";
 import { syncDesktop } from "../lib/desktop";
 import {
@@ -65,7 +65,7 @@ function AutoBanner() {
 export function WatchlistPage() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { data: items, isPending } = useQuery(watchlistQuery);
+  const { data: items, isPending, refetch } = useQuery(watchlistQuery);
   const { data: prefs } = useQuery(preferencesQuery);
   const [filter, setFilter] = useState<Filter>("all");
   const remove = useMutation({
@@ -136,6 +136,8 @@ export function WatchlistPage() {
             <Skeleton key={i} className="aspect-[2/3]" />
           ))}
         </PosterGrid>
+      ) : !items ? (
+        <LoadError onRetry={refetch} />
       ) : shown.length === 0 ? (
         <EmptyState icon={<Bookmark className="size-8" />} title={t("watchlist.empty")}>
           <p>{t("watchlist.emptyHint")}</p>
@@ -148,8 +150,10 @@ export function WatchlistPage() {
               <button
                 type="button"
                 aria-label={`${t("downloads.remove")} ${item.title}`}
+                disabled={remove.isPending}
                 onClick={() => remove.mutate(item)}
-                className="absolute right-2 top-2 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/75 opacity-0 transition group-hover/item:opacity-100 focus-visible:opacity-100"
+                // Always shown on touch screens: hidden, it still took the taps meant for the poster.
+                className="absolute right-2 top-2 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/75 transition focus-visible:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover/item:opacity-100"
               >
                 <Trash2 className="size-4" />
               </button>

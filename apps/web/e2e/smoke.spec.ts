@@ -83,13 +83,13 @@ test("admin adds libraries and the scan fills the catalog", async () => {
   await add("Films", "Movies", "movies");
   await add("Séries", "Shows", "series");
   await expect(page.getByText("2 films")).toBeVisible();
-  await expect(page.getByText("1 séries · 2 épisodes")).toBeVisible();
+  await expect(page.getByText("1 série · 2 épisodes")).toBeVisible();
 
   await page.getByRole("link", { name: "Films" }).click();
   await expect(page.getByText("2 titres")).toBeVisible();
   await page.getByRole("link", { name: /^Heat/ }).first().click();
   await expect(page.getByRole("heading", { name: "Heat" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Lecture" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Lecture", exact: true })).toBeVisible();
 });
 
 test("series page lists episodes and marks them watched", async () => {
@@ -160,7 +160,7 @@ test("the player switches picture quality and remembers it on the device", async
   await page.goto("/movies");
   await page.getByRole("link", { name: /^Heat/ }).first().click();
   const started = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
-  await page.getByRole("button", { name: "Lecture" }).click();
+  await page.getByRole("link", { name: "Lecture", exact: true }).click();
   // Auto starts at Max: the 720p original, remuxed for the browser.
   expect((await started).request().postDataJSON().quality).toBe("max");
 
@@ -205,7 +205,7 @@ test("Auto lowers the quality when the network can't keep up", async () => {
     );
     await page.goto("/movies");
     await page.getByRole("link", { name: /^Heat/ }).first().click();
-    await page.getByRole("button", { name: "Lecture" }).click();
+    await page.getByRole("link", { name: "Lecture", exact: true }).click();
     await lowered;
     expect(await page.evaluate(() => localStorage.getItem("bv.quality.auto"))).toBe("sos");
   } finally {
@@ -240,6 +240,27 @@ test("invitation link creates an account", async ({ browser }) => {
   await guest.getByRole("button", { name: "Créer mon compte" }).click();
   await expect(guest.getByRole("link", { name: "Accueil" })).toBeVisible();
   await expect(guest.getByText("Heat").first()).toBeVisible();
+});
+
+test("an admin lets a locked-out user back in with a temporary password", async ({ browser }) => {
+  await page.goto("/admin?tab=users");
+  await page.getByLabel("Identifiant").fill("bob");
+  await page.getByLabel("Mot de passe", { exact: true }).fill("bob-password-123");
+  await page.getByRole("button", { name: "Créer le compte" }).click();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Donner un mot de passe temporaire · bob" }).click();
+  const temporary = await page
+    .getByRole("textbox", { name: "Mot de passe temporaire" })
+    .inputValue();
+  expect(temporary).toMatch(/^[a-z0-9]{16}$/);
+
+  const guest = await (await browser.newContext({ locale: "fr-FR" })).newPage();
+  await guest.goto("/login");
+  await guest.getByLabel("Identifiant").fill("bob");
+  await guest.getByLabel("Mot de passe").fill(temporary);
+  await guest.getByRole("button", { name: "Se connecter" }).click();
+  await expect(guest.getByRole("link", { name: "Accueil" })).toBeVisible();
+  await guest.close();
 });
 
 test("client-side routes survive a reload and unknown pages say so", async () => {

@@ -24,16 +24,25 @@ const queryClient: QueryClient = new QueryClient({
       const path = window.location.pathname;
       if (desktop && isUnreachable(error) && !/^\/(offline|watch)\b/.test(path))
         void router.navigate({ to: "/offline" });
+      else signedOut(error);
     },
   }),
   mutationCache: new MutationCache({
-    onError: (error) => {
-      // An expired or revoked session: back to the sign-in page.
-      if (error instanceof ApiError && error.status === 401) void router.navigate({ to: "/login" });
-    },
+    onError: signedOut,
   }),
 });
 const router = makeRouter(queryClient);
+
+/**
+ * An expired or revoked session: back to the sign-in page. Only that 401: a wrong
+ * password on an account form is one too (`invalid_credentials`) and stays on its page.
+ */
+function signedOut(error: unknown) {
+  if (!(error instanceof ApiError) || error.code !== "unauthenticated") return;
+  if (queryClient.getQueryData(meQuery.queryKey) === null) return;
+  queryClient.setQueryData(meQuery.queryKey, null);
+  void router.navigate({ to: "/login" });
+}
 
 // Follow the user's language once known.
 queryClient.getQueryCache().subscribe((event) => {

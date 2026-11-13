@@ -633,6 +633,82 @@ async fn admin_cannot_delete_self_but_can_delete_others() {
     );
 }
 
+#[tokio::test]
+async fn admin_lets_a_locked_out_user_back_in() {
+    let app = TestApp::new().await;
+    let (admin, _) = app.ready_admin().await;
+    let alice = app.create_user(&admin, "alice").await;
+    app.enable_totp(&alice).await;
+    let (_, me) = app.get("/api/me", Some(&admin)).await;
+    let (_, alice_me) = app.get("/api/me", Some(&alice)).await;
+    let alice_id = alice_me["id"].as_i64().unwrap();
+
+    // Not on oneself: that goes through the account page and its password check.
+    let (status, body) = app
+        .post(
+            &format!("/api/admin/users/{}/password", me["id"]),
+            Some(&admin),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert_eq!(body["code"], "cannot_reset_self");
+    // Nor by a simple user.
+    let (status, _) = app
+        .post(
+            &format!("/api/admin/users/{}/password", me["id"]),
+            Some(&alice),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+
+    let (status, body) = app
+        .post(
+            &format!("/api/admin/users/{alice_id}/password"),
+            Some(&admin),
+            json!({}),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let temporary = body["password"].as_str().unwrap().to_owned();
+    // Her devices are signed out, and the old password is gone.
+    assert_eq!(
+        app.get("/api/me", Some(&alice)).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    let login = |password: String| {
+        let app = &app;
+        async move {
+            app.post(
+                "/api/auth/login",
+                None,
+                json!({ "username": "alice", "password": password, "device": device("Phone", "android") }),
+            )
+            .await
+        }
+    };
+    assert_eq!(login(PASSWORD.to_owned()).await.0, StatusCode::UNAUTHORIZED);
+    // The new one still meets her second factor…
+    let (status, body) = login(temporary.clone()).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "totp_required", "{body}");
+
+    // …until the administrator removes it.
+    let (status, _) = app
+        .request(
+            Method::DELETE,
+            &format!("/api/admin/users/{alice_id}/totp"),
+            Some(&admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (status, body) = login(temporary).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["status"], "ok", "{body}");
+}
+
 // ---- Quick connect ----------------------------------------------------------------------
 
 #[tokio::test]

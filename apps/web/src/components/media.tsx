@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { imageUrl, type Schemas } from "../lib/api";
 import { episodeCode, formatRuntime, progressRatio } from "../lib/format";
 import { pickRating, Rating } from "./rating";
-import { Button, cx, ProgressBar, Skeleton } from "./ui";
+import { buttonClass, cx, ProgressBar, Skeleton } from "./ui";
 
 /** Image that fades in once loaded, with a placeholder when missing or broken. */
 export function Img({
@@ -20,9 +20,10 @@ export function Img({
   className?: string;
   fallback?: ReactNode;
 }) {
-  const [loaded, setLoaded] = useState(false);
-  const [failed, setFailed] = useState(false);
-  if (!src || failed) {
+  // Kept per URL: a new `src` starts over instead of inheriting the last one's outcome.
+  const [state, setState] = useState<{ src?: string; status: "loaded" | "failed" }>();
+  const status = state?.src === src ? state?.status : undefined;
+  if (!src || status === "failed") {
     return (
       <div
         className={cx(
@@ -40,11 +41,11 @@ export function Img({
       alt={alt}
       loading="lazy"
       decoding="async"
-      onLoad={() => setLoaded(true)}
-      onError={() => setFailed(true)}
+      onLoad={() => setState({ src, status: "loaded" })}
+      onError={() => setState({ src, status: "failed" })}
       className={cx(
         "transition-opacity duration-500",
-        loaded ? "opacity-100" : "opacity-0",
+        status === "loaded" ? "opacity-100" : "opacity-0",
         className,
       )}
     />
@@ -193,6 +194,7 @@ export function Row({
   action?: ReactNode;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ start: true, end: false });
   const update = () => {
@@ -223,9 +225,9 @@ export function Row({
         {!edges.start ? (
           <button
             type="button"
-            aria-label="←"
+            aria-label={t("common.previous")}
             onClick={() => scroll(-1)}
-            className="absolute left-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-r from-bg to-transparent opacity-0 transition-opacity group-hover/row:opacity-100 sm:flex"
+            className="absolute left-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-r from-bg to-transparent opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100 sm:flex"
           >
             <ChevronLeft className="size-7" />
           </button>
@@ -233,9 +235,9 @@ export function Row({
         {!edges.end ? (
           <button
             type="button"
-            aria-label="→"
+            aria-label={t("common.next")}
             onClick={() => scroll(1)}
-            className="absolute right-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-l from-bg to-transparent opacity-0 transition-opacity group-hover/row:opacity-100 sm:flex"
+            className="absolute right-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-l from-bg to-transparent opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100 sm:flex"
           >
             <ChevronRight className="size-7" />
           </button>
@@ -313,17 +315,17 @@ export function Hero({ item }: { item: Schemas["HomeItem"] }) {
             </p>
           ) : null,
           <div key="actions" className="mt-7 flex flex-wrap items-center gap-3">
-            <Link to="/watch/$kind/$id" params={{ kind: item.kind, id: String(item.id) }}>
-              <Button variant="primary" size="lg">
-                <Play className="size-5" fill="currentColor" />
-                {resume ? t("common.resume") : t("common.play")}
-              </Button>
+            <Link
+              to="/watch/$kind/$id"
+              params={{ kind: item.kind, id: String(item.id) }}
+              className={buttonClass({ variant: "primary", size: "lg" })}
+            >
+              <Play className="size-5" fill="currentColor" />
+              {resume ? t("common.resume") : t("common.play")}
             </Link>
-            <Link {...detail}>
-              <Button size="lg">
-                <Info className="size-5" />
-                {t("common.moreInfo")}
-              </Button>
+            <Link {...detail} className={buttonClass({ size: "lg" })}>
+              <Info className="size-5" />
+              {t("common.moreInfo")}
             </Link>
             {resume && item.duration_ms ? (
               <span className="text-sm text-muted">

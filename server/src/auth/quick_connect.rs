@@ -14,6 +14,7 @@ pub const CODE_TTL: Duration = Duration::from_secs(5 * 60);
 const CODE_ALPHABET: &[u8] = b"ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODE_LEN: usize = 6;
 const MAX_PENDING: usize = 500;
+const MAX_PENDING_PER_IP: usize = 5;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum State {
@@ -24,6 +25,8 @@ pub enum State {
 #[derive(Debug)]
 struct Request {
     code: String,
+    /// Who asked: one address can't fill the table and keep every TV out.
+    ip: String,
     device: DeviceInfo,
     state: State,
     expires_at: Instant,
@@ -53,10 +56,12 @@ pub struct Started {
 }
 
 impl QuickConnect {
-    pub fn start(&self, device: DeviceInfo, now: Instant) -> Option<Started> {
+    pub fn start(&self, device: DeviceInfo, ip: &str, now: Instant) -> Option<Started> {
         let mut requests = self.requests.lock().unwrap();
         requests.retain(|_, r| r.expires_at > now);
-        if requests.len() >= MAX_PENDING {
+        if requests.len() >= MAX_PENDING
+            || requests.values().filter(|r| r.ip == ip).count() >= MAX_PENDING_PER_IP
+        {
             return None;
         }
         let code = loop {
@@ -70,6 +75,7 @@ impl QuickConnect {
             crypto::hash_token(&poll_secret),
             Request {
                 code: code.clone(),
+                ip: ip.to_owned(),
                 device,
                 state: State::Pending,
                 expires_at: now + CODE_TTL,
@@ -133,7 +139,7 @@ mod tests {
     fn full_flow() {
         let qc = QuickConnect::default();
         let t0 = Instant::now();
-        let started = qc.start(tv(), t0).unwrap();
+        let started = qc.start(tv(), "10.0.0.1", t0).unwrap();
         assert_eq!(started.code.len(), 6);
         assert!(matches!(qc.poll(&started.poll_secret, t0), Poll::Pending));
 
@@ -158,7 +164,7 @@ mod tests {
     fn codes_expire() {
         let qc = QuickConnect::default();
         let t0 = Instant::now();
-        let started = qc.start(tv(), t0).unwrap();
+        let started = qc.start(tv(), "10.0.0.1", t0).unwrap();
         let later = t0 + CODE_TTL + Duration::from_secs(1);
         assert!(!qc.approve(&started.code, 1, later));
         assert!(matches!(
@@ -179,8 +185,19 @@ mod tests {
     fn an_approved_code_cannot_be_reapproved_by_someone_else() {
         let qc = QuickConnect::default();
         let t0 = Instant::now();
-        let started = qc.start(tv(), t0).unwrap();
+        let started = qc.start(tv(), "10.0.0.1", t0).unwrap();
         assert!(qc.approve(&started.code, 1, t0));
         assert!(!qc.approve(&started.code, 2, t0));
+    }
+
+    #[test]
+    fn one_address_cannot_fill_the_table() {
+        let qc = QuickConnect::default();
+        let t0 = Instant::now();
+        for _ in 0..MAX_PENDING_PER_IP {
+            assert!(qc.start(tv(), "10.0.0.1", t0).is_some());
+        }
+        assert!(qc.start(tv(), "10.0.0.1", t0).is_none());
+        assert!(qc.start(tv(), "10.0.0.2", t0).is_some());
     }
 }

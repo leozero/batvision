@@ -162,7 +162,8 @@ pub async fn refresh_movie(
          backdrop_path = ?, metadata_updated_at = ? WHERE id = ?",
     )
     .bind(tmdb_id)
-    .bind(&main.release_date)
+    // TMDB sends "" for a title without a date.
+    .bind(main.release_date.as_deref().filter(|d| !d.is_empty()))
     .bind(main.runtime)
     .bind(&main.poster_path)
     .bind(&main.backdrop_path)
@@ -236,7 +237,7 @@ pub async fn refresh_series(
          metadata_updated_at = ? WHERE id = ?",
     )
     .bind(tmdb_id)
-    .bind(&main.first_air_date)
+    .bind(main.first_air_date.as_deref().filter(|d| !d.is_empty()))
     .bind(&main.poster_path)
     .bind(&main.backdrop_path)
     .bind(now())

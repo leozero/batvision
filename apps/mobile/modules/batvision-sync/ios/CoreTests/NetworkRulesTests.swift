@@ -56,4 +56,29 @@ final class NetworkRulesTests: XCTestCase {
     XCTAssertEqual(Wait.mobileCap.rawValue, "mobile_cap")
     XCTAssertEqual(Wait.wifi.rawValue, "wifi")
   }
+
+  func testAServerRestartingIsNotAFailureOfTheItem() {
+    for status in [502, 503, 504] {
+      XCTAssertEqual(TransferRules.end(status: status, refreshed: false), .unreachable)
+      XCTAssertEqual(TransferRules.end(status: status, refreshed: true), .unreachable)
+    }
+    XCTAssertEqual(TransferRules.end(status: 500, refreshed: false), .failed)
+    XCTAssertEqual(TransferRules.end(status: 401, refreshed: false), .failed)
+  }
+
+  func testAGoneFileRefreshesThePlanOnceThenFails() {
+    for status in [403, 404, 410] {
+      XCTAssertEqual(TransferRules.end(status: status, refreshed: false), .refresh)
+      XCTAssertEqual(TransferRules.end(status: status, refreshed: true), .failed)
+    }
+  }
+
+  func testRetriesSpreadOutUpToFiveMinutes() {
+    XCTAssertEqual(TransferRules.retryDelay(attempt: 0), 15)
+    XCTAssertEqual(TransferRules.retryDelay(attempt: 1), 30)
+    XCTAssertEqual(TransferRules.retryDelay(attempt: 4), 240)
+    XCTAssertEqual(TransferRules.retryDelay(attempt: 5), 300)
+    XCTAssertEqual(TransferRules.retryDelay(attempt: 1_000), 300)
+    XCTAssertEqual(TransferRules.retryDelay(attempt: -1), 15)
+  }
 }

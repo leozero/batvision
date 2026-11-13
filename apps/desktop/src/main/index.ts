@@ -1,6 +1,7 @@
 import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import type { DesktopInfo, DesktopSettings, SetServerResult } from "@batvision/bridge";
+import { resources as translations, uiLanguageFor } from "@batvision/i18n";
 import {
   app,
   BrowserWindow,
@@ -94,7 +95,8 @@ app.whenReady().then(() => {
   );
   ipcMain.handle("bv:setServer", async (_e, input: string): Promise<SetServerResult> => {
     const origin = normalizeServer(String(input));
-    if (!origin) return { ok: false, error: "invalid_url" };
+    // Signed in, the server can't change: the token would follow to the new address.
+    if (!origin || config.token) return { ok: false, error: "invalid_url" };
     try {
       const response = await fetchWithTimeout(`${origin}/api/health`, {}, 10_000);
       const body = (await response.json().catch(() => null)) as { status?: string } | null;
@@ -141,7 +143,8 @@ app.whenReady().then(() => {
       properties: ["openDirectory", "createDirectory"],
     });
     const folder = result.filePaths[0];
-    if (!result.canceled && folder && folder !== engine.library.folder) engine.setFolder(folder);
+    if (!result.canceled && folder && folder !== engine.library.folder)
+      await engine.setFolder(folder);
     return settings();
   });
   ipcMain.handle("bv:openFolder", () => shell.openPath(engine.library.folder));
@@ -209,25 +212,28 @@ app.whenReady().then(() => {
 
   function updateTray() {
     if (!tray) return;
+    // The account's language lives in the page; the main process only knows the system's.
+    const labels = translations[uiLanguageFor(app.getLocale())].translation.desktop.tray;
     const update = updater.state();
+    const versioned = (label: string, version: string) => label.replace("{{version}}", version);
     const updateItems: Electron.MenuItemConstructorOptions[] =
       update.status === "ready"
-        ? [{ label: `Redémarrer pour passer à la version ${update.version}`, click: installUpdate }]
+        ? [{ label: versioned(labels.restartToUpdate, update.version), click: installUpdate }]
         : update.status === "available"
-          ? [{ label: `Télécharger la version ${update.version}`, click: installUpdate }]
+          ? [{ label: versioned(labels.downloadUpdate, update.version), click: installUpdate }]
           : [];
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: "Ouvrir BatVision", click: show },
+        { label: labels.open, click: show },
         ...updateItems,
         { type: "separator" },
         {
-          label: "Synchroniser maintenant",
+          label: labels.syncNow,
           enabled: Boolean(config.token),
           click: () => void engine.sync(),
         },
         {
-          label: config.paused ? "Reprendre les téléchargements" : "Mettre en pause",
+          label: config.paused ? labels.resume : labels.pause,
           enabled: Boolean(config.token),
           click: () => {
             engine.setPaused(!config.paused);
@@ -236,7 +242,7 @@ app.whenReady().then(() => {
         },
         { type: "separator" },
         {
-          label: "Quitter",
+          label: labels.quit,
           click: () => {
             quitting = true;
             app.quit();

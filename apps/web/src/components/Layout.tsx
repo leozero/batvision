@@ -11,13 +11,21 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { desktop, useUpdateState } from "../lib/desktop";
 import { meQuery } from "../lib/queries";
 import { Logo } from "./Logo";
-import { cx, IconButton, MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "./ui";
+import {
+  cx,
+  iconButtonClass,
+  MenuContent,
+  MenuItem,
+  MenuRoot,
+  MenuSeparator,
+  MenuTrigger,
+} from "./ui";
 
 function NavLink({
   to,
@@ -28,8 +36,14 @@ function NavLink({
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const active = to === "/" ? pathname === "/" : pathname.startsWith(to);
+  const link = useRef<HTMLAnchorElement>(null);
+  // Narrow screens scroll the links: the current one stays in view.
+  useEffect(() => {
+    if (active) link.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active]);
   return (
     <Link
+      ref={link}
       to={to}
       className={cx(
         "relative px-1 py-2 text-sm font-medium transition-colors",
@@ -74,7 +88,7 @@ export function AppLayout() {
     <div className="min-h-dvh">
       <header
         className={cx(
-          "sticky top-0 z-40 flex h-16 items-center gap-6 px-4 transition-all duration-300 sm:px-10",
+          "sticky top-0 z-40 flex h-16 items-center gap-3 px-4 transition-all duration-300 sm:gap-6 sm:px-10",
           scrolled
             ? "bg-bg/85 shadow-lg shadow-black/30 backdrop-blur-xl"
             : "bg-gradient-to-b from-black/70 to-transparent",
@@ -83,18 +97,22 @@ export function AppLayout() {
         <Link to="/" className="shrink-0 transition-opacity hover:opacity-80">
           <Logo />
         </Link>
-        <nav className="flex items-center gap-5">
+        {/* Narrow screens: the links scroll, search and the account stay in view. */}
+        <nav className="no-scrollbar flex h-full min-w-0 items-center gap-5 overflow-x-auto">
           <NavLink to="/">{t("nav.home")}</NavLink>
           <NavLink to="/movies">{t("nav.movies")}</NavLink>
           <NavLink to="/series">{t("nav.series")}</NavLink>
           <NavLink to="/watchlist">{t("nav.watchlist")}</NavLink>
           <NavLink to="/downloads">{t("nav.downloads")}</NavLink>
         </nav>
-        <div className="ml-auto flex items-center gap-1">
-          <Link to="/search" aria-label={t("nav.search")}>
-            <IconButton label={t("nav.search")} tabIndex={-1}>
-              <Search className="size-5" />
-            </IconButton>
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Link
+            to="/search"
+            aria-label={t("nav.search")}
+            title={t("nav.search")}
+            className={iconButtonClass()}
+          >
+            <Search className="size-5" />
           </Link>
           <MenuRoot>
             <MenuTrigger asChild>

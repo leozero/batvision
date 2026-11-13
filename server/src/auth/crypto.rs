@@ -7,8 +7,13 @@ use argon2::{
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use sha2::{Digest, Sha256};
 
+/// Argon2 takes 19 MiB and tens of milliseconds per hash: a burst of sign-ins must
+/// queue here instead of filling the memory and every blocking thread.
+static HASHING: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
 /// Hashes a password with Argon2id (default parameters), off the async runtime.
 pub async fn hash_password(password: String) -> anyhow::Result<String> {
+    let _permit = HASHING.acquire().await?;
     tokio::task::spawn_blocking(move || {
         Argon2::default()
             .hash_password(password.as_bytes())
@@ -20,6 +25,9 @@ pub async fn hash_password(password: String) -> anyhow::Result<String> {
 
 /// Verifies a password against a stored PHC hash, off the async runtime.
 pub async fn verify_password(password: String, hash: String) -> bool {
+    let Ok(_permit) = HASHING.acquire().await else {
+        return false;
+    };
     tokio::task::spawn_blocking(move || {
         PasswordHash::new(&hash)
             .map(|parsed| {

@@ -46,7 +46,11 @@ export class Updater extends EventEmitter<{ state: [UpdateState] }> {
       autoUpdater.on("update-downloaded", (info) =>
         this.set({ status: "ready", version: info.version }),
       );
-      autoUpdater.on("error", (err) => console.warn("update check failed:", err.message));
+      autoUpdater.on("error", (err) => {
+        console.warn("update check failed:", err.message);
+        // A download cut short: the next check starts it again.
+        if (this.current.status === "downloading") this.set({ status: "none" });
+      });
     }
     setTimeout(() => void this.check(), this.feed ? 1000 : 15_000);
     setInterval(() => void this.check(), CHECK_EVERY_MS);

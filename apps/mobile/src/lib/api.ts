@@ -16,13 +16,20 @@ export class ApiError extends Error {
 /** The server can't be reached: the app switches to the offline library. */
 export class Unreachable extends Error {}
 
+const READ_TIMEOUT_MS = 15_000;
+
 /** Adds the device token, and turns network failures into `Unreachable`. */
 const authorizedFetch: typeof fetch = async (input, init) => {
   const { token } = session();
   const request = new Request(input, init);
   if (token) request.headers.set("Authorization", `Bearer ${token}`);
+  // A server on another network never answers: give up on reads after a while, so the
+  // offline library shows instead of a spinner. Writes (starting a playback) may be slow.
+  const timeout = new AbortController();
+  const timer =
+    request.method === "GET" ? setTimeout(() => timeout.abort(), READ_TIMEOUT_MS) : null;
   try {
-    const response = await fetch(request);
+    const response = await fetch(request, { signal: timeout.signal });
     // Behind a reverse proxy, a stopped server answers 502–504.
     if (response.status >= 502 && response.status <= 504)
       throw new Unreachable(response.statusText);
@@ -30,6 +37,8 @@ const authorizedFetch: typeof fetch = async (input, init) => {
   } catch (e) {
     if (e instanceof Unreachable) throw e;
     throw new Unreachable(e instanceof Error ? e.message : String(e));
+  } finally {
+    if (timer) clearTimeout(timer);
   }
 };
 

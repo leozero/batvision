@@ -48,6 +48,13 @@ final class Engine: NSObject {
   private var finishing = Set<String>()
   /// Items dropped by hand: a download of one stops at once (D74).
   private var cancelled = Set<String>()
+  /// Items whose URL was refused and the plan fetched again for: once each, until a success.
+  private var refreshed = Set<String>()
+  /// Items whose file is here but couldn't be completed, the server being unreachable:
+  /// left alone until the next sync.
+  private var stalled = Set<String>()
+  private var retryPending = false
+  private var retries = 0
   private var listeners: [UUID: ([String: Any]) -> Void] = [:]
   private var lastEmit = Date.distantPast
   private var lastCheck = Date.distantPast
@@ -115,6 +122,9 @@ final class Engine: NSObject {
       decision = nil
       failed = [:]
       waits = [:]
+      refreshed = []
+      stalled = []
+      retries = 0
       return activeTask
     }
     task?.cancel()
@@ -190,7 +200,10 @@ final class Engine: NSObject {
   /// One full run: progress, plan, deletions, requests, then the next download.
   private func sync() async {
     guard signedIn, let api = try? api() else { return }
-    locked { syncing = true }
+    locked {
+      syncing = true
+      stalled = []
+    }
     emit()
     do {
       try await flushProgress(api)
@@ -200,6 +213,10 @@ final class Engine: NSObject {
         online = true
         quota = JSONValue.int64(fetched.settings, "quota_bytes")
         plan = fetched.items
+        // Each sync gives failed downloads another try: a dropped connection doesn't
+        // last, and nothing else would retry them before a restart. `refreshed` stays,
+        // or the sync a refused URL asks for would let it ask again without end.
+        failed = [:]
       }
       try await apply(api)
       await refreshPositions(api)
@@ -261,6 +278,23 @@ final class Engine: NSObject {
     library.remove(key)
   }
 
+  /// A transfer stopped on an error: one sync later, further apart each time the error
+  /// repeats, so a server that stays down isn't asked in a loop.
+  private func scheduleRetry() {
+    let delay = locked { () -> TimeInterval? in
+      if retryPending { return nil }
+      retryPending = true
+      retries += 1
+      return TransferRules.retryDelay(attempt: retries - 1)
+    }
+    guard let delay else { return }
+    DispatchQueue.global().asyncAfter(deadline: .now() + delay) { [weak self] in
+      guard let self else { return }
+      self.locked { self.retryPending = false }
+      self.requestSync()
+    }
+  }
+
   /// Watched elsewhere since: bring the server's positions to the local copies.
   private func refreshPositions(_ api: Api) async {
     let pending = store.pendingProgress()
@@ -302,7 +336,9 @@ final class Engine: NSObject {
     let rules = rules()
     let mobileUsed = store.mobileBytes(month: month())
     for case let .download(key, entry) in decision.actions {
-      if library.get(key)?.complete == true || failed[key] != nil || cancelled.contains(key) || finishing.contains(key) {
+      if library.get(key)?.complete == true || failed[key] != nil || cancelled.contains(key) || finishing.contains(key)
+        || stalled.contains(key)
+      {
         continue
       }
       // Transferred while the app wasn't running, not completed yet.
@@ -419,12 +455,21 @@ final class Engine: NSObject {
       stored.downloadedAt = now()
       library.put(stored)
       try? files.removeItem(at: dir.appendingPathComponent(resumeFile))
-      locked { _ = failed.removeValue(forKey: key) }
+      locked {
+        failed.removeValue(forKey: key)
+        refreshed.remove(key)
+        retries = 0
+      }
       log.info("downloaded \(key, privacy: .public)")
       if let variant = entry.variantId { try? await api.confirm(variantId: variant) }
     } catch ApiError.unreachable {
-      // The file stays; completing it is tried again at the next sync.
-      locked { online = false }
+      // The file stays; completing it is tried again at the next sync, not before (the
+      // caller goes on to the next download, which would come straight back here).
+      locked {
+        online = false
+        stalled.insert(key)
+      }
+      scheduleRetry()
     } catch {
       locked { failed[key] = error.localizedDescription }
     }
@@ -510,6 +555,7 @@ final class Engine: NSObject {
     locked {
       failed.removeValue(forKey: key)
       waits.removeValue(forKey: key)
+      refreshed.remove(key)
       plan.removeAll { $0.key == key }
       cancelled.remove(key)
     }
@@ -734,11 +780,15 @@ extension Engine: URLSessionDownloadDelegate {
     if check {
       if store.paused { return pauseTransfer(downloadTask) }
       if locked({ cancelled.contains(key) }) { return downloadTask.cancel() }
-      // The monthly cap is reached midway: stop until next month or Wi-Fi.
-      if conditions.metered, let entry = entryFor(key),
-        NetworkRules.mobileWait(profile: entry.profile, rules: rules(), mobileBytesThisMonth: store.mobileBytes(month: month())) != nil
+      // Unplugged, or the monthly cap reached, midway: stop until the rules allow it again.
+      // Bytes are arriving, so the connection is there whatever the path monitor says.
+      var here = conditions
+      here.connected = true
+      if let entry = entryFor(key),
+        let wait = NetworkRules.check(
+          profile: entry.profile, rules: rules(), now: here, mobileBytesThisMonth: store.mobileBytes(month: month()))
       {
-        locked { waits[key] = .mobileCap }
+        locked { waits[key] = wait }
         return pauseTransfer(downloadTask)
       }
     }
@@ -765,25 +815,54 @@ extension Engine: URLSessionDownloadDelegate {
     let wasCancelled = locked { () -> Bool in
       if activeTask?.taskIdentifier == task.taskIdentifier { activeTask = nil }
       if current?.key == key { current = nil }
-      return cancelled.contains(key)
+      // The transfer has let go: the item may download again (a new variant after a
+      // change of quality, say).
+      return cancelled.remove(key) != nil
+    }
+    if wasCancelled {
+      // It ended before the cancel reached it: what it left goes too.
+      if error == nil { try? FileManager.default.removeItem(at: library.dir(key).appendingPathComponent(partialFile)) }
+      emit()
+      // A sync rather than the next download: the plan this was dropped under is stale,
+      // and the sync that dropped it may still be deleting the files.
+      requestSync()
+      return
     }
     if let error = error as NSError? {
-      if !wasCancelled, let data = error.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
+      if let data = error.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
         try? data.write(to: library.ensureDir(key).appendingPathComponent(resumeFile))
       }
       if error.code != NSURLErrorCancelled {
         log.warning("transfer \(key, privacy: .public) stopped: \(error.localizedDescription, privacy: .public)")
+        // Connection lost or server gone: nothing else would start it again before the
+        // app is next opened.
+        if error.domain == NSURLErrorDomain { locked { online = false } }
+        scheduleRetry()
       }
       emit()
       return
     }
     if !(200..<300).contains(status) {
       try? FileManager.default.removeItem(at: library.dir(key).appendingPathComponent(resumeFile))
-      // Signed URL expired or variant gone: the next plan has fresh URLs.
-      if [403, 404, 410].contains(status) {
+      let end = locked { () -> TransferEnd in
+        let end = TransferRules.end(status: status, refreshed: refreshed.contains(key))
+        switch end {
+        case .unreachable: online = false
+        case .refresh: refreshed.insert(key)
+        case .failed:
+          failed[key] = "HTTP \(status)"
+          refreshed.remove(key)
+        }
+        return end
+      }
+      switch end {
+      case .unreachable:
+        emit()
+        scheduleRetry()
+      case .refresh:
+        // Signed URL expired or variant gone: the next plan has fresh URLs.
         requestSync()
-      } else {
-        locked { failed[key] = "HTTP \(status)" }
+      case .failed:
         emit()
         startNextDownload()
       }

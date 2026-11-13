@@ -11,7 +11,9 @@ import { pickRating, Rating } from "../components/rating";
 import { DownloadedMark } from "../components/ThisComputer";
 import {
   Button,
+  buttonClass,
   IconButton,
+  LoadError,
   MenuContent,
   MenuItem,
   MenuRoot,
@@ -20,7 +22,7 @@ import {
   ProgressBar,
   Skeleton,
 } from "../components/ui";
-import { imageUrl, type Schemas } from "../lib/api";
+import { ApiError, imageUrl, type Schemas } from "../lib/api";
 import { episodeCode, formatRuntime, progressRatio } from "../lib/format";
 import { episodeQuery, seasonQuery, seriesQuery, useSetPlayed } from "../lib/queries";
 import { NotFoundPage } from "./NotFoundPage";
@@ -129,17 +131,22 @@ export function SeriesDetailPage() {
   const search = useSearch({ strict: false }) as { season?: number };
   const navigate = useNavigate();
   const seriesId = Number(id);
-  const { data: series, isPending, isError } = useQuery(seriesQuery(seriesId));
+  const { data: series, isPending, error, refetch } = useQuery(seriesQuery(seriesId));
   const setPlayed = useSetPlayed();
 
   const seasons = series?.seasons ?? [];
   const defaultSeason = series?.up_next?.season_number ?? seasons[0]?.season_number ?? 1;
-  const selected = search.season ?? defaultSeason;
-  const current = seasons.find((s) => s.season_number === selected);
-  const { data: episodes, isPending: episodesPending } = useQuery({
+  const season = (n: number) => seasons.find((s) => s.season_number === n);
+  // A `?season=` that doesn't exist (old link, season removed) falls back to the default one.
+  const current = season(search.season ?? defaultSeason) ?? season(defaultSeason) ?? seasons[0];
+  const selected = current?.season_number ?? defaultSeason;
+  const episodesQuery = useQuery({
     ...seasonQuery(seriesId, selected),
     enabled: !!series && !!current,
   });
+  const episodes = episodesQuery.data;
+  // A disabled query stays pending: without a season there is nothing to wait for.
+  const episodesPending = !!current && episodesQuery.isPending;
 
   // Audio languages offered when downloading: those of the next (or first) episode.
   const sampleEpisode = series?.up_next?.id ?? episodes?.[0]?.id;
@@ -156,7 +163,15 @@ export function SeriesDetailPage() {
       </Page>
     );
   }
-  if (isError || !series) return <NotFoundPage />;
+  // Only a 404 means the series is gone: anything else can be retried.
+  if (error instanceof ApiError && error.status === 404) return <NotFoundPage />;
+  if (!series) {
+    return (
+      <Page className="px-4 pt-16">
+        <LoadError onRetry={refetch} />
+      </Page>
+    );
+  }
 
   const upNext = series.up_next;
   const allPlayed = seasons.length > 0 && !upNext;
@@ -191,14 +206,16 @@ export function SeriesDetailPage() {
         actions={
           <>
             {upNext ? (
-              <Link to="/watch/$kind/$id" params={{ kind: "episode", id: String(upNext.id) }}>
-                <Button variant="primary" size="lg">
-                  <Play className="size-5" fill="currentColor" />
-                  {upNext.position_ms > 0 ? t("common.resume") : t("common.play")}{" "}
-                  <span className="font-medium opacity-80">
-                    {episodeCode(upNext.season_number, upNext.episode_number)}
-                  </span>
-                </Button>
+              <Link
+                to="/watch/$kind/$id"
+                params={{ kind: "episode", id: String(upNext.id) }}
+                className={buttonClass({ variant: "primary", size: "lg" })}
+              >
+                <Play className="size-5" fill="currentColor" />
+                {upNext.position_ms > 0 ? t("common.resume") : t("common.play")}{" "}
+                <span className="font-medium opacity-80">
+                  {episodeCode(upNext.season_number, upNext.episode_number)}
+                </span>
               </Link>
             ) : null}
             <Button
@@ -259,6 +276,8 @@ export function SeriesDetailPage() {
             <Button
               variant="ghost"
               size="sm"
+              // Until the episodes are known, "watched" or "unwatched" would be a guess.
+              disabled={!episodes}
               onClick={() =>
                 setPlayed.mutate({
                   kind: "season",
@@ -298,6 +317,9 @@ export function SeriesDetailPage() {
                 ))}
           </motion.ul>
         </AnimatePresence>
+        {current && episodesQuery.isError && !episodes ? (
+          <LoadError onRetry={episodesQuery.refetch} />
+        ) : null}
       </section>
     </Page>
   );
