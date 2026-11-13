@@ -176,14 +176,33 @@ jobs:
     name: iOS (engine tests, end-to-end on a simulator)
     runs-on: macos-26
     timeout-minutes: 90
+    env:
+      # Native C, C++ and Objective-C of the libraries, cached between runs.
+      USE_CCACHE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 3G
+      CCACHE_SLOPPINESS: clang_index_store,file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
+      CCACHE_FILECLONE: "true"
+      CCACHE_DEPEND: "true"
+      CCACHE_INODECACHE: "true"
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: server
-      - name: Install ffmpeg (encodes the test movie)
-        run: brew install ffmpeg
+      # The iPad is the main target (D85). It boots while the app builds.
+      - name: Start an iPad simulator
+        run: |
+          udid=$(xcrun simctl list devices available --json | node -e '
+            const all = Object.values(JSON.parse(require("fs").readFileSync(0)).devices).flat();
+            // The 13-inch one: the sign-in flow taps the save-password prompt by position.
+            const ipad = all.find((d) => d.name.startsWith("iPad Pro 13")) ?? all.find((d) => d.name.startsWith("iPad"));
+            console.log(ipad.udid);')
+          echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+      - name: Install ffmpeg (encodes the test movie) and ccache
+        run: brew install ffmpeg ccache
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
@@ -193,30 +212,37 @@ jobs:
       - name: Sync engine unit tests (Swift, D91)
         working-directory: apps/mobile/modules/batvision-sync/ios
         run: swift test
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ios-ccache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
+          restore-keys: |
+            ios-ccache-${{ hashFiles('pnpm-lock.yaml') }}-
+            ios-ccache-
       - name: Generate the iOS project
         working-directory: apps/mobile
         run: pnpm exec expo prebuild --platform ios
       - name: Build for the simulator
         working-directory: apps/mobile/ios
         run: |
+          # arm64 only: the runner's simulator doesn't need the Intel half.
           xcodebuild -workspace BatVision.xcworkspace -scheme BatVision -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             -derivedDataPath build/dd build | tail -30
+          ccache --show-stats
+      - if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ios-ccache-${{ hashFiles('pnpm-lock.yaml') }}-${{ github.sha }}
       - name: Install Maestro
         run: |
           curl -fsSL -o "$RUNNER_TEMP/maestro.zip" https://github.com/mobile-dev-inc/maestro/releases/download/cli-2.12.1/maestro.zip
           unzip -q "$RUNNER_TEMP/maestro.zip" -d "$HOME"
           echo "$HOME/maestro/bin" >> "$GITHUB_PATH"
-      # The iPad is the main target (D85).
-      - name: Boot an iPad simulator
-        run: |
-          udid=$(xcrun simctl list devices available --json | node -e '
-            const all = Object.values(JSON.parse(require("fs").readFileSync(0)).devices).flat();
-            // The 13-inch one: the sign-in flow taps the save-password prompt by position.
-            const ipad = all.find((d) => d.name.startsWith("iPad Pro 13")) ?? all.find((d) => d.name.startsWith("iPad"));
-            console.log(ipad.udid);')
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
+      - name: Wait for the simulator
+        run: xcrun simctl bootstatus "$SIMULATOR" -b
       - name: End-to-end on the simulator
         env:
           PLATFORM: ios
