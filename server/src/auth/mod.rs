@@ -111,6 +111,43 @@ pub fn validate_username(username: &str) -> ApiResult<()> {
     }
 }
 
+/// Gives `user_id` a temporary password and signs out every device of theirs. For
+/// someone locked out: they sign in with it, then choose their own.
+pub async fn reset_password(db: &Db, user_id: i64) -> anyhow::Result<String> {
+    let password = crypto::random_code(b"abcdefghjkmnpqrstuvwxyz23456789", 16);
+    let hash = crypto::hash_password(password.clone()).await?;
+    let mut tx = db.begin().await?;
+    sqlx::query("UPDATE users SET password_hash = ? WHERE id = ?")
+        .bind(hash)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE devices SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL")
+        .bind(now())
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(password)
+}
+
+/// Removes the second factor of `user_id` (a lost phone and no recovery code left).
+pub async fn reset_totp(db: &Db, user_id: i64) -> anyhow::Result<()> {
+    let mut tx = db.begin().await?;
+    sqlx::query(
+        "UPDATE users SET totp_enabled = 0, totp_secret = NULL, totp_last_step = NULL WHERE id = ?",
+    )
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM recovery_codes WHERE user_id = ?")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 pub fn validate_password(password: &str) -> ApiResult<()> {
     let len = password.chars().count();
     if (10..=256).contains(&len) {

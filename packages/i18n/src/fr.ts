@@ -81,6 +81,8 @@ export const fr = {
     totp_already_enabled: "La double authentification est déjà active.",
     totp_mandatory: "La double authentification est obligatoire pour les administrateurs.",
     cannot_delete_self: "Vous ne pouvez pas supprimer votre propre compte.",
+    cannot_reset_self:
+      "Changez votre mot de passe et votre double authentification depuis votre compte.",
     invalid_language: "Langue invalide.",
     invalid_name: "Le nom doit faire entre 1 et 64 caractères.",
     invalid_device_name: "Le nom de l'appareil doit faire entre 1 et 64 caractères.",
@@ -504,6 +506,15 @@ export const fr = {
     role: "Rôle",
     createUser: "Créer le compte",
     confirmRemoveUser: "Supprimer le compte de {{name}} ?",
+    resetPassword: "Donner un mot de passe temporaire",
+    confirmResetPassword:
+      "Donner un mot de passe temporaire à {{name}} ? Tous ses appareils seront déconnectés.",
+    temporaryPassword: "Mot de passe temporaire",
+    temporaryPasswordHint:
+      "Transmettez-le à {{name}}, qui choisira ensuite le sien depuis son compte. Il ne sera plus affiché.",
+    resetTotp: "Retirer la double authentification",
+    confirmResetTotp:
+      "Retirer la double authentification de {{name}} ? Ses codes de secours seront supprimés.",
     invitations: "Invitations",
     invitationsHint: "Un lien à usage unique, valable 3 jours, pour créer un compte.",
     createInvitation: "Créer un lien d'invitation",

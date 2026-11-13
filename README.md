@@ -128,24 +128,25 @@ pnpm --filter @batvision/api-client generate
 
 ## Server configuration
 
-| Variable                          | Default (dev)  | Purpose                                                                         |
-| --------------------------------- | -------------- | ------------------------------------------------------------------------------- |
-| `BATVISION_BIND`                  | `0.0.0.0:8420` | Listen address (HTTPS is handled by the reverse proxy)                          |
-| `BATVISION_WEB_DIR`               | —              | Built web client, served as a SPA                                               |
-| `BATVISION_DATA_DIR`              | `./.dev/data`  | Database and images, **to be backed up**                                        |
-| `BATVISION_MEDIA_DIR`             | `./.dev/media` | Media library, read-only                                                        |
-| `BATVISION_CACHE_DIR`             | `./.dev/cache` | Transcodes and encoded versions, disposable                                     |
-| `BATVISION_FFMPEG`                | `ffmpeg`       | ffmpeg binary                                                                   |
-| `BATVISION_FFPROBE`               | `ffprobe`      | ffprobe binary                                                                  |
-| `BATVISION_TMDB_TOKEN`            | —              | TMDB "API Read Access Token". Without it, no metadata                           |
-| `BATVISION_DEFAULT_LANGUAGE`      | `fr-FR`        | Default metadata language, also used for new accounts                           |
-| `BATVISION_SCAN_INTERVAL_MINUTES` | `15`           | Interval between automatic scans (`0` disables them)                            |
-| `BATVISION_TRUST_PROXY`           | `false`        | Read the client IP from `X-Forwarded-For` (only behind a reverse proxy)         |
-| `BATVISION_SECURE_COOKIES`        | `true`         | `Secure` flag on the session cookie (disable only for plain-HTTP local testing) |
-| `BATVISION_ENCODE_CACHE_GB`       | `50`           | Size budget of the download versions cache                                      |
-| `BATVISION_ENCODE_CONCURRENCY`    | `1`            | Download versions encoded at the same time                                      |
-| `BATVISION_SETUP_TOKEN`           | —              | Fixed first-run setup token (16+ characters) instead of a random one            |
-| `RUST_LOG`                        | `info`         | Log level                                                                       |
+| Variable                          | Default (dev)  | Purpose                                                                                                                                                    |
+| --------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BATVISION_BIND`                  | `0.0.0.0:8420` | Listen address (HTTPS is handled by the reverse proxy)                                                                                                     |
+| `BATVISION_WEB_DIR`               | —              | Built web client, served as a SPA                                                                                                                          |
+| `BATVISION_DATA_DIR`              | `./.dev/data`  | Database and images, **to be backed up**                                                                                                                   |
+| `BATVISION_MEDIA_DIR`             | `./.dev/media` | Media library, read-only                                                                                                                                   |
+| `BATVISION_CACHE_DIR`             | `./.dev/cache` | Transcodes and encoded versions, disposable                                                                                                                |
+| `BATVISION_FFMPEG`                | `ffmpeg`       | ffmpeg binary                                                                                                                                              |
+| `BATVISION_FFPROBE`               | `ffprobe`      | ffprobe binary                                                                                                                                             |
+| `BATVISION_TMDB_TOKEN`            | —              | TMDB "API Read Access Token". Without it, no metadata                                                                                                      |
+| `BATVISION_DEFAULT_LANGUAGE`      | `fr-FR`        | Default metadata language, also used for new accounts                                                                                                      |
+| `BATVISION_SCAN_INTERVAL_MINUTES` | `15`           | Interval between automatic scans (`0` disables them)                                                                                                       |
+| `BATVISION_TRUST_PROXY`           | `false`        | Read the client IP from `X-Forwarded-For` (only behind a reverse proxy)                                                                                    |
+| `BATVISION_SECURE_COOKIES`        | `true`         | `Secure` flag on the session cookie (disable only for plain-HTTP local testing)                                                                            |
+| `BATVISION_ENCODE_CACHE_GB`       | `50`           | Size budget of the download versions cache                                                                                                                 |
+| `BATVISION_ENCODE_CONCURRENCY`    | `1`            | Download versions encoded at the same time                                                                                                                 |
+| `BATVISION_SETUP_TOKEN`           | —              | Fixed first-run setup token (16+ characters) instead of a random one                                                                                       |
+| `BATVISION_RESET_ADMIN`           | —              | Username of a locked-out administrator: at startup, gives the account a temporary password (printed in the logs) and removes its 2FA. Remove it afterwards |
+| `RUST_LOG`                        | `info`         | Log level                                                                                                                                                  |
 
 ## Deployment (Dokploy)
 

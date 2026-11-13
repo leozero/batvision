@@ -85,6 +85,7 @@ export const en: Shape<typeof fr> = {
     totp_already_enabled: "Two-factor authentication is already enabled.",
     totp_mandatory: "Two-factor authentication is mandatory for administrators.",
     cannot_delete_self: "You can't delete your own account.",
+    cannot_reset_self: "Change your own password and two-factor authentication from your account.",
     invalid_language: "Invalid language.",
     invalid_name: "The name must be 1 to 64 characters.",
     invalid_device_name: "The device name must be 1 to 64 characters.",
@@ -501,6 +502,15 @@ export const en: Shape<typeof fr> = {
     role: "Role",
     createUser: "Create account",
     confirmRemoveUser: "Delete {{name}}'s account?",
+    resetPassword: "Give a temporary password",
+    confirmResetPassword:
+      "Give {{name}} a temporary password? All their devices will be signed out.",
+    temporaryPassword: "Temporary password",
+    temporaryPasswordHint:
+      "Pass it on to {{name}}, who then chooses their own from their account. It won't be shown again.",
+    resetTotp: "Remove two-factor authentication",
+    confirmResetTotp:
+      "Remove {{name}}'s two-factor authentication? Their recovery codes will be deleted.",
     invitations: "Invitations",
     invitationsHint: "A single-use link, valid for 3 days, to create an account.",
     createInvitation: "Create an invitation link",

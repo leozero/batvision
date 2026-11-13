@@ -218,6 +218,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/users/{id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Gives a locked-out user a temporary password and signs out their devices. */
+        post: operations["reset_user_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/users/{id}/totp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Removes a user's second factor: for a lost phone with no recovery code left. */
+        delete: operations["reset_user_totp"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/invitations/accept": {
         parameters: {
             query?: never;
@@ -1927,6 +1961,10 @@ export interface components {
             ffmpeg?: components["schemas"]["FfmpegInfo"] | null;
             version: string;
         };
+        TemporaryPassword: {
+            /** @description Shown once: give it to the user, who then chooses their own. */
+            password: string;
+        };
         TotpDisableRequest: {
             code: string;
             password: string;
@@ -2401,6 +2439,78 @@ export interface operations {
         };
     };
     delete_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reset_user_password: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemporaryPassword"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reset_user_totp: {
         parameters: {
             query?: never;
             header?: never;

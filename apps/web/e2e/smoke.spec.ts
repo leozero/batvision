@@ -242,6 +242,27 @@ test("invitation link creates an account", async ({ browser }) => {
   await expect(guest.getByText("Heat").first()).toBeVisible();
 });
 
+test("an admin lets a locked-out user back in with a temporary password", async ({ browser }) => {
+  await page.goto("/admin?tab=users");
+  await page.getByLabel("Identifiant").fill("bob");
+  await page.getByLabel("Mot de passe", { exact: true }).fill("bob-password-123");
+  await page.getByRole("button", { name: "Créer le compte" }).click();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("button", { name: "Donner un mot de passe temporaire · bob" }).click();
+  const temporary = await page
+    .getByRole("textbox", { name: "Mot de passe temporaire" })
+    .inputValue();
+  expect(temporary).toMatch(/^[a-z0-9]{16}$/);
+
+  const guest = await (await browser.newContext({ locale: "fr-FR" })).newPage();
+  await guest.goto("/login");
+  await guest.getByLabel("Identifiant").fill("bob");
+  await guest.getByLabel("Mot de passe").fill(temporary);
+  await guest.getByRole("button", { name: "Se connecter" }).click();
+  await expect(guest.getByRole("link", { name: "Accueil" })).toBeVisible();
+  await guest.close();
+});
+
 test("client-side routes survive a reload and unknown pages say so", async () => {
   await page.goto("/movies");
   await page.reload();

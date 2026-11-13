@@ -6,8 +6,10 @@ import {
   Cpu,
   Film,
   FolderPlus,
+  KeyRound,
   Link2,
   RefreshCw,
+  ShieldOff,
   Trash2,
   Tv,
   UserPlus,
@@ -18,6 +20,7 @@ import { useTranslation } from "react-i18next";
 import {
   Badge,
   Button,
+  Dialog,
   ErrorText,
   Field,
   Input,
@@ -351,8 +354,41 @@ function UsersCard() {
       call(api.DELETE("/api/admin/users/{id}", { params: { path: { id } } })),
     onSuccess: () => qc.invalidateQueries({ queryKey: usersQuery.queryKey }),
   });
+  // Someone locked out: a temporary password, shown once, and no second factor.
+  const [temporary, setTemporary] = useState<{ name: string; password: string } | null>(null);
+  const resetPassword = useMutation({
+    mutationFn: (u: { id: number; username: string }) =>
+      call(api.POST("/api/admin/users/{id}/password", { params: { path: { id: u.id } } })),
+    onSuccess: (data, u) => setTemporary({ name: u.username, password: data.password }),
+  });
+  const resetTotp = useMutation({
+    mutationFn: (id: number) =>
+      call(api.DELETE("/api/admin/users/{id}/totp", { params: { path: { id } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: usersQuery.queryKey }),
+  });
+  const resetError = resetPassword.error ?? resetTotp.error ?? remove.error;
   return (
     <Card title={t("admin.users")}>
+      <Dialog
+        open={temporary !== null}
+        onOpenChange={(open) => !open && setTemporary(null)}
+        title={t("admin.temporaryPassword")}
+        description={t("admin.temporaryPasswordHint", { name: temporary?.name ?? "" })}
+      >
+        <div className="flex gap-2">
+          <Input
+            readOnly
+            value={temporary?.password ?? ""}
+            aria-label={t("admin.temporaryPassword")}
+            className="font-mono"
+            onFocus={(e) => e.target.select()}
+          />
+          <Button onClick={() => void copyText(temporary?.password ?? "")}>
+            <Copy className="size-4" />
+            {t("common.copy")}
+          </Button>
+        </div>
+      </Dialog>
       <ul className="mb-6 divide-y divide-line">
         {users?.map((u) => (
           <li key={u.id} className="flex items-center gap-3 py-2.5">
@@ -362,6 +398,35 @@ function UsersCard() {
             <span className="flex-1 font-medium">{u.username}</span>
             {u.role === "admin" ? <Badge tone="accent">{t("account.roleAdmin")}</Badge> : null}
             {u.totp_enabled ? <Badge tone="success">2FA</Badge> : null}
+            {u.id !== me?.id && u.totp_enabled ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                title={t("admin.resetTotp")}
+                aria-label={`${t("admin.resetTotp")} · ${u.username}`}
+                onClick={() =>
+                  confirm(t("admin.confirmResetTotp", { name: u.username })) &&
+                  resetTotp.mutate(u.id)
+                }
+              >
+                <ShieldOff className="size-4" />
+              </Button>
+            ) : null}
+            {u.id !== me?.id ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                title={t("admin.resetPassword")}
+                aria-label={`${t("admin.resetPassword")} · ${u.username}`}
+                disabled={resetPassword.isPending}
+                onClick={() =>
+                  confirm(t("admin.confirmResetPassword", { name: u.username })) &&
+                  resetPassword.mutate(u)
+                }
+              >
+                <KeyRound className="size-4" />
+              </Button>
+            ) : null}
             {u.id !== me?.id ? (
               <Button
                 size="sm"
@@ -377,6 +442,11 @@ function UsersCard() {
           </li>
         ))}
       </ul>
+      {resetError ? (
+        <div className="mb-4">
+          <ErrorText>{errorText(t, resetError)}</ErrorText>
+        </div>
+      ) : null}
       <form
         onSubmit={(e) => {
           e.preventDefault();

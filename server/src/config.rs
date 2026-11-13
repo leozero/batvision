@@ -33,6 +33,8 @@ pub struct Config {
     pub secure_cookies: bool,
     /// Fixed first-run setup token (otherwise a random one is printed in the logs).
     pub setup_token: Option<String>,
+    /// An administrator to let back in at startup (lost password or second factor).
+    pub reset_admin: Option<String>,
     /// Size budget of the encoded-versions cache, in GB.
     pub encode_cache_gb: u64,
     /// How many download versions may encode at the same time.
@@ -72,6 +74,7 @@ impl Config {
             secure_cookies: parse_bool(&get("BATVISION_SECURE_COOKIES", "true"))
                 .context("BATVISION_SECURE_COOKIES must be true or false")?,
             setup_token: lookup("BATVISION_SETUP_TOKEN").filter(|t| t.trim().len() >= 16),
+            reset_admin: lookup("BATVISION_RESET_ADMIN").filter(|u| !u.trim().is_empty()),
             encode_cache_gb: get("BATVISION_ENCODE_CACHE_GB", "50")
                 .parse()
                 .context("BATVISION_ENCODE_CACHE_GB must be a number")?,
