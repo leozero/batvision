@@ -202,6 +202,11 @@ jobs:
           echo "SIMULATOR=$udid" >> "$GITHUB_ENV"
           xcrun simctl boot "$udid"
       - name: Install ffmpeg (encodes the test movie) and ccache
+        env:
+          # The runner's formulas are recent enough: skip Homebrew's own update.
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_INSTALL_CLEANUP: "1"
+          HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
         run: brew install ffmpeg ccache
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7

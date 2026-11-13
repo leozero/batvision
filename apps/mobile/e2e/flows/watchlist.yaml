@@ -5,7 +5,9 @@ appId: ${APP_ID}
 - launchApp
 - tapOn:
     id: tab-movies
-- tapOn: Test Movie
+# iOS reads the poster as one element, "Test Movie, 2020".
+- tapOn:
+    text: "Test Movie.*"
 - tapOn:
     id: watchlist
 # The screen's own back button: iOS has no system one.
