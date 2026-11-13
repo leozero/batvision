@@ -1,5 +1,6 @@
 import { Check, ChevronRight } from "lucide-react-native";
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { Modal, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { COLORS } from "./ui";
@@ -20,12 +21,14 @@ export function Sheet({
   children: ReactNode;
   testID?: string;
 }) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={open} transparent animationType="slide" onRequestClose={onClose}>
       <View className="flex-1 justify-end">
         <Pressable
-          accessibilityLabel="close"
+          accessibilityRole="button"
+          accessibilityLabel={t("common.close")}
           className="absolute inset-0 bg-black/60"
           onPress={onClose}
         />

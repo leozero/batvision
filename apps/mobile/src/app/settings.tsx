@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { DeviceSettings } from "../components/DeviceSettings";
-import { Button, COLORS, Loading, Screen } from "../components/ui";
+import { Button, COLORS, EmptyState, Loading, Screen } from "../components/ui";
 import { api } from "../lib/api";
 import { downloadsQuery } from "../lib/queries";
 import { session } from "../lib/session";
@@ -29,7 +29,8 @@ export default function Settings() {
         <View className="flex-row items-center gap-3">
           <Pressable
             testID="back"
-            accessibilityLabel="back"
+            accessibilityRole="button"
+            accessibilityLabel={t("common.back")}
             hitSlop={8}
             onPress={() => (router.canGoBack() ? router.back() : router.replace("/downloads"))}
             className="size-10 items-center justify-center rounded-full bg-surface-2 active:opacity-70"
@@ -38,7 +39,23 @@ export default function Settings() {
           </Pressable>
           <Text className="flex-1 text-2xl font-bold text-fg">{t("mobile.settings")}</Text>
         </View>
-        {device ? <DeviceSettings device={device} /> : <Loading />}
+        {device ? (
+          <DeviceSettings device={device} />
+        ) : overview.isPending ? (
+          <Loading />
+        ) : (
+          // The overview failed, or doesn't list this device: sign-out stays within reach.
+          <EmptyState title={t("common.loadError")}>
+            <Button
+              testID="settings-retry"
+              variant="primary"
+              loading={overview.isFetching}
+              onPress={() => void overview.refetch()}
+            >
+              {t("common.retry")}
+            </Button>
+          </EmptyState>
+        )}
         <Button testID="sign-out" variant="danger" onPress={signOut}>
           {t("mobile.signOut")}
         </Button>

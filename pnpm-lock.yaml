@@ -179,6 +179,9 @@ importers:
       '@batvision/bridge':
         specifier: workspace:*
         version: link:../../packages/bridge
+      '@batvision/i18n':
+        specifier: workspace:*
+        version: link:../../packages/i18n
       '@playwright/test':
         specifier: ^1.65.0
         version: 1.65.0

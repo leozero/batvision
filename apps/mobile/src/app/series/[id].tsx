@@ -33,6 +33,8 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
     <View className="flex-row gap-3 py-3">
       <Pressable
         testID={`episode-${e.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={`${t("common.play")} ${episodeCode(e.season_number, e.episode_number)}`}
         onPress={() => router.push(`/watch/episode/${e.id}`)}
         className="w-36 active:opacity-70"
       >
@@ -64,6 +66,9 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
         </View>
         <Pressable
           testID={`download-episode-${e.id}`}
+          accessibilityRole="button"
+          accessibilityLabel={t("mobile.downloadHere")}
+          hitSlop={8}
           disabled={requested}
           onPress={() => {
             const deviceId = session().deviceId;

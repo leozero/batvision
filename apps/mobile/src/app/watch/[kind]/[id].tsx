@@ -401,6 +401,7 @@ export default function Player() {
         <View className="absolute inset-0 items-center justify-center gap-4">
           <Text className="text-base text-fg">{error}</Text>
           <Pressable
+            accessibilityRole="button"
             onPress={() => void start({ startMs: positionRef.current })}
             className="rounded-xl bg-surface-2 px-4 py-3"
           >
@@ -423,6 +424,8 @@ export default function Player() {
           <View className="flex-row items-center gap-3">
             <Pressable
               testID="player-back"
+              accessibilityRole="button"
+              accessibilityLabel={t("common.back")}
               onPress={() => {
                 setPaused(true);
                 router.back();
@@ -437,6 +440,8 @@ export default function Player() {
             {!local ? (
               <Pressable
                 testID="quality-menu"
+                accessibilityRole="button"
+                accessibilityLabel={t("player.quality")}
                 onPress={() => setSheet("quality")}
                 className="size-10 items-center justify-center"
               >
@@ -445,6 +450,8 @@ export default function Player() {
             ) : null}
             {!local && info ? (
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t("player.tracks")}
                 onPress={() => setSheet("tracks")}
                 className="size-10 items-center justify-center"
               >
@@ -453,11 +460,18 @@ export default function Player() {
             ) : null}
           </View>
           <View className="flex-row items-center justify-center gap-10">
-            <Pressable testID="back-10" onPress={() => seekTo(positionRef.current - 10_000)}>
+            <Pressable
+              testID="back-10"
+              accessibilityRole="button"
+              accessibilityLabel={t("player.back10")}
+              onPress={() => seekTo(positionRef.current - 10_000)}
+            >
               <RotateCcw color={COLORS.fg} size={28} />
             </Pressable>
             <Pressable
               testID="play-pause"
+              accessibilityRole="button"
+              accessibilityLabel={t(paused ? "player.play" : "player.pause")}
               onPress={() => setPaused((p) => !p)}
               className="size-16 items-center justify-center rounded-full bg-black/50"
             >
@@ -467,13 +481,19 @@ export default function Player() {
                 <Pause color={COLORS.fg} size={30} fill={COLORS.fg} />
               )}
             </Pressable>
-            <Pressable testID="forward-10" onPress={() => seekTo(positionRef.current + 10_000)}>
+            <Pressable
+              testID="forward-10"
+              accessibilityRole="button"
+              accessibilityLabel={t("player.forward10")}
+              onPress={() => seekTo(positionRef.current + 10_000)}
+            >
               <RotateCw color={COLORS.fg} size={28} />
             </Pressable>
           </View>
           <View className="gap-2">
             {(ended || (duration && position > duration - 30)) && nextId ? (
               <Pressable
+                accessibilityRole="button"
                 onPress={goNext}
                 className="flex-row items-center gap-2 self-end rounded-xl bg-accent px-4 py-2"
               >

@@ -7,7 +7,7 @@ import type { DownloadsState, LocalItem, ProgressReport } from "@batvision/bridg
 import type { Config, PendingProgress } from "./config";
 import { Library, PARTIAL, type StoredItem, type StoredMeta, VIDEO } from "./library";
 import { type Decision, decide, itemKey, type PlanEntry } from "./planner";
-import { HttpError, type ServerClient, Unreachable } from "./server";
+import { HttpError, readBody, type ServerClient, Unreachable } from "./server";
 
 const SYNC_EVERY_MS = 30 * 60_000;
 /** While the server is encoding something for us. */
@@ -57,6 +57,8 @@ export class Engine extends EventEmitter {
   private lastError: string | null = null;
   private downloading: { key: string; received: number; total: number | null } | null = null;
   private failed = new Map<string, string>();
+  /** Items whose file answered 404 and already had their fresh plan. */
+  private gone = new Set<string>();
   private abort: AbortController | null = null;
   private loop: Promise<void> | null = null;
   private timer: NodeJS.Timeout | null = null;
@@ -186,6 +188,7 @@ export class Engine extends EventEmitter {
     this.plan = [];
     this.decision = null;
     this.failed.clear();
+    this.gone.clear();
     this.emitState();
   }
 
@@ -210,6 +213,7 @@ export class Engine extends EventEmitter {
     }
     this.library.remove(key);
     this.failed.delete(key);
+    this.gone.delete(key);
     this.plan = this.plan.filter((e) => itemKey(e.kind, e.id) !== key);
     if (this.decision) this.decision = decide(this.plan, this.library.records(), this.quota);
     this.emitState();
@@ -230,6 +234,13 @@ export class Engine extends EventEmitter {
   // ---- Sync ----------------------------------------------------------------------------
 
   async sync(): Promise<void> {
+    // A sync asked from outside the download loop gives missing files another fresh plan.
+    this.gone.clear();
+    await this.refresh();
+  }
+
+  /** The sync itself; the download loop calls it directly so `gone` survives. */
+  private async refresh(): Promise<void> {
     if (!this.server.ready) return;
     if (this.syncing) {
       this.syncAgain = true;
@@ -264,7 +275,7 @@ export class Engine extends EventEmitter {
     }
     if (this.syncAgain) {
       this.syncAgain = false;
-      await this.sync();
+      await this.refresh();
     }
   }
 
@@ -351,9 +362,11 @@ export class Engine extends EventEmitter {
           this.emitState();
           return;
         }
-        if (e instanceof HttpError && e.status === 404) {
-          // Signed URL expired or variant gone: a fresh plan has new URLs.
-          void this.sync();
+        if (e instanceof HttpError && e.status === 404 && !this.gone.has(next.key)) {
+          // Signed URL expired or variant gone: a fresh plan has new URLs. Once only:
+          // a file that stays missing would otherwise loop plan and download without a pause.
+          this.gone.add(next.key);
+          void this.refresh();
           return;
         }
         this.failed.set(next.key, e instanceof Error ? e.message : String(e));
@@ -413,7 +426,19 @@ export class Engine extends EventEmitter {
         if (this.downloading) this.downloading.received = received;
         this.emitState(false);
       });
-      await pipeline(body, out, { signal });
+      // Wi-Fi dropping mid-file is the server going away, not a failed item; what the
+      // disk refuses (full, read-only) fails on `out` and stays a failure.
+      const lost: { error?: Error } = {};
+      body.once("error", (e) => {
+        lost.error = e;
+      });
+      try {
+        await pipeline(body, out, { signal });
+      } catch (e) {
+        if (!signal.aborted && lost.error && e === lost.error)
+          throw new Unreachable(lost.error.message);
+        throw e;
+      }
     }
 
     // Subtitles are small: always downloaded whole.
@@ -422,7 +447,8 @@ export class Engine extends EventEmitter {
       const response = await this.server.fetch(sub.url, { signal });
       if (!response.ok) throw new HttpError(response.status, "subtitle download failed");
       const file = `sub-${i}.vtt`;
-      writeFileSync(join(dir, file), Buffer.from(await response.arrayBuffer()));
+      const bytes = await readBody(() => response.arrayBuffer(), signal);
+      writeFileSync(join(dir, file), Buffer.from(bytes));
       subtitles.push({ file, language: sub.language ?? null, kind: sub.kind });
     }
 
@@ -446,6 +472,7 @@ export class Engine extends EventEmitter {
       downloadedAt: now(),
     });
     this.failed.delete(key);
+    this.gone.delete(key);
     if (entry.variant_id) {
       await this.server
         .json("/api/downloads/confirm", { variant_id: entry.variant_id })
@@ -461,7 +488,8 @@ export class Engine extends EventEmitter {
         const response = await this.server.fetch(`/api/images/${size}${path}`, { signal });
         if (!response.ok) return null;
         const file = `${name}${path.slice(path.lastIndexOf("."))}`;
-        writeFileSync(join(dir, file), Buffer.from(await response.arrayBuffer()));
+        const bytes = await readBody(() => response.arrayBuffer(), signal);
+        writeFileSync(join(dir, file), Buffer.from(bytes));
         return file;
       } catch (e) {
         if (e instanceof Unreachable || signal.aborted) throw e;

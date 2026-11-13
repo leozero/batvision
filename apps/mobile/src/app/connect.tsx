@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { KeyboardAvoidingView, ScrollView, Text, View } from "react-native";
 import { Button, ErrorText, Field, Input, Muted, Screen } from "../components/ui";
-import { normalizeServer } from "../lib/session";
+import { isPublicCleartext, normalizeServer } from "../lib/session";
 import { BatvisionSync } from "../lib/sync";
 
 /** First launch: where is the server? (as on desktop, D72) */
@@ -64,6 +64,11 @@ export default function Connect() {
               onSubmitEditing={submit}
             />
           </Field>
+          {isPublicCleartext(address) ? (
+            <Text testID="insecure-address" className="text-sm text-accent">
+              {t("mobile.insecureAddress")}
+            </Text>
+          ) : null}
           <ErrorText>{error}</ErrorText>
           <Button testID="connect" variant="primary" loading={busy} onPress={submit}>
             {t("desktop.connect")}

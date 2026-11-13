@@ -10,6 +10,7 @@ import { COLORS } from "./ui";
 
 /** Backdrop with a back button, title block below. */
 export function Hero({ backdrop, children }: { backdrop?: string; children: ReactNode }) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   // A 16:9 picture as wide as a landscape tablet would fill the screen (D85).
   const { width, height } = useWindowDimensions();
@@ -30,7 +31,8 @@ export function Hero({ backdrop, children }: { backdrop?: string; children: Reac
       </View>
       <Pressable
         testID="back"
-        accessibilityLabel="back"
+        accessibilityRole="button"
+        accessibilityLabel={t("common.back")}
         onPress={() => (router.canGoBack() ? router.back() : router.replace("/home"))}
         style={{ top: insets.top + 8 }}
         className="absolute left-3 size-10 items-center justify-center rounded-full bg-black/50"
