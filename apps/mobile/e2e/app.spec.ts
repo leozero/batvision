@@ -13,6 +13,8 @@ import { totp } from "../../web/e2e/totp";
 test.describe.configure({ mode: "serial" });
 
 const IOS = process.env.PLATFORM === "ios";
+/** The macOS runners are slower (a simulator next to the server's encodes). */
+const SLOW = IOS ? 2 : 1;
 const PLATFORM = IOS ? "ios" : "android";
 const APP_ID = IOS ? "fr.batvision.ios" : "fr.batvision.android";
 const ADMIN = { username: "admin", password: "mobile-e2e-admin-password" };
@@ -135,7 +137,6 @@ test("first launch connects and signs in", () => {
 });
 
 test("a movie downloads to the device in the background engine", async () => {
-  // The macOS runners are slower (a simulator next to the server's encode).
   test.setTimeout(IOS ? 900_000 : 400_000);
   const login = await api("/api/auth/login", null, {
     ...USER,
@@ -160,13 +161,13 @@ test("a movie downloads to the device in the background engine", async () => {
 });
 
 test("without the server, the offline library plays the local copy", async () => {
-  test.setTimeout(200_000);
+  test.setTimeout(200_000 * SLOW);
   await server.stop();
   maestro("offline.yaml");
 });
 
 test("offline progress reaches the server when it's back", async () => {
-  test.setTimeout(200_000);
+  test.setTimeout(200_000 * SLOW);
   await server.start();
   maestro("reopen.yaml");
   await expect
@@ -177,7 +178,7 @@ test("offline progress reaches the server when it's back", async () => {
 });
 
 test("the watchlist tab and the settings sheets reach the server", async () => {
-  test.setTimeout(200_000);
+  test.setTimeout(200_000 * SLOW);
   maestro("watchlist.yaml");
   const overview = await api("/api/downloads/overview", userToken);
   const phone = overview.devices.find((d: { platform: string }) => d.platform === PLATFORM);
@@ -189,7 +190,7 @@ test("the watchlist tab and the settings sheets reach the server", async () => {
 });
 
 test("deleting the movie on the device removes what asked for it", async () => {
-  test.setTimeout(200_000);
+  test.setTimeout(200_000 * SLOW);
   maestro("cancel.yaml");
   const overview = await api("/api/downloads/overview", userToken);
   const phone = overview.devices.find((d: { platform: string }) => d.platform === PLATFORM);

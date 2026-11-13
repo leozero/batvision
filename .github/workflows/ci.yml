@@ -235,7 +235,12 @@ jobs:
           xcodebuild -workspace BatVision.xcworkspace -scheme BatVision -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CLANG_ENABLE_EXPLICIT_MODULES=NO \
-            -derivedDataPath build/dd build | tail -30
+            -derivedDataPath build/dd build > "$RUNNER_TEMP/xcodebuild.log" \
+            || { tail -100 "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
+          tail -30 "$RUNNER_TEMP/xcodebuild.log"
+          # Whether the libraries' compilers went through ccache.
+          echo "pods with the ccache wrapper: $(grep -c 'ccache-clang' Pods/Pods.xcodeproj/project.pbxproj || true)"
+          echo "compiles through it: $(grep -c 'ccache-clang' "$RUNNER_TEMP/xcodebuild.log" || true)"
           ccache --show-stats
       - if: always()
         uses: actions/cache/save@v4

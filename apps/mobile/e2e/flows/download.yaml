@@ -3,6 +3,11 @@ appId: ${APP_ID}
 ---
 - stopApp
 - launchApp
+# The tabs show once the session is checked: slow on CI simulators.
+- extendedWaitUntil:
+    visible:
+      id: tab-movies
+    timeout: 60000
 - tapOn:
     id: tab-movies
 # iOS reads the poster as one element, "Test Movie, 2020".
