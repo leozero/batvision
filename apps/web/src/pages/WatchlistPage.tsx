@@ -148,8 +148,10 @@ export function WatchlistPage() {
               <button
                 type="button"
                 aria-label={`${t("downloads.remove")} ${item.title}`}
+                disabled={remove.isPending}
                 onClick={() => remove.mutate(item)}
-                className="absolute right-2 top-2 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/75 opacity-0 transition group-hover/item:opacity-100 focus-visible:opacity-100"
+                // Always shown on touch screens: hidden, it still took the taps meant for the poster.
+                className="absolute right-2 top-2 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/75 transition focus-visible:opacity-100 pointer-fine:opacity-0 pointer-fine:group-hover/item:opacity-100"
               >
                 <Trash2 className="size-4" />
               </button>

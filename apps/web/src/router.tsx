@@ -63,6 +63,8 @@ const offlineWatch = createRoute({
   getParentRoute: () => root,
   path: "/offline/watch/$kind/$id",
   component: PlayerPage,
+  // A new player per item: the next episode must not inherit the previous one's position.
+  remountDeps: ({ params }) => params,
 });
 
 /** Signed-out pages. A signed-in user is sent home. */
@@ -189,6 +191,8 @@ const watch = createRoute({
   validateSearch: (s: Record<string, unknown>): { restart?: boolean } =>
     s.restart === true ? { restart: true } : {},
   component: PlayerPage,
+  // A new player per item: the next episode must not inherit the previous one's position.
+  remountDeps: ({ params }) => params,
 });
 
 const routeTree = root.addChildren([

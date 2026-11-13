@@ -82,7 +82,7 @@ export function LoginPage() {
   const done = async () => {
     // Signed-out data (including "me = null") must not survive the sign-in.
     qc.clear();
-    await navigate({ to: next?.startsWith("/") ? next : "/" });
+    await navigate({ to: next?.startsWith("/") && !next.startsWith("//") ? next : "/" });
   };
 
   const submit = async (e: FormEvent) => {
@@ -272,7 +272,7 @@ export function SetupPage() {
               <Input
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
-                className="pl-10 font-mono uppercase"
+                className="pl-10 font-mono"
                 required
               />
             </div>

@@ -10,6 +10,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from "react";
+import { useTranslation } from "react-i18next";
 
 export function cx(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
@@ -255,6 +256,7 @@ export function Dialog({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <AnimatePresence>
@@ -292,7 +294,7 @@ export function Dialog({
                     ) : null}
                   </div>
                   <DialogPrimitive.Close asChild>
-                    <IconButton label="Close" className="-mr-2 -mt-2 size-8">
+                    <IconButton label={t("common.close")} className="-mr-2 -mt-2 size-8">
                       <X className="size-4" />
                     </IconButton>
                   </DialogPrimitive.Close>

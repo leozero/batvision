@@ -425,13 +425,18 @@ export function PlayerPage() {
         invalidateLibrary(qc);
         return;
       }
-      const body = JSON.stringify({ kind, id, position_ms: position });
-      void fetch("/api/progress", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body,
-        keepalive: true,
-      });
+      // Nothing played (still loading, or it failed): the saved position stays.
+      const saved =
+        position > 0
+          ? fetch("/api/progress", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ kind, id, position_ms: position }),
+              keepalive: true,
+            })
+          : Promise.resolve();
+      // Once saved: the pages behind must not read the position from before.
+      void saved.catch(() => {}).finally(() => invalidateLibrary(qc));
       if (last?.session_id) {
         void fetch("/api/playback/stop", {
           method: "POST",
@@ -440,7 +445,6 @@ export function PlayerPage() {
           keepalive: true,
         });
       }
-      invalidateLibrary(qc);
     };
   }, [kind, id, qc]);
 
@@ -572,6 +576,13 @@ export function PlayerPage() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement) return;
+      // The browser's own shortcuts (find, back) stay the browser's.
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // Space and Enter on a focused control press that control.
+      if (e.target instanceof HTMLButtonElement && (e.key === " " || e.key === "Enter")) {
+        poke();
+        return;
+      }
       const handled = true;
       switch (e.key) {
         case " ":
@@ -664,6 +675,10 @@ export function PlayerPage() {
         onCanPlay={() => setWaiting(false)}
         onTimeUpdate={onTimeUpdate}
         onEnded={onEnded}
+        // Direct play and Safari's own HLS: hls.js reports its errors itself.
+        onError={() => {
+          if (!hlsRef.current) setError(t("player.error"));
+        }}
       >
         {info?.subtitle_url ? (
           <track key={info.subtitle_url} kind="subtitles" src={info.subtitle_url} default />

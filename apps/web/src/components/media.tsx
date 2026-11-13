@@ -193,6 +193,7 @@ export function Row({
   action?: ReactNode;
   children: ReactNode;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
   const [edges, setEdges] = useState({ start: true, end: false });
   const update = () => {
@@ -223,9 +224,9 @@ export function Row({
         {!edges.start ? (
           <button
             type="button"
-            aria-label="←"
+            aria-label={t("common.previous")}
             onClick={() => scroll(-1)}
-            className="absolute left-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-r from-bg to-transparent opacity-0 transition-opacity group-hover/row:opacity-100 sm:flex"
+            className="absolute left-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-r from-bg to-transparent opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100 sm:flex"
           >
             <ChevronLeft className="size-7" />
           </button>
@@ -233,9 +234,9 @@ export function Row({
         {!edges.end ? (
           <button
             type="button"
-            aria-label="→"
+            aria-label={t("common.next")}
             onClick={() => scroll(1)}
-            className="absolute right-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-l from-bg to-transparent opacity-0 transition-opacity group-hover/row:opacity-100 sm:flex"
+            className="absolute right-0 top-0 bottom-4 hidden w-12 cursor-pointer items-center justify-center bg-gradient-to-l from-bg to-transparent opacity-0 transition-opacity focus-visible:opacity-100 group-hover/row:opacity-100 sm:flex"
           >
             <ChevronRight className="size-7" />
           </button>

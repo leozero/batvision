@@ -28,6 +28,7 @@ import {
 } from "../../components/ui";
 import { METADATA_LANGUAGE, type UiLanguage, uiLanguageFor } from "../../i18n";
 import { ApiError, api, call, type Schemas } from "../../lib/api";
+import { copyText } from "../../lib/clipboard";
 import { devicesQuery, meQuery, preferencesQuery } from "../../lib/queries";
 
 export function Card({
@@ -415,7 +416,7 @@ function TwoFactorCard() {
             ))}
           </div>
           <div className="flex gap-2">
-            <Button onClick={() => void navigator.clipboard.writeText(codes.join("\n"))}>
+            <Button onClick={() => void copyText(codes.join("\n"))}>
               <Copy className="size-4" />
               {t("common.copy")}
             </Button>

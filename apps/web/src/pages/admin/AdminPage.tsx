@@ -30,6 +30,7 @@ import {
 } from "../../components/ui";
 import { ApiError, api, call, type Schemas } from "../../lib/api";
 import { formatBytes } from "../../lib/bytes";
+import { copyText } from "../../lib/clipboard";
 import {
   encodesQuery,
   invalidateLibrary,
@@ -190,6 +191,7 @@ function LibrariesCard() {
                   <Button
                     size="sm"
                     variant="ghost"
+                    aria-label={`${t("common.delete")} ${lib.name}`}
                     onClick={() =>
                       confirm(t("admin.confirmRemoveLibrary")) && remove.mutate(lib.id)
                     }
@@ -283,10 +285,8 @@ function InvitationsCard() {
               onFocus={(e) => e.target.select()}
             />
             <Button
-              onClick={() => {
-                void navigator.clipboard.writeText(link);
-                setCopied(true);
-              }}
+              aria-label={t("common.copy")}
+              onClick={() => void copyText(link).then(setCopied)}
             >
               {copied ? <Check className="size-4 text-success" /> : <Copy className="size-4" />}
             </Button>
@@ -305,7 +305,12 @@ function InvitationsCard() {
                   }),
                 })}
               </span>
-              <Button size="sm" variant="ghost" onClick={() => remove.mutate(inv.id)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t("common.delete")}
+                onClick={() => remove.mutate(inv.id)}
+              >
                 <Trash2 className="size-4" />
               </Button>
             </li>
@@ -352,6 +357,7 @@ function UsersCard() {
               <Button
                 size="sm"
                 variant="ghost"
+                aria-label={`${t("common.delete")} ${u.username}`}
                 onClick={() =>
                   confirm(t("admin.confirmRemoveUser", { name: u.username })) && remove.mutate(u.id)
                 }

@@ -15,6 +15,11 @@ export const en: Shape<typeof fr> = {
     cancel: "Cancel",
     continue: "Continue",
     copy: "Copy",
+    delete: "Delete",
+    previous: "Previous",
+    next: "Next",
+    retry: "Retry",
+    loadError: "Loading failed.",
   },
   nav: {
     downloads: "Downloads",

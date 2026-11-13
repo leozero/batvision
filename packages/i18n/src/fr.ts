@@ -10,6 +10,11 @@ export const fr = {
     cancel: "Annuler",
     continue: "Continuer",
     copy: "Copier",
+    delete: "Supprimer",
+    previous: "Précédent",
+    next: "Suivant",
+    retry: "Réessayer",
+    loadError: "Le chargement a échoué.",
   },
   nav: {
     downloads: "Téléchargements",
