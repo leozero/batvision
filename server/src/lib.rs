@@ -40,7 +40,7 @@ use crate::{
 
 #[derive(OpenApi)]
 #[openapi(
-    info(title = "batvision", license(name = "AGPL-3.0-only")),
+    info(title = "BatVision", license(name = "AGPL-3.0-only")),
     modifiers(&BearerAuth),
     components(schemas(userdata::MarkableKind)),
     paths(

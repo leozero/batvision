@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { app, safeStorage } from "electron";
 import { readJson, writeJson } from "./json-file";
@@ -23,6 +24,12 @@ interface ConfigData {
   pendingProgress: PendingProgress[];
 }
 
+/** `Videos/BatVision`, or the `Videos/Batvision` earlier versions created (case matters on Linux). */
+function defaultFolder() {
+  const earlier = join(app.getPath("videos"), "Batvision");
+  return existsSync(earlier) ? earlier : join(app.getPath("videos"), "BatVision");
+}
+
 /** App settings and credentials, in `userData/config.json`. */
 export class Config {
   private path = join(app.getPath("userData"), "config.json");
@@ -32,7 +39,7 @@ export class Config {
     this.data = readJson<ConfigData>(this.path, {
       server: null,
       token: null,
-      folder: join(app.getPath("videos"), "Batvision"),
+      folder: defaultFolder(),
       launchAtLogin: false,
       av1: null,
       paused: false,

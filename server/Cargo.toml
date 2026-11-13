@@ -1,9 +1,9 @@
 [package]
 name = "batvision-server"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2024"
 license = "AGPL-3.0-only"
-description = "batvision media server"
+description = "BatVision media server"
 publish = false
 
 [dependencies]

@@ -18,7 +18,7 @@ class HttpError(val status: Int, message: String) : IOException("HTTP $status: $
 
 class Plan(val settings: JSONObject, val items: List<PlanEntry>)
 
-/** Calls to the batvision server with the device token. */
+/** Calls to the BatVision server with the device token. */
 class Api(private val server: String, private val token: String) {
   private val json = "application/json".toMediaType()
 

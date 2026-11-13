@@ -5,7 +5,7 @@ export type { components, paths };
 export type Schemas = components["schemas"];
 
 /**
- * Typed client for the batvision server API.
+ * Typed client for the BatVision server API.
  * `baseUrl` is empty for the web app (same origin) and the server URL for desktop/mobile.
  */
 export function createApiClient(baseUrl = "", fetchImpl?: typeof fetch) {

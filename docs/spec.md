@@ -1,4 +1,4 @@
-# batvision — Specification
+# BatVision — Specification
 
 > Self-hosted media server, rewritten from scratch with Jellyfin as inspiration, with web, desktop, Android and Android TV clients.
 > What sets it apart: **automatic downloads** and **lighter versions encoded on demand**.
@@ -238,7 +238,7 @@ A series in the watchlist (D73) is not a subscription: it belongs to the account
 
 - Ships its own build of the web interface. On first launch: server address, then sign-in (password + 2FA). The device token is encrypted with the OS keychain.
 - Download features appear only in the desktop app: a "On this computer" section in Downloads, a "Downloaded" mark on detail pages.
-- Files go to `Videos/Batvision` by default (changeable), with a 100 GB quota by default.
+- Files go to `Videos/BatVision` by default (changeable), with a 100 GB quota by default.
 - When the server is unreachable, an **offline library** shows only downloaded items, played by the same player (tracks, local WebVTT subtitles, resume). Offline progress is uploaded when the server is back.
 - Only downloaded items' metadata and images are kept, in a JSON file.
 - Closing the window keeps the app in the tray; "Quit" stops it. Sync on open, when the network returns and every 30 minutes. Launch at login is off by default.

@@ -19,9 +19,14 @@ import { APP_URL, handleProtocol, registerScheme } from "./protocol";
 import { fetchWithTimeout, normalizeServer, ServerClient } from "./server";
 import { Updater } from "./updater";
 
-// Tests run several instances side by side, each with its own data.
-if (process.env.BATVISION_USER_DATA)
-  app.setPath("userData", resolve(process.env.BATVISION_USER_DATA));
+// Tests run several instances side by side, each with its own data. Otherwise the folder
+// keeps the name it had before the app was called BatVision (case matters on Linux).
+app.setPath(
+  "userData",
+  process.env.BATVISION_USER_DATA
+    ? resolve(process.env.BATVISION_USER_DATA)
+    : join(app.getPath("appData"), "batvision"),
+);
 if (process.env.BATVISION_VIDEOS_DIR)
   app.setPath("videos", resolve(process.env.BATVISION_VIDEOS_DIR));
 

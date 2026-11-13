@@ -128,7 +128,7 @@ export type UpdateState =
 
 export interface DesktopBridge {
   info(): Promise<DesktopInfo>;
-  /** Checks that a batvision server answers there, then remembers it. */
+  /** Checks that a BatVision server answers there, then remembers it. */
   setServer(url: string): Promise<SetServerResult>;
   /** Forgets the server (only while signed out). */
   forgetServer(): Promise<void>;

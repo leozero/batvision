@@ -1,12 +1,12 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "batvision",
-    "description": "batvision media server",
+    "title": "BatVision",
+    "description": "BatVision media server",
     "license": {
       "name": "AGPL-3.0-only"
     },
-    "version": "0.1.0"
+    "version": "0.5.0"
   },
   "paths": {
     "/api/admin/encodes": {
@@ -239,7 +239,7 @@
         "tags": [
           "admin"
         ],
-        "summary": "Removes a library from batvision (files on disk are never touched).",
+        "summary": "Removes a library from BatVision (files on disk are never touched).",
         "operationId": "delete_library",
         "parameters": [
           {

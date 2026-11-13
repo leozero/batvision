@@ -1,11 +1,11 @@
 {
   "name": "@batvision/desktop",
-  "productName": "batvision",
+  "productName": "BatVision",
   "version": "0.5.0",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "BatVision desktop app: library, playback and offline downloads",
-  "author": "batvision",
+  "author": "BatVision",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",

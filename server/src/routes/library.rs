@@ -137,7 +137,7 @@ pub async fn create_library(
     Ok((StatusCode::CREATED, Json(library)))
 }
 
-/// Removes a library from batvision (files on disk are never touched).
+/// Removes a library from BatVision (files on disk are never touched).
 #[utoipa::path(delete, path = "/api/admin/libraries/{id}", tag = "admin", security(("bearer" = [])),
     params(("id" = i64, Path)),
     responses(

@@ -24,7 +24,7 @@ async fn main() -> anyhow::Result<()> {
     for dir in [&config.data_dir, &config.cache_dir] {
         std::fs::create_dir_all(dir)?;
     }
-    tracing::info!(?config, "starting batvision");
+    tracing::info!(?config, "starting BatVision");
 
     let db = db::open(&config.data_dir).await?;
     let mut state = AppState::new(config.clone(), db);

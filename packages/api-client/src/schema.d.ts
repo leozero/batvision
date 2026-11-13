@@ -96,7 +96,7 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        /** Removes a library from batvision (files on disk are never touched). */
+        /** Removes a library from BatVision (files on disk are never touched). */
         delete: operations["delete_library"];
         options?: never;
         head?: never;

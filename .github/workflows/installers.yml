@@ -196,6 +196,8 @@ jobs:
           done
           app=$(node -p 'require("./apps/mobile/app.json").expo.version')
           test "$GITHUB_REF_NAME" = "v$app" || { echo "::error::Tag doesn't match apps/mobile/app.json ($app)"; exit 1; }
+          server=$(sed -n 's/^version = "\(.*\)"/\1/p' server/Cargo.toml | head -1)
+          test "$GITHUB_REF_NAME" = "v$server" || { echo "::error::Tag doesn't match server/Cargo.toml ($server)"; exit 1; }
       - uses: actions/download-artifact@v7
         with:
           path: installers
