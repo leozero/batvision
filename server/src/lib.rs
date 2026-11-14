@@ -35,7 +35,7 @@ use crate::{
     ffmpeg::FfmpegInfo,
     library::scanner::ScanManager,
     metadata::tmdb::TmdbClient,
-    playback::{signing::MediaSigner, transcode::TranscodeManager},
+    playback::{signing::MediaSigner, transcode::TranscodeManager, trickplay::Trickplay},
 };
 
 #[derive(OpenApi)]
@@ -96,6 +96,8 @@ use crate::{
         routes::home::put_preferences,
         routes::playback::start,
         routes::playback::stop,
+        routes::playback::trickplay,
+        routes::playback::trickplay_sheet,
         routes::playback::stream,
         routes::playback::subtitle,
         routes::playback::hls,
@@ -158,6 +160,8 @@ pub struct AppState {
     pub transcodes: Arc<TranscodeManager>,
     /// Encodes download versions on request.
     pub encoder: Arc<Encoder>,
+    /// Timeline thumbnails, made when first asked for (D99).
+    pub trickplay: Arc<Trickplay>,
 }
 
 impl AppState {
@@ -183,8 +187,15 @@ impl AppState {
             config.encode_concurrency,
             (config.encode_cache_gb as i64) * 1_000_000_000,
         ));
+        let trickplay = Arc::new(Trickplay::new(
+            db.clone(),
+            config.cache_dir.join("trickplay"),
+            config.media_dir.clone(),
+            config.ffmpeg.clone(),
+        ));
         Self {
             encoder,
+            trickplay,
             tmdb,
             scans: Arc::new(ScanManager::default()),
             signer: MediaSigner::new(key),
@@ -342,6 +353,8 @@ pub fn app(state: AppState) -> Router {
         .route("/admin/encodes/{id}", delete(downloads::delete_encode))
         .route("/playback", post(playback::start))
         .route("/playback/stop", post(playback::stop))
+        .route("/playback/trickplay", get(playback::trickplay))
+        .route("/trickplay/{token}/{sheet}", get(playback::trickplay_sheet))
         .route("/stream/{token}", get(playback::stream))
         .route("/subtitles/{token}", get(playback::subtitle))
         .route("/hls/{session}/{file}", get(playback::hls))

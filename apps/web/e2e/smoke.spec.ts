@@ -186,6 +186,28 @@ test("the player switches picture quality and remembers it on the device", async
   expect(await page.evaluate(() => localStorage.getItem("bv.quality"))).toBe("auto");
 });
 
+test("hovering the timeline shows a picture of that moment", async () => {
+  test.setTimeout(60_000);
+  await page.goto("/movies");
+  await page.getByRole("link", { name: /^Heat/ }).first().click();
+  await page.getByRole("link", { name: "Lecture", exact: true }).click();
+  const bar = page.getByRole("slider", { name: "Position de lecture" });
+  const thumbnail = page.getByTestId("seek-thumbnail");
+  // Made on the first ask (D99): the player asks again until they're there.
+  await expect
+    .poll(
+      async () => {
+        await bar.hover({ position: { x: 200, y: 10 } });
+        return thumbnail.isVisible();
+      },
+      { timeout: 40_000, intervals: [1_000] },
+    )
+    .toBe(true);
+  const style = (await thumbnail.locator("div").first().getAttribute("style")) ?? "";
+  expect(style).toMatch(/url\("\/api\/trickplay\/[^"]+\/0\.jpg"\)/);
+  await expect(thumbnail).toContainText(/\d:\d\d/);
+});
+
 test("Auto lowers the quality when the network can't keep up", async () => {
   test.setTimeout(60_000);
   await page.evaluate(() => localStorage.setItem("bv.quality.auto", "max"));

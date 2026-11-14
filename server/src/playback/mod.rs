@@ -5,6 +5,7 @@ pub mod gpu;
 pub mod signing;
 pub mod subtitles;
 pub mod transcode;
+pub mod trickplay;
 
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;

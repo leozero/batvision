@@ -23,6 +23,8 @@ pub enum Grant {
     /// File `f` of an encoded variant: 0 = the video, n = its n-th subtitle. `c` is when
     /// the variant was created: SQLite reuses the id of a deleted one, and a download
     /// resumed with an old link must not continue with another file's bytes.
+    /// The timeline thumbnails of media file `t` (D99).
+    Trickplay { t: i64 },
     Variant {
         v: i64,
         f: i64,

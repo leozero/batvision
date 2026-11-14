@@ -867,6 +867,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/playback/trickplay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The timeline thumbnails of a movie or episode. Asking for them makes them (and those
+         *     of the next episode) when missing.
+         */
+        get: operations["trickplay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/played/{kind}/{id}": {
         parameters: {
             query?: never;
@@ -1043,6 +1063,23 @@ export interface paths {
         };
         /** Server version and detected ffmpeg capabilities (admins only). */
         get: operations["info"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/trickplay/{token}/{sheet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A sheet of timeline thumbnails. */
+        get: operations["trickplay_sheet"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1992,6 +2029,30 @@ export interface components {
          * @enum {string}
          */
         TrackKind: "normal" | "commentary" | "forced" | "sdh";
+        /**
+         * @description Timeline thumbnails (D99): `count` pictures of `width` × `height`, one every
+         *     `interval_ms`, laid out `columns` × `rows` per sheet, left to right then top to bottom.
+         *     Thumbnail `n` (at `n × interval_ms`) is in sheet `n / (columns × rows)`.
+         */
+        TrickplayInfo: {
+            /** Format: int64 */
+            columns: number;
+            /** Format: int64 */
+            count: number;
+            /** Format: int64 */
+            height: number;
+            /** Format: int64 */
+            interval_ms: number;
+            /** Format: int64 */
+            rows: number;
+            /** @description Signed URLs of the sheets (JPEG), in order. Empty unless `ready`. */
+            sheets: string[];
+            status: components["schemas"]["TrickplayStatus"];
+            /** Format: int64 */
+            width: number;
+        };
+        /** @enum {string} */
+        TrickplayStatus: "ready" | "pending" | "unavailable";
         UpdateMeRequest: {
             /** @description TMDB language tag, e.g. `fr-FR`, `en-US`. */
             language?: string | null;
@@ -3629,6 +3690,34 @@ export interface operations {
             };
         };
     };
+    trickplay: {
+        parameters: {
+            query: {
+                kind: components["schemas"]["PlayableKind"];
+                id: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrickplayInfo"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     set_played: {
         parameters: {
             query?: never;
@@ -3945,6 +4034,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    trickplay_sheet: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                token: string;
+                /** @description `<n>.jpg` */
+                sheet: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

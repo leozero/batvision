@@ -171,6 +171,19 @@ export function PlayerPage() {
 
   const movie = useQuery({ ...movieQuery(id), enabled: kind === "movie" && !offlineRoute });
   const episode = useQuery({ ...episodeQuery(id), enabled: kind === "episode" && !offlineRoute });
+  // Timeline thumbnails (D99): the server makes them on first ask, so ask again meanwhile.
+  const trickplay = useQuery({
+    queryKey: ["trickplay", kind, id],
+    queryFn: () => call(api.GET("/api/playback/trickplay", { params: { query: { kind, id } } })),
+    enabled: !offlineRoute,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === "pending" ? 10_000 : false),
+  });
+  const thumbnails = trickplay.data?.status === "ready" ? trickplay.data : undefined;
+  useEffect(() => {
+    // Fetched ahead: the first hover shows a picture, not a blank box.
+    for (const sheet of thumbnails?.sheets ?? []) new Image().src = sheet;
+  }, [thumbnails]);
   const title =
     (kind === "movie" ? movie.data?.title : episode.data?.series_title) ?? local?.meta.title;
   const ep = episode.data
@@ -867,6 +880,7 @@ export function PlayerPage() {
             duration={duration}
             buffered={bufferedEnd}
             offset={offset}
+            thumbnails={thumbnails}
             onSeek={seekTo}
           />
           <div className="mt-3 flex items-center gap-1 sm:gap-2">
@@ -985,12 +999,14 @@ function SeekBar({
   duration,
   buffered,
   offset,
+  thumbnails,
   onSeek,
 }: {
   time: number;
   duration: number;
   buffered: number;
   offset: number;
+  thumbnails?: Schemas["TrickplayInfo"];
   onSeek: (ms: number) => void;
 }) {
   const { t } = useTranslation();
@@ -1060,7 +1076,9 @@ function SeekBar({
         className="absolute size-3.5 -translate-x-1/2 scale-0 rounded-full bg-accent shadow-lg transition-transform group-hover:scale-100 group-focus-visible:scale-100"
         style={{ left: pct(shown) }}
       />
-      {hover !== null ? (
+      {hover !== null && thumbnails ? (
+        <Thumbnail info={thumbnails} at={hover} left={pct(hover)} />
+      ) : hover !== null ? (
         <div
           className="absolute -top-9 -translate-x-1/2 rounded-md bg-black/85 px-2 py-1 font-mono text-xs tabular-nums"
           style={{ left: pct(hover) }}
@@ -1068,6 +1086,49 @@ function SeekBar({
           {formatClock(hover / 1000)}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** Shown size of a timeline thumbnail, px. */
+const THUMB_WIDTH = 192;
+
+/** The picture at `at` ms over the seek bar, with its time; kept inside the bar's ends. */
+function Thumbnail({
+  info,
+  at,
+  left,
+}: {
+  info: Schemas["TrickplayInfo"];
+  at: number;
+  left: string;
+}) {
+  const n = Math.min(info.count - 1, Math.max(0, Math.floor(at / info.interval_ms)));
+  const perSheet = info.columns * info.rows;
+  const sheet = info.sheets[Math.floor(n / perSheet)];
+  const cell = n % perSheet;
+  const scale = THUMB_WIDTH / info.width;
+  const height = info.height * scale;
+  return (
+    <div
+      data-testid="seek-thumbnail"
+      className="pointer-events-none absolute bottom-6 -translate-x-1/2 overflow-hidden rounded-lg border border-white/15 bg-black shadow-2xl"
+      style={{
+        left: `clamp(${THUMB_WIDTH / 2}px, ${left}, calc(100% - ${THUMB_WIDTH / 2}px))`,
+        width: THUMB_WIDTH,
+      }}
+    >
+      <div
+        style={{
+          height,
+          backgroundImage: sheet ? `url("${sheet}")` : undefined,
+          backgroundSize: `${info.columns * THUMB_WIDTH}px ${info.rows * height}px`,
+          backgroundPosition: `-${(cell % info.columns) * THUMB_WIDTH}px -${Math.floor(cell / info.columns) * height}px`,
+        }}
+      />
+      <div className="bg-black/85 py-1 text-center font-mono text-xs tabular-nums">
+        {formatClock(at / 1000)}
+      </div>
     </div>
   );
 }

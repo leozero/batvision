@@ -2185,6 +2185,51 @@
         ]
       }
     },
+    "/api/playback/trickplay": {
+      "get": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "The timeline thumbnails of a movie or episode. Asking for them makes them (and those\nof the next episode) when missing.",
+        "operationId": "trickplay",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/PlayableKind"
+            }
+          },
+          {
+            "name": "id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrickplayInfo"
+                }
+              }
+            }
+          },
+          "404": {}
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/played/{kind}/{id}": {
       "put": {
         "tags": [
@@ -2684,6 +2729,42 @@
             "bearer": []
           }
         ]
+      }
+    },
+    "/api/trickplay/{token}/{sheet}": {
+      "get": {
+        "tags": [
+          "playback"
+        ],
+        "summary": "A sheet of timeline thumbnails.",
+        "operationId": "trickplay_sheet",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sheet",
+            "in": "path",
+            "description": "`<n>.jpg`",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {}
+            }
+          },
+          "404": {}
+        }
       }
     },
     "/api/watchlist": {
@@ -5867,6 +5948,64 @@
           "commentary",
           "forced",
           "sdh"
+        ]
+      },
+      "TrickplayInfo": {
+        "type": "object",
+        "description": "Timeline thumbnails (D99): `count` pictures of `width` × `height`, one every\n`interval_ms`, laid out `columns` × `rows` per sheet, left to right then top to bottom.\nThumbnail `n` (at `n × interval_ms`) is in sheet `n / (columns × rows)`.",
+        "required": [
+          "status",
+          "interval_ms",
+          "width",
+          "height",
+          "columns",
+          "rows",
+          "count",
+          "sheets"
+        ],
+        "properties": {
+          "columns": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "height": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "interval_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "rows": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sheets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Signed URLs of the sheets (JPEG), in order. Empty unless `ready`."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TrickplayStatus"
+          },
+          "width": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "TrickplayStatus": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "pending",
+          "unavailable"
         ]
       },
       "UpdateMeRequest": {

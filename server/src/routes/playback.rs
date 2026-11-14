@@ -5,14 +5,14 @@ use std::time::{Duration, Instant};
 use axum::{
     Json,
     body::Body,
-    extract::{Path, Request, State},
+    extract::{Path, Query, Request, State},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
 use serde::{Deserialize, Serialize};
 use tower::ServiceExt;
 use tower_http::services::ServeFile;
-use utoipa::ToSchema;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     AppState,
@@ -29,6 +29,7 @@ use crate::{
         signing::Grant,
         subtitles,
         transcode::{TranscodeJob, VideoEncoder, valid_hls_file},
+        trickplay,
     },
     userdata::{self, PlayableKind},
 };
@@ -469,6 +470,127 @@ pub async fn stop(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize, IntoParams)]
+pub struct TrickplayQuery {
+    pub kind: PlayableKind,
+    pub id: i64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum TrickplayStatus {
+    Ready,
+    /// Being made: ask again in a few seconds.
+    Pending,
+    /// This file has none.
+    Unavailable,
+}
+
+/// Timeline thumbnails (D99): `count` pictures of `width` × `height`, one every
+/// `interval_ms`, laid out `columns` × `rows` per sheet, left to right then top to bottom.
+/// Thumbnail `n` (at `n × interval_ms`) is in sheet `n / (columns × rows)`.
+#[derive(Serialize, ToSchema)]
+pub struct TrickplayInfo {
+    pub status: TrickplayStatus,
+    pub interval_ms: i64,
+    pub width: i64,
+    pub height: i64,
+    pub columns: i64,
+    pub rows: i64,
+    pub count: i64,
+    /// Signed URLs of the sheets (JPEG), in order. Empty unless `ready`.
+    pub sheets: Vec<String>,
+}
+
+/// The timeline thumbnails of a movie or episode. Asking for them makes them (and those
+/// of the next episode) when missing.
+#[utoipa::path(get, path = "/api/playback/trickplay", tag = "playback", security(("bearer" = [])),
+    params(TrickplayQuery), responses((status = 200, body = TrickplayInfo), (status = 404)))]
+pub async fn trickplay(
+    State(state): State<AppState>,
+    _current: CurrentDevice,
+    Query(q): Query<TrickplayQuery>,
+) -> ApiResult<Json<TrickplayInfo>> {
+    let file: i64 = sqlx::query_scalar(
+        "SELECT id FROM media_files WHERE item_kind = ? AND item_id = ? AND missing_since IS NULL
+         ORDER BY size_bytes DESC LIMIT 1",
+    )
+    .bind(q.kind.as_str())
+    .bind(q.id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(ApiError::NotFound)?;
+    let status = state.trickplay.status(file).await?;
+    // Ready by the time the next episode starts.
+    if q.kind == PlayableKind::Episode {
+        let next: Option<i64> = sqlx::query_scalar(
+            "SELECT mf.id FROM episodes cur
+             JOIN episodes nxt ON nxt.series_id = cur.series_id
+               AND (nxt.season_number, nxt.episode_number) > (cur.season_number, cur.episode_number)
+             JOIN media_files mf ON mf.item_kind = 'episode' AND mf.item_id = nxt.id
+               AND mf.missing_since IS NULL
+             WHERE cur.id = ?
+             ORDER BY nxt.season_number, nxt.episode_number, mf.size_bytes DESC LIMIT 1",
+        )
+        .bind(q.id)
+        .fetch_optional(&state.db)
+        .await?;
+        if let Some(next) = next {
+            state.trickplay.status(next).await?;
+        }
+    }
+    let (status, count) = match status {
+        trickplay::Status::Ready { count } => (TrickplayStatus::Ready, count),
+        trickplay::Status::Pending => (TrickplayStatus::Pending, 0),
+        trickplay::Status::Unavailable => (TrickplayStatus::Unavailable, 0),
+    };
+    let per_sheet = trickplay::COLUMNS * trickplay::ROWS;
+    let token = state
+        .signer
+        .sign(Grant::Trickplay { t: file }, now() + URL_LIFETIME_SECS);
+    Ok(Json(TrickplayInfo {
+        status,
+        interval_ms: trickplay::INTERVAL_MS,
+        width: trickplay::WIDTH,
+        height: trickplay::HEIGHT,
+        columns: trickplay::COLUMNS,
+        rows: trickplay::ROWS,
+        count,
+        sheets: (0..(count + per_sheet - 1) / per_sheet)
+            .map(|n| format!("/api/trickplay/{token}/{n}.jpg"))
+            .collect(),
+    }))
+}
+
+/// A sheet of timeline thumbnails.
+#[utoipa::path(get, path = "/api/trickplay/{token}/{sheet}", tag = "playback",
+    params(("token" = String, Path), ("sheet" = String, Path, description = "`<n>.jpg`")),
+    responses((status = 200, content_type = "image/jpeg"), (status = 404)))]
+pub async fn trickplay_sheet(
+    State(state): State<AppState>,
+    Path((token, sheet)): Path<(String, String)>,
+    request: Request,
+) -> ApiResult<Response> {
+    let Some(Grant::Trickplay { t }) = state.signer.verify(&token, now()) else {
+        return Err(ApiError::NotFound);
+    };
+    let n: u32 = sheet
+        .strip_suffix(".jpg")
+        .and_then(|n| n.parse().ok())
+        .ok_or(ApiError::NotFound)?;
+    let response = ServeFile::new(state.trickplay.dir(t).join(format!("{n}.jpg")))
+        .oneshot(request)
+        .await
+        .map_err(|e| ApiError::Internal(anyhow::anyhow!("serving file: {e}")))?;
+    let mut response = response.map(Body::new);
+    // Sheets don't change for a given file version; a new version gets a new token anyway.
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("private, max-age=86400"),
+    );
+    Ok(response)
+}
+
 /// The original file, with HTTP Range support (seeking).
 #[utoipa::path(get, path = "/api/stream/{token}", tag = "playback",
     params(("token" = String, Path)), responses((status = 200), (status = 206), (status = 404)))]
@@ -521,7 +643,9 @@ pub async fn subtitle(
                 .ok_or(ApiError::NotFound)?;
             (format!("x{x}"), path, None, o)
         }
-        Grant::File { .. } | Grant::Variant { .. } => return Err(ApiError::NotFound),
+        Grant::File { .. } | Grant::Variant { .. } | Grant::Trickplay { .. } => {
+            return Err(ApiError::NotFound);
+        }
     };
     let input = state.config.media_dir.join(input);
     // The file's date is part of the name: a replaced movie or a corrected .srt must

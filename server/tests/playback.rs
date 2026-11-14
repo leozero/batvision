@@ -702,3 +702,78 @@ async fn unsupported_audio_is_transcoded_and_choices_are_remembered_per_series()
         .transcodes
         .stop(info["session_id"].as_str().unwrap());
 }
+
+#[tokio::test]
+async fn timeline_thumbnails_are_made_on_first_request() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    make_video(f.media.path(), "Films/Clip (2020)/Clip.mp4", "aac");
+    f.library("movies", "Films").await;
+    let id = f.get("/api/movies").await["items"][0]["id"]
+        .as_i64()
+        .unwrap();
+    let uri = format!("/api/playback/trickplay?kind=movie&id={id}");
+
+    // The worker isn't running yet: the request queues them.
+    let first = f.get(&uri).await;
+    assert_eq!(first["status"], "pending");
+    assert_eq!(first["sheets"], json!([]));
+    f.app.state.trickplay.clone().spawn();
+
+    let mut info = Value::Null;
+    for _ in 0..300 {
+        info = f.get(&uri).await;
+        if info["status"] != "pending" {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(info["status"], "ready", "{info}");
+    assert_eq!(
+        (
+            &info["width"],
+            &info["height"],
+            &info["columns"],
+            &info["rows"]
+        ),
+        (&json!(320), &json!(180), &json!(10), &json!(10))
+    );
+    assert_eq!(info["interval_ms"], 10_000);
+    assert_eq!(info["count"], 1, "4 s: one thumbnail");
+    let sheets = info["sheets"].as_array().unwrap();
+    assert_eq!(sheets.len(), 1);
+
+    let url = sheets[0].as_str().unwrap();
+    let (status, headers, _) = f
+        .app
+        .request_with_headers(Method::GET, url, &[], None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(headers["content-type"], "image/jpeg");
+    assert!(
+        headers["cache-control"]
+            .to_str()
+            .unwrap()
+            .contains("max-age")
+    );
+    let file = std::fs::read_dir(f._cache.path().join("trickplay"))
+        .unwrap()
+        .next()
+        .unwrap()
+        .unwrap()
+        .path()
+        .join("0.jpg");
+    let jpeg = std::fs::read(file).unwrap();
+    assert!(jpeg.starts_with(&[0xFF, 0xD8]), "a JPEG");
+
+    // Only that file's sheets: no other names, no forged tokens.
+    let (status, _, _) = f
+        .app
+        .request_with_headers(Method::GET, &url.replace("0.jpg", "../x"), &[], None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = f.app.get(&url.replace("/0.jpg", "x/0.jpg"), None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}

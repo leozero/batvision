@@ -33,6 +33,7 @@ async fn main() -> anyhow::Result<()> {
         batvision_server::playback::signing::MediaSigner::load_or_create(&config.data_dir)?;
     state.transcodes.clean();
     state.transcodes.clone().spawn_reaper();
+    state.trickplay.clone().spawn();
     if let Some(token) = state.init_setup_token().await? {
         tracing::warn!(
             "no account exists yet: create the first administrator with setup token {token}"

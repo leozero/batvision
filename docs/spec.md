@@ -15,7 +15,6 @@
 ### Out of scope for v1
 
 - Intro skipping.
-- Trickplay (image previews in the seek bar).
 - Collections.
 - Parental controls.
 - Synchronized group playback.
@@ -134,6 +133,7 @@ docs/
   - **Auto** (the default) starts where it settled last time on the device. It goes down after two stalls within a minute, a stall of 4 s, a stream that shows nothing for 10 s, or a measured throughput under 1.5 times the stream's bitrate. It goes back up, straight to the best level the throughput carries twice over, after 2 minutes without a stall and at most once every 5 minutes;
   - changing level restarts the session at the current position, like a seek: a device still uses a single encode.
 - Resume playback, "Continue watching", "Next up".
+- **Timeline thumbnails** (trickplay, D99): one picture every 10 s, shown when hovering the seek bar (web, desktop) or dragging it (mobile). The server makes them the first time a player asks, from the key frames only, then those of the next episode. They are sheets of 10 × 10 pictures of 320 × 180, kept in the cache. They need the server, so a downloaded copy played offline has none.
 
 ## 6. Authentication and security
 

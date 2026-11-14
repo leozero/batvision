@@ -2,6 +2,7 @@ import { formatClock, languageName, sameLanguage } from "@batvision/core/format"
 import { type Cue, cueAt, parseWebVtt } from "@batvision/core/subtitles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { File } from "expo-file-system";
+import { Image } from "expo-image";
 import { useKeepAwake } from "expo-keep-awake";
 import * as NavigationBar from "expo-navigation-bar";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -120,6 +121,9 @@ export default function Player() {
   const [ended, setEnded] = useState(false);
   const positionRef = useRef(0); // absolute ms
   const barWidth = useRef(0);
+  // Where the bar starts on screen, and the time under the finger while it drags (s).
+  const barLeft = useRef(0);
+  const [scrub, setScrub] = useState<number | null>(null);
   const infoRef = useRef<Info | null>(null);
   infoRef.current = info;
 
@@ -272,6 +276,20 @@ export default function Player() {
     }, AUTO_EVERY_MS);
     return () => clearInterval(timer);
   }, [mode, info, local, start]);
+
+  // Timeline thumbnails (D99): the server makes them on first ask, so ask again meanwhile.
+  const trickplay = useQuery({
+    queryKey: ["trickplay", kind, id],
+    queryFn: () => call(api().GET("/api/playback/trickplay", { params: { query: { kind, id } } })),
+    enabled: !offline,
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === "pending" ? 10_000 : false),
+  });
+  const thumbnails = trickplay.data?.status === "ready" ? trickplay.data : undefined;
+  useEffect(() => {
+    // Fetched ahead: the first drag shows a picture, not a blank box.
+    if (thumbnails) void Image.prefetch(thumbnails.sheets.map(absolute));
+  }, [thumbnails]);
 
   // ---- Controls --------------------------------------------------------------------------
   const seekTo = (absoluteMs: number) => {
@@ -594,13 +612,37 @@ export default function Player() {
                 <Text className="font-semibold text-accent-ink">{t("player.nextEpisode")}</Text>
               </Pressable>
             ) : null}
-            <Pressable
+            {scrub !== null && thumbnails ? (
+              <SeekThumbnail
+                info={thumbnails}
+                at={scrub * 1000}
+                ratio={duration ? scrub / duration : 0}
+                barWidth={barWidth.current}
+              />
+            ) : null}
+            {/* Tap to jump, or drag: the picture under the finger shows, the jump is on release. */}
+            <View
+              testID="seek-bar"
               className="h-6 justify-center"
-              onPress={(e) => {
-                const { locationX } = e.nativeEvent;
+              onStartShouldSetResponder={() => true}
+              onResponderGrant={(e) => {
+                const { locationX, pageX } = e.nativeEvent;
+                barLeft.current = pageX - locationX;
                 const width = barWidth.current;
-                if (width > 0 && duration > 0) seekTo((locationX / width) * duration * 1000);
+                if (width > 0 && duration > 0)
+                  setScrub(Math.min(1, Math.max(0, locationX / width)) * duration);
               }}
+              onResponderMove={(e) => {
+                const width = barWidth.current;
+                const x = e.nativeEvent.pageX - barLeft.current;
+                if (width > 0 && duration > 0)
+                  setScrub(Math.min(1, Math.max(0, x / width)) * duration);
+              }}
+              onResponderRelease={() => {
+                if (scrub !== null) seekTo(scrub * 1000);
+                setScrub(null);
+              }}
+              onResponderTerminate={() => setScrub(null)}
               onLayout={(e) => {
                 barWidth.current = e.nativeEvent.layout.width;
               }}
@@ -608,13 +650,15 @@ export default function Player() {
               <View className="h-1 overflow-hidden rounded-full bg-white/25">
                 <View
                   className="h-full bg-accent"
-                  style={{ width: `${duration ? Math.min(100, (position / duration) * 100) : 0}%` }}
+                  style={{
+                    width: `${duration ? Math.min(100, ((scrub ?? position) / duration) * 100) : 0}%`,
+                  }}
                 />
               </View>
-            </Pressable>
+            </View>
             <View className="flex-row justify-between">
               <Text testID="player-time" className="text-xs text-fg">
-                {formatClock(position)}
+                {formatClock(scrub ?? position)}
               </Text>
               <Text className="text-xs text-fg">{duration ? formatClock(duration) : ""}</Text>
             </View>
@@ -752,6 +796,55 @@ export default function Player() {
           </Pressable>
         </Pressable>
       </Modal>
+    </View>
+  );
+}
+
+/** Shown width of a timeline thumbnail. */
+const THUMB_WIDTH = 176;
+
+/** The picture at `at` ms above the seek bar, over the finger, kept inside the bar's ends. */
+function SeekThumbnail({
+  info,
+  at,
+  ratio,
+  barWidth,
+}: {
+  info: Schemas["TrickplayInfo"];
+  at: number;
+  ratio: number;
+  barWidth: number;
+}) {
+  const n = Math.min(info.count - 1, Math.max(0, Math.floor(at / info.interval_ms)));
+  const perSheet = info.columns * info.rows;
+  const sheet = info.sheets[Math.floor(n / perSheet)];
+  const cell = n % perSheet;
+  const scale = THUMB_WIDTH / info.width;
+  const height = info.height * scale;
+  const left = Math.min(Math.max(0, ratio * barWidth - THUMB_WIDTH / 2), barWidth - THUMB_WIDTH);
+  return (
+    <View
+      testID="seek-thumbnail"
+      pointerEvents="none"
+      className="absolute overflow-hidden rounded-lg border border-white/15 bg-black"
+      style={{ left, bottom: 56, width: THUMB_WIDTH }}
+    >
+      <View style={{ width: THUMB_WIDTH, height, overflow: "hidden" }}>
+        {sheet ? (
+          <Image
+            source={{ uri: absolute(sheet) }}
+            cachePolicy="memory-disk"
+            style={{
+              position: "absolute",
+              width: info.columns * THUMB_WIDTH,
+              height: info.rows * height,
+              left: -(cell % info.columns) * THUMB_WIDTH,
+              top: -Math.floor(cell / info.columns) * height,
+            }}
+          />
+        ) : null}
+      </View>
+      <Text className="bg-black/85 py-1 text-center text-xs text-fg">{formatClock(at / 1000)}</Text>
     </View>
   );
 }
