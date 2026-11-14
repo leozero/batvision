@@ -194,11 +194,13 @@ impl AppState {
             config.encode_concurrency,
             (config.encode_cache_gb as i64) * 1_000_000_000,
         ));
+        let ffmpeg = Arc::new(RwLock::new(None));
         let trickplay = Arc::new(Trickplay::new(
             db.clone(),
             config.cache_dir.join("trickplay"),
             config.media_dir.clone(),
             config.ffmpeg.clone(),
+            ffmpeg.clone(),
         ));
         Self {
             encoder,
@@ -210,7 +212,7 @@ impl AppState {
             config: Arc::new(config),
             db,
             auth: Arc::new(AuthState::default()),
-            ffmpeg: Arc::new(RwLock::new(None)),
+            ffmpeg,
         }
     }
 

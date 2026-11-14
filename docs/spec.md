@@ -142,7 +142,7 @@ docs/
   - the largest plays by default; the player's quality menu offers the others when there are several, and switching restarts the session at the current position, with tracks picked again from the preferences;
   - the choice is remembered per user and item, on every device; picking the default again forgets it, so a larger file added later wins;
   - progress (the 90 % mark) and timeline thumbnails follow the version played; downloads and the administrator's thumbnail batches use the default one.
-- **Timeline thumbnails** (trickplay, D99): one picture every 10 s, shown when hovering the seek bar (web, desktop) or dragging it (mobile). The server makes them the first time a player asks, from the key frames only, then those of the next episode. An administrator can also make the missing ones in batches (the next X, or all of them) from the administration page; what players wait for goes first. They are sheets of 10 × 10 pictures of 320 × 180, kept in the cache. They need the server, so a downloaded copy played offline has none.
+- **Timeline thumbnails** (trickplay, D99): one picture every 10 s, shown when hovering the seek bar (web, desktop) or dragging it (mobile). The server makes them the first time a player asks, then those of the next episode. It decodes the key frames only, on the graphics card when there is one (about 30 s for a 2-hour 4K HDR film), and each picture is the key frame nearest its time. An administrator can also make the missing ones in batches (the next X, or all of them) from the administration page; what players wait for goes first. They are sheets of 10 × 10 pictures of 320 × 180, kept in the cache. They need the server, so a downloaded copy played offline has none.
 
 ## 6. Authentication and security
 
