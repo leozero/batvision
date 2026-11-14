@@ -211,9 +211,10 @@ jobs:
           brew install ccache
           # Native C, C++ and Objective-C of the libraries, cached between runs. Xcode calls
           # it as the compiler launcher (below), with an environment of its own: the settings
-          # go in ccache's own config file. Same as React Native's (scripts/xcode/ccache.conf),
-          # minus depend mode, which doesn't cache clang modules.
+          # go in ccache's own config file. Same as React Native's (scripts/xcode/ccache.conf):
+          # clang modules (-fmodules) are cached in depend mode only, with the modules sloppiness.
           ccache --set-config sloppiness=clang_index_store,file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
+          ccache --set-config depend_mode=true
           ccache --set-config file_clone=true
           ccache --set-config inode_cache=true
           ccache --set-config max_size=3G
