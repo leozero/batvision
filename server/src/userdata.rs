@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 use crate::{
     db::{Db, now},
     error::{ApiError, ApiResult},
+    library::versions,
 };
 
 /// Below this, a stopped item isn't worth resuming (trailer, accidental click).
@@ -53,16 +54,24 @@ pub fn progress_outcome(position_ms: i64, duration_ms: Option<i64>) -> ProgressO
     }
 }
 
-async fn duration_of(db: &Db, kind: PlayableKind, id: i64) -> ApiResult<Option<i64>> {
-    Ok(sqlx::query_scalar(
-        "SELECT duration_ms FROM media_files WHERE item_kind = ? AND item_id = ?
-         AND missing_since IS NULL ORDER BY size_bytes DESC LIMIT 1",
+/// The duration of the version `user_id` plays (D102); of the default version without a
+/// user (downloads are made from it).
+async fn duration_of(
+    db: &Db,
+    user_id: Option<i64>,
+    kind: PlayableKind,
+    id: i64,
+) -> ApiResult<Option<i64>> {
+    let Some(file) = versions::file_for(db, user_id, kind.as_str(), id).await? else {
+        return Ok(None);
+    };
+    Ok(
+        sqlx::query_scalar("SELECT duration_ms FROM media_files WHERE id = ?")
+            .bind(file)
+            .fetch_optional(db)
+            .await?
+            .flatten(),
     )
-    .bind(kind.as_str())
-    .bind(id)
-    .fetch_optional(db)
-    .await?
-    .flatten())
 }
 
 async fn ensure_exists(db: &Db, kind: PlayableKind, id: i64) -> ApiResult<()> {
@@ -93,7 +102,7 @@ pub async fn record_progress(
     position_ms: i64,
 ) -> ApiResult<bool> {
     ensure_exists(db, kind, id).await?;
-    let duration = duration_of(db, kind, id).await?;
+    let duration = duration_of(db, Some(user_id), kind, id).await?;
     let now = now();
     match progress_outcome(position_ms.max(0), duration) {
         ProgressOutcome::Played => {
@@ -453,7 +462,8 @@ pub async fn apply_offline(db: &Db, user_id: i64, records: &[OfflineProgress]) -
         if current.flatten().is_some_and(|server_at| server_at > at) {
             continue;
         }
-        let duration = duration_of(db, r.kind, r.id).await?;
+        // Played offline: a downloaded copy, made from the default version.
+        let duration = duration_of(db, None, r.kind, r.id).await?;
         let played =
             r.played || progress_outcome(r.position_ms, duration) == ProgressOutcome::Played;
         let position = match progress_outcome(r.position_ms.max(0), duration) {

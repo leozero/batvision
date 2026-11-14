@@ -30,6 +30,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from "react-i18next";
 import { cx, IconButton, Spinner } from "../components/ui";
 import { ApiError, api, call, type Schemas } from "../lib/api";
+import { formatBytes } from "../lib/bytes";
 import { desktop, localPlaybackQuery } from "../lib/desktop";
 import { episodeCode, formatClock, languageName, sameLanguage } from "../lib/format";
 import { episodeQuery, invalidateLibrary, movieQuery } from "../lib/queries";
@@ -115,6 +116,9 @@ function localInfo(
     session_id: null,
     quality: "max",
     qualities: [],
+    // Downloads are made from the default version (D102); no choice offline.
+    media_file_id: 0,
+    versions: [],
   };
 }
 type Kind = "movie" | "episode";
@@ -124,6 +128,8 @@ type StartOptions = {
   subtitle?: string | null;
   remember?: boolean;
   quality?: Quality;
+  /** Another version (media file) of the item (D102). */
+  version?: number;
 };
 
 const PROGRESS_EVERY_MS = 10_000;
@@ -171,19 +177,6 @@ export function PlayerPage() {
 
   const movie = useQuery({ ...movieQuery(id), enabled: kind === "movie" && !offlineRoute });
   const episode = useQuery({ ...episodeQuery(id), enabled: kind === "episode" && !offlineRoute });
-  // Timeline thumbnails (D99): the server makes them on first ask, so ask again meanwhile.
-  const trickplay = useQuery({
-    queryKey: ["trickplay", kind, id],
-    queryFn: () => call(api.GET("/api/playback/trickplay", { params: { query: { kind, id } } })),
-    enabled: !offlineRoute,
-    retry: false,
-    refetchInterval: (q) => (q.state.data?.status === "pending" ? 10_000 : false),
-  });
-  const thumbnails = trickplay.data?.status === "ready" ? trickplay.data : undefined;
-  useEffect(() => {
-    // Fetched ahead: the first hover shows a picture, not a blank box.
-    for (const sheet of thumbnails?.sheets ?? []) new Image().src = sheet;
-  }, [thumbnails]);
   const title =
     (kind === "movie" ? movie.data?.title : episode.data?.series_title) ?? local?.meta.title;
   const ep = episode.data
@@ -224,6 +217,26 @@ export function PlayerPage() {
   const [qualityMode, setQualityMode] = useState<QualityMode>(readQualityMode);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [cue, setCue] = useState<string | null>(null);
+  // Timeline thumbnails (D99) of the version playing (D102), once it is known: the
+  // server makes them on first ask, so ask again meanwhile.
+  const version = info && !local ? info.media_file_id : undefined;
+  const trickplay = useQuery({
+    queryKey: ["trickplay", kind, id, version],
+    queryFn: () =>
+      call(
+        api.GET("/api/playback/trickplay", {
+          params: { query: { kind, id, media_file_id: version } },
+        }),
+      ),
+    enabled: !offlineRoute && (!!local || version !== undefined),
+    retry: false,
+    refetchInterval: (q) => (q.state.data?.status === "pending" ? 10_000 : false),
+  });
+  const thumbnails = trickplay.data?.status === "ready" ? trickplay.data : undefined;
+  useEffect(() => {
+    // Fetched ahead: the first hover shows a picture, not a blank box.
+    for (const sheet of thumbnails?.sheets ?? []) new Image().src = sheet;
+  }, [thumbnails]);
 
   const offset = info?.hls ? info.start_ms : 0;
   const duration = info?.duration_ms ?? 0;
@@ -266,6 +279,8 @@ export function PlayerPage() {
               subtitle: opts.subtitle === undefined ? undefined : (opts.subtitle ?? "off"),
               remember: opts.remember ?? false,
               quality: opts.quality ?? infoRef.current?.quality ?? initialQuality(),
+              // The version playing stays (a seek, a track): the server only remembers changes.
+              media_file_id: (opts.version ?? infoRef.current?.media_file_id) || undefined,
             },
           }),
         );
@@ -469,6 +484,14 @@ export function PlayerPage() {
     }, AUTO_EVERY_MS);
     return () => clearInterval(timer);
   }, [qualityMode, local, info, error, start]);
+
+  // Another file: tracks are picked again from the preferences (indexes differ per file).
+  const chooseVersion = (version: number) => {
+    setPanel(null);
+    const current = infoRef.current;
+    if (!current || version === current.media_file_id) return;
+    void start({ startMs: timeRef.current, quality: current.quality, version });
+  };
 
   const chooseQuality = (mode: QualityMode) => {
     setPanel(null);
@@ -974,6 +997,7 @@ export function PlayerPage() {
             language={i18n.language}
             onClose={() => setPanel(null)}
             onChange={chooseQuality}
+            onVersion={chooseVersion}
           />
         ) : null}
       </AnimatePresence>
@@ -1255,16 +1279,19 @@ function QualityPanel({
   mode,
   language,
   onChange,
+  onVersion,
   onClose,
 }: {
   info: Info;
   mode: QualityMode;
   language: string;
   onChange: (mode: QualityMode) => void;
+  onVersion: (mediaFileId: number) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const option = (q: Quality) => info.qualities.find((o) => o.quality === q);
+  const versions = info.versions.length > 1 ? info.versions : [];
   return (
     <>
       <button
@@ -1278,8 +1305,36 @@ function QualityPanel({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.98 }}
         transition={{ type: "spring", duration: 0.35, bounce: 0.15 }}
-        className="absolute bottom-28 right-4 max-h-[60vh] w-[min(18rem,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-white/10 bg-black/85 p-5 shadow-2xl backdrop-blur-xl sm:right-8"
+        className={cx(
+          "absolute bottom-28 right-4 max-h-[60vh] overflow-y-auto rounded-2xl border border-white/10 bg-black/85 p-5 shadow-2xl backdrop-blur-xl sm:right-8",
+          versions.length
+            ? "grid w-[min(36rem,calc(100vw-2rem))] gap-6 sm:grid-cols-2"
+            : "w-[min(18rem,calc(100vw-2rem))]",
+        )}
       >
+        {versions.length ? (
+          <TrackColumn title={t("player.version")}>
+            {versions.map((v) => (
+              <TrackOption
+                key={v.id}
+                selected={info.media_file_id === v.id}
+                onClick={() => onVersion(v.id)}
+                label={v.label}
+                detail={[
+                  formatBytes(v.size_bytes, language),
+                  v.audio_languages
+                    .map((l) => languageName(l, language))
+                    .filter(Boolean)
+                    .join(", "),
+                  v.default ? t("player.defaultVersion") : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+                title={v.file_name}
+              />
+            ))}
+          </TrackColumn>
+        ) : null}
         <TrackColumn title={t("player.quality")}>
           <TrackOption
             selected={mode === "auto"}
@@ -1315,16 +1370,19 @@ function TrackOption({
   selected,
   label,
   detail,
+  title,
   onClick,
 }: {
   selected: boolean;
   label: string;
   detail?: string;
+  title?: string;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
+      title={title}
       onClick={onClick}
       className={cx(
         "flex cursor-pointer items-start gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-white/10",

@@ -133,6 +133,10 @@ docs/
   - **Auto** (the default) starts where it settled last time on the device. It goes down after two stalls within a minute, a stall of 4 s, a stream that shows nothing for 10 s, or a measured throughput under 1.5 times the stream's bitrate. It goes back up, straight to the best level the throughput carries twice over, after 2 minutes without a stall and at most once every 5 minutes;
   - changing level restarts the session at the current position, like a seek: a device still uses a single encode.
 - Resume playback, "Continue watching", "Next up".
+- **Versions** (D102): a movie or episode can have several files (a 1080p and a 4K copy, a director's cut). Every video of a movie's folder is one, except parts (`CD2`); so is every copy of an episode. The detail and the playback session list them (resolution, codec, HDR, size, audio languages), largest first:
+  - the largest plays by default; the player's quality menu offers the others when there are several, and switching restarts the session at the current position, with tracks picked again from the preferences;
+  - the choice is remembered per user and item, on every device; picking the default again forgets it, so a larger file added later wins;
+  - progress (the 90 % mark) and timeline thumbnails follow the version played; downloads and the administrator's thumbnail batches use the default one.
 - **Timeline thumbnails** (trickplay, D99): one picture every 10 s, shown when hovering the seek bar (web, desktop) or dragging it (mobile). The server makes them the first time a player asks, from the key frames only, then those of the next episode. They are sheets of 10 × 10 pictures of 320 × 180, kept in the cache. They need the server, so a downloaded copy played offline has none.
 
 ## 6. Authentication and security

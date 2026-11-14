@@ -46,6 +46,15 @@ execFileSync("ffmpeg", [
   ],
   heat,
 ]);
+// A lighter copy of it: Heat has two versions (D102).
+execFileSync("ffmpeg", [
+  ...["-loglevel", "error", "-y"],
+  ...["-f", "lavfi", "-i", "testsrc2=duration=20:size=640x360:rate=10"],
+  ...["-f", "lavfi", "-i", "sine=frequency=440:duration=20"],
+  ...["-c:v", "libx264", "-preset", "ultrafast", "-b:v", "300k", "-g", "20"],
+  ...["-pix_fmt", "yuv420p", "-c:a", "aac"],
+  join(dirname(heat), "Heat (1995) 360p.mkv"),
+]);
 
 /**
  * End-to-end tests run the real Rust server serving the built web app (`pnpm build` first),

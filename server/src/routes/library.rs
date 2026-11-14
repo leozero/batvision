@@ -20,6 +20,7 @@ use crate::{
     library::{
         media_info::{self, MediaInfo},
         scanner::{self, ScanStatus},
+        versions::{self, Version},
     },
     metadata::{self, tmdb::TmdbClient},
 };
@@ -682,16 +683,21 @@ pub struct ExternalSubtitleInfo {
     pub kind: media_info::TrackKind,
 }
 
-pub async fn file_info(state: &AppState, kind: &str, item_id: i64) -> ApiResult<Option<FileInfo>> {
-    let row: Option<(i64, i64, Option<String>)> = sqlx::query_as(
-        "SELECT id, size_bytes, probe_json FROM media_files
-         WHERE item_kind = ? AND item_id = ? AND missing_since IS NULL
-         ORDER BY size_bytes DESC LIMIT 1",
-    )
-    .bind(kind)
-    .bind(item_id)
-    .fetch_optional(&state.db)
-    .await?;
+/// The file `user_id` plays for an item (their version, D102).
+pub async fn file_info(
+    state: &AppState,
+    user_id: i64,
+    kind: &str,
+    item_id: i64,
+) -> ApiResult<Option<FileInfo>> {
+    let Some(file_id) = versions::file_for(&state.db, Some(user_id), kind, item_id).await? else {
+        return Ok(None);
+    };
+    let row: Option<(i64, i64, Option<String>)> =
+        sqlx::query_as("SELECT id, size_bytes, probe_json FROM media_files WHERE id = ?")
+            .bind(file_id)
+            .fetch_optional(&state.db)
+            .await?;
     let Some((id, size_bytes, probe)) = row else {
         return Ok(None);
     };
@@ -739,8 +745,12 @@ pub struct MovieDetail {
     pub in_watchlist: bool,
     #[schema(value_type = Vec<Rating>)]
     pub ratings: Ratings,
+    /// The file this user plays.
     #[sqlx(skip)]
     pub file: Option<FileInfo>,
+    /// Every file of the movie, largest first (D102).
+    #[sqlx(skip)]
+    pub versions: Vec<Version>,
 }
 
 #[utoipa::path(get, path = "/api/movies/{id}", tag = "library", security(("bearer" = [])),
@@ -788,7 +798,8 @@ pub async fn load_movie_detail(
     .fetch_optional(&state.db)
     .await?
     .ok_or(ApiError::NotFound)?;
-    detail.file = file_info(state, "movie", id).await?;
+    detail.file = file_info(state, user.id, "movie", id).await?;
+    detail.versions = versions::list(&state.db, user.id, "movie", id).await?;
     Ok(detail)
 }
 
@@ -1057,7 +1068,10 @@ pub struct EpisodeDetail {
     pub series_backdrop_path: Option<String>,
     pub previous_episode_id: Option<i64>,
     pub next_episode_id: Option<i64>,
+    /// The file this user plays.
     pub file: Option<FileInfo>,
+    /// Every file of the episode, largest first (D102).
+    pub versions: Vec<Version>,
 }
 
 /// One episode as seen by `user` (title in their language, their progress).
@@ -1141,7 +1155,8 @@ pub async fn episode(
         episode.episode_number,
     )
     .await?;
-    let file = file_info(&state, "episode", id).await?;
+    let file = file_info(&state, current.user.id, "episode", id).await?;
+    let versions = versions::list(&state.db, current.user.id, "episode", id).await?;
     Ok(Json(EpisodeDetail {
         episode,
         series_title: header.title,
@@ -1150,6 +1165,7 @@ pub async fn episode(
         previous_episode_id,
         next_episode_id,
         file,
+        versions,
     }))
 }
 

@@ -22,6 +22,7 @@ use crate::{
     library::{
         media_info::{self, MediaInfo, TrackKind},
         scanner,
+        versions::{self, Version},
     },
     playback::{
         self, Capabilities, ExternalSubtitle, GeneralPreferences, Method, Quality, QualityOption,
@@ -54,6 +55,9 @@ pub struct PlaybackRequest {
     /// Picture quality. Omitted: `max`.
     #[serde(default)]
     pub quality: Quality,
+    /// The version (media file) to play, one of the item's `versions`; remembered for
+    /// this user and item. Omitted: the one they chose last, else the largest.
+    pub media_file_id: Option<i64>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -99,6 +103,10 @@ pub struct PlaybackInfo {
     pub quality: Quality,
     /// What each level gives for this file, best first.
     pub qualities: Vec<QualityOption>,
+    /// The version played.
+    pub media_file_id: i64,
+    /// The item's versions, largest first (a single one usually).
+    pub versions: Vec<Version>,
 }
 
 struct MediaFile {
@@ -107,17 +115,25 @@ struct MediaFile {
     info: MediaInfo,
 }
 
-async fn load_media_file(state: &AppState, kind: PlayableKind, id: i64) -> ApiResult<MediaFile> {
-    let row: Option<(i64, String, Option<String>)> = sqlx::query_as(
-        "SELECT id, path, probe_json FROM media_files
-         WHERE item_kind = ? AND item_id = ? AND missing_since IS NULL
-         ORDER BY size_bytes DESC LIMIT 1",
-    )
-    .bind(kind.as_str())
-    .bind(id)
-    .fetch_optional(&state.db)
-    .await?;
-    let (file_id, path, probe) = row.ok_or(ApiError::NotFound)?;
+/// The file to play: the version asked for (then remembered), else the user's version.
+async fn load_media_file(
+    state: &AppState,
+    user_id: i64,
+    kind: PlayableKind,
+    id: i64,
+    requested: Option<i64>,
+) -> ApiResult<MediaFile> {
+    if let Some(media_file_id) = requested {
+        versions::choose(&state.db, user_id, kind.as_str(), id, media_file_id).await?;
+    }
+    let file_id = versions::file_for(&state.db, Some(user_id), kind.as_str(), id)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    let (path, probe): (String, Option<String>) =
+        sqlx::query_as("SELECT path, probe_json FROM media_files WHERE id = ?")
+            .bind(file_id)
+            .fetch_one(&state.db)
+            .await?;
     let probe = match probe {
         Some(json) => json,
         None => {
@@ -172,7 +188,7 @@ pub async fn start(
     Json(req): Json<PlaybackRequest>,
 ) -> ApiResult<Json<PlaybackInfo>> {
     let user = &current.user;
-    let file = load_media_file(&state, req.kind, req.id).await?;
+    let file = load_media_file(&state, user.id, req.kind, req.id, req.media_file_id).await?;
     let info = &file.info;
 
     let external: Vec<(ExternalSubtitle, Option<String>)> = sqlx::query_as::<_, (i64, Option<String>, bool, bool, String)>(
@@ -448,6 +464,8 @@ pub async fn start(
         next_episode_id,
         quality: req.quality,
         qualities,
+        media_file_id: file.id,
+        versions: versions::list(&state.db, user.id, req.kind.as_str(), req.id).await?,
     }))
 }
 
@@ -474,6 +492,8 @@ pub async fn stop(
 pub struct TrickplayQuery {
     pub kind: PlayableKind,
     pub id: i64,
+    /// The version played (`PlaybackInfo.media_file_id`). Omitted: the user's version.
+    pub media_file_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
@@ -508,34 +528,43 @@ pub struct TrickplayInfo {
     params(TrickplayQuery), responses((status = 200, body = TrickplayInfo), (status = 404)))]
 pub async fn trickplay(
     State(state): State<AppState>,
-    _current: CurrentDevice,
+    current: CurrentDevice,
     Query(q): Query<TrickplayQuery>,
 ) -> ApiResult<Json<TrickplayInfo>> {
-    let file: i64 = sqlx::query_scalar(
-        "SELECT id FROM media_files WHERE item_kind = ? AND item_id = ? AND missing_since IS NULL
-         ORDER BY size_bytes DESC LIMIT 1",
-    )
-    .bind(q.kind.as_str())
-    .bind(q.id)
-    .fetch_optional(&state.db)
-    .await?
+    let user_id = current.user.id;
+    let file: i64 = match q.media_file_id {
+        Some(f) => {
+            sqlx::query_scalar(
+                "SELECT id FROM media_files WHERE id = ? AND item_kind = ? AND item_id = ?
+               AND missing_since IS NULL",
+            )
+            .bind(f)
+            .bind(q.kind.as_str())
+            .bind(q.id)
+            .fetch_optional(&state.db)
+            .await?
+        }
+        None => versions::file_for(&state.db, Some(user_id), q.kind.as_str(), q.id).await?,
+    }
     .ok_or(ApiError::NotFound)?;
     let status = state.trickplay.status(file).await?;
     // Ready by the time the next episode starts.
     if q.kind == PlayableKind::Episode {
         let next: Option<i64> = sqlx::query_scalar(
-            "SELECT mf.id FROM episodes cur
+            "SELECT nxt.id FROM episodes cur
              JOIN episodes nxt ON nxt.series_id = cur.series_id
                AND (nxt.season_number, nxt.episode_number) > (cur.season_number, cur.episode_number)
-             JOIN media_files mf ON mf.item_kind = 'episode' AND mf.item_id = nxt.id
-               AND mf.missing_since IS NULL
-             WHERE cur.id = ?
-             ORDER BY nxt.season_number, nxt.episode_number, mf.size_bytes DESC LIMIT 1",
+             WHERE cur.id = ? AND EXISTS (SELECT 1 FROM media_files mf
+               WHERE mf.item_kind = 'episode' AND mf.item_id = nxt.id AND mf.missing_since IS NULL)
+             ORDER BY nxt.season_number, nxt.episode_number LIMIT 1",
         )
         .bind(q.id)
         .fetch_optional(&state.db)
         .await?;
-        if let Some(next) = next {
+        if let Some(next) = next
+            && let Some(next) =
+                versions::file_for(&state.db, Some(user_id), "episode", next).await?
+        {
             state.trickplay.status(next).await?;
         }
     }

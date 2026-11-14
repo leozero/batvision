@@ -2209,6 +2209,19 @@
               "type": "integer",
               "format": "int64"
             }
+          },
+          {
+            "name": "media_file_id",
+            "in": "query",
+            "description": "The version played (`PlaybackInfo.media_file_id`). Omitted: the user's version.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
           }
         ],
         "responses": {
@@ -3515,13 +3528,15 @@
           {
             "type": "object",
             "required": [
-              "series_title"
+              "series_title",
+              "versions"
             ],
             "properties": {
               "file": {
                 "oneOf": [
                   {
-                    "$ref": "#/components/schemas/FileInfo"
+                    "$ref": "#/components/schemas/FileInfo",
+                    "description": "The file this user plays."
                   },
                   {
                     "type": "null"
@@ -3556,6 +3571,13 @@
               },
               "series_title": {
                 "type": "string"
+              },
+              "versions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Version"
+                },
+                "description": "Every file of the episode, largest first (D102)."
               }
             }
           }
@@ -4365,7 +4387,8 @@
           "position_ms",
           "played",
           "in_watchlist",
-          "ratings"
+          "ratings",
+          "versions"
         ],
         "properties": {
           "added_at": {
@@ -4381,7 +4404,8 @@
           "file": {
             "oneOf": [
               {
-                "$ref": "#/components/schemas/FileInfo"
+                "$ref": "#/components/schemas/FileInfo",
+                "description": "The file this user plays."
               },
               {
                 "type": "null"
@@ -4446,6 +4470,13 @@
               "null"
             ],
             "format": "int64"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            },
+            "description": "Every file of the movie, largest first (D102)."
           },
           "year": {
             "type": [
@@ -4713,7 +4744,9 @@
           "audio_tracks",
           "subtitles",
           "quality",
-          "qualities"
+          "qualities",
+          "media_file_id",
+          "versions"
         ],
         "properties": {
           "audio_index": {
@@ -4738,6 +4771,11 @@
           },
           "hls": {
             "type": "boolean"
+          },
+          "media_file_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The version played."
           },
           "method": {
             "$ref": "#/components/schemas/Method"
@@ -4794,6 +4832,13 @@
           "url": {
             "type": "string",
             "description": "Direct: the file. Otherwise an HLS playlist (play with hls.js)."
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Version"
+            },
+            "description": "The item's versions, largest first (a single one usually)."
           }
         }
       },
@@ -4822,6 +4867,14 @@
           },
           "kind": {
             "$ref": "#/components/schemas/PlayableKind"
+          },
+          "media_file_id": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The version (media file) to play, one of the item's `versions`; remembered for\nthis user and item. Omitted: the one they chose last, else the largest."
           },
           "quality": {
             "$ref": "#/components/schemas/Quality",
@@ -6046,6 +6099,83 @@
           },
           "username": {
             "type": "string"
+          }
+        }
+      },
+      "Version": {
+        "type": "object",
+        "description": "One file of a movie or episode.",
+        "required": [
+          "id",
+          "label",
+          "file_name",
+          "size_bytes",
+          "hdr",
+          "audio_languages",
+          "default",
+          "selected"
+        ],
+        "properties": {
+          "audio_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Languages of the audio tracks (ISO 639-2, as in `PlaybackInfo`), without repeats."
+          },
+          "default": {
+            "type": "boolean",
+            "description": "The largest file, played unless the user picks another."
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "file_name": {
+            "type": "string"
+          },
+          "hdr": {
+            "type": "boolean"
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The media file id, to pass to `/api/playback` as `media_file_id`."
+          },
+          "label": {
+            "type": "string",
+            "description": "A short description, e.g. `4K · HDR · HEVC`; the file name until it is analyzed."
+          },
+          "selected": {
+            "type": "boolean",
+            "description": "The one this user plays: their choice, else the default."
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "video_codec": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
           }
         }
       },

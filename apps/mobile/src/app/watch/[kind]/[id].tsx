@@ -1,3 +1,4 @@
+import { formatBytes } from "@batvision/core/bytes";
 import { formatClock, languageName, sameLanguage } from "@batvision/core/format";
 import { type Cue, cueAt, parseWebVtt } from "@batvision/core/subtitles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -161,6 +162,8 @@ export default function Player() {
         subtitle?: string | null;
         quality?: Quality;
         remember?: boolean;
+        /** Another version (media file) of the item (D102). */
+        version?: number;
       } = {},
     ) => {
       setLoading(true);
@@ -186,6 +189,8 @@ export default function Player() {
               subtitle: opts.subtitle === undefined ? undefined : (opts.subtitle ?? "off"),
               remember: opts.remember ?? false,
               quality,
+              // The version playing stays (a seek, a track): the server only remembers changes.
+              media_file_id: (opts.version ?? infoRef.current?.media_file_id) || undefined,
             },
           }),
         );
@@ -277,11 +282,18 @@ export default function Player() {
     return () => clearInterval(timer);
   }, [mode, info, local, start]);
 
-  // Timeline thumbnails (D99): the server makes them on first ask, so ask again meanwhile.
+  // Timeline thumbnails (D99) of the version playing (D102), once it is known: the server
+  // makes them on first ask, so ask again meanwhile.
+  const version = !local && info ? info.media_file_id : undefined;
   const trickplay = useQuery({
-    queryKey: ["trickplay", kind, id],
-    queryFn: () => call(api().GET("/api/playback/trickplay", { params: { query: { kind, id } } })),
-    enabled: !offline,
+    queryKey: ["trickplay", kind, id, version],
+    queryFn: () =>
+      call(
+        api().GET("/api/playback/trickplay", {
+          params: { query: { kind, id, media_file_id: version } },
+        }),
+      ),
+    enabled: !offline && (!!local || version !== undefined),
     retry: false,
     refetchInterval: (q) => (q.state.data?.status === "pending" ? 10_000 : false),
   });
@@ -686,6 +698,46 @@ export default function Player() {
             onPress={() => {}}
           >
             <ScrollView contentContainerClassName="gap-1">
+              {sheet === "quality" && info && info.versions.length > 1 ? (
+                <>
+                  <Text className="mb-2 text-base font-semibold text-fg">
+                    {t("player.version")}
+                  </Text>
+                  {info.versions.map((v) => {
+                    const selected = v.id === info.media_file_id;
+                    return (
+                      <Pressable
+                        key={v.id}
+                        testID={`version-${v.id}`}
+                        onPress={() => {
+                          setSheet(null);
+                          // Another file: tracks are picked again from the preferences.
+                          if (!selected)
+                            void start({
+                              startMs: positionRef.current,
+                              quality: info.quality,
+                              version: v.id,
+                            });
+                        }}
+                        className={`rounded-lg px-3 py-2.5 ${selected ? "bg-accent/15" : ""}`}
+                      >
+                        <Text className={selected ? "font-semibold text-accent" : "text-fg"}>
+                          {v.label}
+                        </Text>
+                        <Text className="text-xs text-faint">
+                          {[
+                            formatBytes(v.size_bytes, i18n.language),
+                            v.default ? t("player.defaultVersion") : null,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                  <View className="h-3" />
+                </>
+              ) : null}
               {sheet === "quality" && info ? (
                 <>
                   <Text className="mb-2 text-base font-semibold text-fg">

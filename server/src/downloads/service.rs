@@ -385,6 +385,8 @@ async fn variant_key(
     item: &ExpectedItem,
     device_av1: bool,
 ) -> ApiResult<Option<VariantKey>> {
+    // Always the default version, the largest file (D102): a variant is shared by every
+    // user and device downloading the item, whatever version each one streams.
     let row: Option<(i64, Option<String>)> = sqlx::query_as(
         "SELECT id, probe_json FROM media_files WHERE item_kind = ? AND item_id = ? AND missing_since IS NULL
          ORDER BY size_bytes DESC LIMIT 1",

@@ -148,6 +148,9 @@ export const en: Shape<typeof fr> = {
     episodeCount_one: "{{count}} episode",
     episodeCount_other: "{{count}} episodes",
     video: "Video",
+    versions_one: "{{count}} version",
+    versions_other: "{{count}} versions",
+    versionsHint: "Choose the version in the player's quality menu.",
     audio: "Audio",
     subtitles: "Subtitles",
     identify: "Identify",
@@ -188,6 +191,8 @@ export const en: Shape<typeof fr> = {
     retry: "Try again",
     quality: "Picture quality",
     original: "Original",
+    version: "Version",
+    defaultVersion: "default",
     qualityLevel: {
       auto: "Auto",
       max: "Max",

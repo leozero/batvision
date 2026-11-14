@@ -1335,6 +1335,8 @@ export interface components {
             series_backdrop_path?: string | null;
             series_poster_path?: string | null;
             series_title: string;
+            /** @description Every file of the episode, largest first (D102). */
+            versions: components["schemas"]["Version"][];
         };
         EpisodeSummary: {
             air_date?: string | null;
@@ -1569,6 +1571,8 @@ export interface components {
             title: string;
             /** Format: int64 */
             tmdb_id?: number | null;
+            /** @description Every file of the movie, largest first (D102). */
+            versions: components["schemas"]["Version"][];
             /** Format: int64 */
             year?: number | null;
         };
@@ -1653,6 +1657,11 @@ export interface components {
             /** Format: int64 */
             duration_ms?: number | null;
             hls: boolean;
+            /**
+             * Format: int64
+             * @description The version played.
+             */
+            media_file_id: number;
             method: components["schemas"]["Method"];
             /** Format: int64 */
             next_episode_id?: number | null;
@@ -1673,6 +1682,8 @@ export interface components {
             subtitles: components["schemas"]["SubtitleChoice"][];
             /** @description Direct: the file. Otherwise an HLS playlist (play with hls.js). */
             url: string;
+            /** @description The item's versions, largest first (a single one usually). */
+            versions: components["schemas"]["Version"][];
         };
         PlaybackRequest: {
             /**
@@ -1684,6 +1695,12 @@ export interface components {
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["PlayableKind"];
+            /**
+             * Format: int64
+             * @description The version (media file) to play, one of the item's `versions`; remembered for
+             *     this user and item. Omitted: the one they chose last, else the largest.
+             */
+            media_file_id?: number | null;
             /** @description Picture quality. Omitted: `max`. */
             quality?: components["schemas"]["Quality"];
             /** @description The user changed tracks: remember the choice for the rest of the series. */
@@ -2065,6 +2082,33 @@ export interface components {
             role: components["schemas"]["Role"];
             totp_enabled: boolean;
             username: string;
+        };
+        /** @description One file of a movie or episode. */
+        Version: {
+            /** @description Languages of the audio tracks (ISO 639-2, as in `PlaybackInfo`), without repeats. */
+            audio_languages: string[];
+            /** @description The largest file, played unless the user picks another. */
+            default: boolean;
+            /** Format: int64 */
+            duration_ms?: number | null;
+            file_name: string;
+            hdr: boolean;
+            /** Format: int64 */
+            height?: number | null;
+            /**
+             * Format: int64
+             * @description The media file id, to pass to `/api/playback` as `media_file_id`.
+             */
+            id: number;
+            /** @description A short description, e.g. `4K · HDR · HEVC`; the file name until it is analyzed. */
+            label: string;
+            /** @description The one this user plays: their choice, else the default. */
+            selected: boolean;
+            /** Format: int64 */
+            size_bytes: number;
+            video_codec?: string | null;
+            /** Format: int64 */
+            width?: number | null;
         };
         VideoStream: {
             /** Format: int64 */
@@ -3695,6 +3739,8 @@ export interface operations {
             query: {
                 kind: components["schemas"]["PlayableKind"];
                 id: number;
+                /** @description The version played (`PlaybackInfo.media_file_id`). Omitted: the user's version. */
+                media_file_id?: number | null;
             };
             header?: never;
             path?: never;

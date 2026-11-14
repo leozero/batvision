@@ -66,6 +66,9 @@ pub struct DetectedMovie {
     pub name: ParsedName,
     /// The main video file, relative to the media root.
     pub file: PathBuf,
+    /// Other copies of the movie (another resolution, a director's cut): its other
+    /// versions (D102), relative to the media root. Parts (`CD2`) are not copies.
+    pub copies: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,6 +78,8 @@ pub struct DetectedEpisode {
     /// Last episode for multi-episode files (`S01E01E02`).
     pub episode_end: Option<i64>,
     pub file: PathBuf,
+    /// Other files of the same episode: its other versions (D102).
+    pub copies: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -536,6 +541,7 @@ pub fn detect_movies(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<Detec
                 source_path: library_path.join(relative),
                 name: parse_name(file_stem(relative)),
                 file: library_path.join(relative),
+                copies: Vec::new(),
             }),
             Some(folder) => {
                 // A folder inside a movie's folder holds its bonus material
@@ -572,6 +578,14 @@ pub fn detect_movies(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<Detec
                 .map(|(f, _)| f.clone())
                 .expect("a group has files")
         };
+        // The other whole files: a part (`CD2`) is not a version of the movie.
+        let copies = |files: &[(PathBuf, u64)], main: &Path| -> Vec<PathBuf> {
+            files
+                .iter()
+                .filter(|(f, _)| f != main && !PART_SUFFIX.is_match(file_stem(f)))
+                .map(|(f, _)| library_path.join(f))
+                .collect()
+        };
         // Two dated movies or more: a saga or a box set, one movie per file.
         if groups.keys().filter(|(_, year)| year.is_some()).count() >= 2 {
             for files in groups.values() {
@@ -579,6 +593,7 @@ pub fn detect_movies(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<Detec
                 movies.push(DetectedMovie {
                     source_path: library_path.join(&file),
                     name: parse_name(&PART_SUFFIX.replace(file_stem(&file), "")),
+                    copies: copies(files, &file),
                     file: library_path.join(file),
                 });
             }
@@ -590,10 +605,12 @@ pub fn detect_movies(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<Detec
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or_default();
+        let main = largest(&all);
         movies.push(DetectedMovie {
             source_path: library_path.join(&folder),
             name: parse_name(folder_name),
-            file: library_path.join(largest(&all)),
+            copies: copies(&all, &main),
+            file: library_path.join(main),
         });
     }
     movies.sort_by(|a, b| a.source_path.cmp(&b.source_path));
@@ -644,6 +661,7 @@ pub fn detect_series(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<Detec
                 episode,
                 episode_end,
                 file: library_path.join(relative),
+                copies: Vec::new(),
             });
     }
 
@@ -653,8 +671,19 @@ pub fn detect_series(library_path: &Path, files: &[(PathBuf, u64)]) -> Vec<Detec
             episodes.sort_by(|a, b| {
                 (a.season, a.episode, &a.file).cmp(&(b.season, b.episode, &b.file))
             });
-            // Two files for the same episode: keep the first (stable, by path).
-            episodes.dedup_by(|b, a| a.season == b.season && a.episode == b.episode);
+            // Two files for the same episode: the first (stable, by path), the other a copy.
+            let mut merged: Vec<DetectedEpisode> = Vec::with_capacity(episodes.len());
+            for episode in episodes {
+                match merged.last_mut() {
+                    Some(last)
+                        if (last.season, last.episode) == (episode.season, episode.episode) =>
+                    {
+                        last.copies.push(episode.file);
+                    }
+                    _ => merged.push(episode),
+                }
+            }
+            let episodes = merged;
             DetectedSeries {
                 source_path: library_path.join(&folder),
                 name: parse_name(&folder),
@@ -1108,6 +1137,27 @@ mod tests {
             found[0].file,
             PathBuf::from("Films/Heat (1995)/Heat (1995) 2160p HDR.mkv")
         );
+        assert_eq!(
+            found[0].copies,
+            [PathBuf::from("Films/Heat (1995)/Heat (1995) 1080p.mkv")]
+        );
+    }
+
+    #[test]
+    fn parts_are_not_copies() {
+        let found = detect_movies(
+            Path::new("Films"),
+            &files(&[
+                ("Big (1988)/Big (1988) CD1.avi", 7),
+                ("Big (1988)/Big (1988) CD2.avi", 6),
+            ]),
+        );
+        assert_eq!(found.len(), 1);
+        assert_eq!(
+            found[0].file,
+            PathBuf::from("Films/Big (1988)/Big (1988) CD1.avi")
+        );
+        assert_eq!(found[0].copies, Vec::<PathBuf>::new());
     }
 
     #[test]

@@ -371,11 +371,13 @@ async fn sync_movies(
         .bind(now)
         .fetch_one(db)
         .await?;
-        let relative = movie.file.strip_prefix(library_path)?;
-        let file_path = path_str(&movie.file);
-        upsert_file(db, &file_path, "movie", id, &files[relative], library_path).await?;
+        for file in std::iter::once(&movie.file).chain(&movie.copies) {
+            let relative = file.strip_prefix(library_path)?;
+            let file_path = path_str(file);
+            upsert_file(db, &file_path, "movie", id, &files[relative], library_path).await?;
+            seen_files.push(file_path);
+        }
         seen_ids.push(id);
-        seen_files.push(file_path);
     }
     report.movies = detected.len();
 
@@ -473,19 +475,21 @@ async fn sync_series(
             .bind(now)
             .fetch_one(db)
             .await?;
-            let relative = episode.file.strip_prefix(library_path)?;
-            let file_path = path_str(&episode.file);
-            upsert_file(
-                db,
-                &file_path,
-                "episode",
-                episode_id,
-                &files[relative],
-                library_path,
-            )
-            .await?;
+            for file in std::iter::once(&episode.file).chain(&episode.copies) {
+                let relative = file.strip_prefix(library_path)?;
+                let file_path = path_str(file);
+                upsert_file(
+                    db,
+                    &file_path,
+                    "episode",
+                    episode_id,
+                    &files[relative],
+                    library_path,
+                )
+                .await?;
+                seen_files.push(file_path);
+            }
             seen_episodes.push(episode_id);
-            seen_files.push(file_path);
         }
         report.episodes += show.episodes.len();
     }

@@ -145,6 +145,9 @@ export const fr = {
     episodeCount_one: "{{count}} épisode",
     episodeCount_other: "{{count}} épisodes",
     video: "Vidéo",
+    versions_one: "{{count}} version",
+    versions_other: "{{count}} versions",
+    versionsHint: "Choisissez la version dans le menu Qualité du lecteur.",
     audio: "Audio",
     subtitles: "Sous-titres",
     identify: "Identifier",
@@ -185,6 +188,8 @@ export const fr = {
     retry: "Réessayer",
     quality: "Qualité de l'image",
     original: "Original",
+    version: "Version",
+    defaultVersion: "par défaut",
     qualityLevel: {
       auto: "Auto",
       max: "Max",

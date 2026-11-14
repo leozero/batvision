@@ -241,6 +241,51 @@ test("Auto lowers the quality when the network can't keep up", async () => {
   }
 });
 
+test("a movie with two files plays the version picked, and remembers it", async () => {
+  await page.goto("/movies");
+  await page.getByRole("link", { name: /^Heat/ }).first().click();
+  await expect(page.getByText("2 versions")).toBeVisible();
+  const started = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
+  await page.getByRole("link", { name: "Lecture", exact: true }).click();
+  const first = await (await started).json();
+  // The largest file plays by default.
+  expect(first.versions.map((v: { label: string }) => v.label)).toEqual([
+    "720p · H.264",
+    "360p · H.264",
+  ]);
+  const [main, light] = first.versions.map((v: { id: number }) => v.id);
+  expect(first.media_file_id).toBe(main);
+
+  await page.mouse.move(700, 450);
+  await page.getByRole("button", { name: "Qualité de l'image" }).click();
+  await expect(page.getByText("Version", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: /^720p · H\.264.*par défaut/ })).toBeVisible();
+  const switched = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
+  // The thumbnails follow the version played.
+  const thumbnails = page.waitForRequest(
+    (r) =>
+      r.url().includes("/api/playback/trickplay") && r.url().includes(`media_file_id=${light}`),
+  );
+  await page.getByRole("button", { name: /^360p · H\.264/ }).click();
+  const info = await (await switched).json();
+  expect(info.media_file_id).toBe(light);
+  await thumbnails;
+
+  // Remembered: the next start plays it without asking.
+  const again = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
+  await page.reload();
+  const resumed = await again;
+  expect(resumed.request().postDataJSON().media_file_id).toBeUndefined();
+  expect((await resumed.json()).media_file_id).toBe(light);
+
+  // Back to the default, for the next tests.
+  await page.mouse.move(700, 450);
+  await page.getByRole("button", { name: "Qualité de l'image" }).click();
+  const back = page.waitForResponse((r) => r.url().endsWith("/api/playback"));
+  await page.getByRole("button", { name: /^720p · H\.264/ }).click();
+  expect((await (await back).json()).media_file_id).toBe(main);
+});
+
 test("search finds titles", async () => {
   await page.goto("/search");
   await page.getByPlaceholder("Films, séries…").fill("ron");

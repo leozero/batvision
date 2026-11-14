@@ -20,7 +20,14 @@ import { formatRuntime, languageName, progressRatio } from "../lib/format";
 import { movieQuery, useSetPlayed } from "../lib/queries";
 import { NotFoundPage } from "./NotFoundPage";
 
-export function TechInfo({ file }: { file: Schemas["FileInfo"] | null | undefined }) {
+export function TechInfo({
+  file,
+  versions = 1,
+}: {
+  file: Schemas["FileInfo"] | null | undefined;
+  /** How many files the item has (D102). */
+  versions?: number;
+}) {
   const { t, i18n } = useTranslation();
   const media = file?.media;
   if (!media) return null;
@@ -51,6 +58,11 @@ export function TechInfo({ file }: { file: Schemas["FileInfo"] | null | undefine
           {resolution ? <Badge tone="accent">{resolution}</Badge> : null}
           {video ? <Badge>{video.codec.toUpperCase()}</Badge> : null}
           {video?.hdr ? <Badge tone="accent">HDR</Badge> : null}
+          {versions > 1 ? (
+            <span title={t("detail.versionsHint")}>
+              <Badge>{t("detail.versions", { count: versions })}</Badge>
+            </span>
+          ) : null}
         </div>
       </InfoBlock>
       <InfoBlock label={t("detail.audio")}>{audio.join(", ") || "—"}</InfoBlock>
@@ -171,7 +183,7 @@ export function MovieDetailPage() {
           </>
         }
       />
-      <TechInfo file={movie.file} />
+      <TechInfo file={movie.file} versions={movie.versions.length} />
     </Page>
   );
 }
