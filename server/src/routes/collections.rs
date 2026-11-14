@@ -166,6 +166,7 @@ pub async fn collection(
         order: None,
         limit: Some(200),
         offset: None,
+        watched: None,
     };
     let mut movies = query_movies(&state, &current.user, &query, Some(&ids))
         .await?

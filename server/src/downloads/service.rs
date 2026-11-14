@@ -470,7 +470,13 @@ pub async fn plan_for_device(
         // Every audio track is in the file (D40): the language says which one the device
         // plays first.
         if item.audio_language.is_none() {
-            item.audio_language.clone_from(&prefs.audio_language);
+            item.audio_language = crate::playback::audio_for(
+                &state.db,
+                item.kind,
+                item.id,
+                prefs.audio_language.as_deref(),
+            )
+            .await?;
         }
         let card = crate::routes::home::item_card(state, user, item.kind, item.id).await?;
         let mut out = PlanItem {

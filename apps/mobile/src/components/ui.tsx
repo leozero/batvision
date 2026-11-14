@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
-import { Film } from "lucide-react-native";
+import { BookmarkCheck, Check, Film, HardDriveDownload } from "lucide-react-native";
 import type { ComponentProps, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { Schemas } from "../lib/api";
+import { useSyncState } from "../lib/sync";
 
 export const COLORS = {
   bg: "#09090c",
@@ -151,16 +152,44 @@ export function Badge({
   );
 }
 
+/** What a poster shows in its corners: watched, in the watchlist, on this phone. */
+export type PosterBadges = {
+  kind: "movie" | "series";
+  id: number;
+  watched?: boolean;
+  inWatchlist?: boolean;
+};
+
+/** The movie, or an episode of the series, is on this phone. */
+function useDownloaded(badges: PosterBadges | undefined) {
+  const { items } = useSyncState();
+  if (!badges) return false;
+  return items.some((i) =>
+    badges.kind === "movie"
+      ? i.kind === "movie" && i.id === badges.id && i.status === "done"
+      : i.kind === "episode" && i.meta.seriesId === badges.id && i.status === "done",
+  );
+}
+
+function CornerBadge({ children }: { children: ReactNode }) {
+  return (
+    <View className="size-6 items-center justify-center rounded-full bg-black/70">{children}</View>
+  );
+}
+
 /** Poster with a fallback icon; `progress` draws the resume bar. */
 export function Poster({
   uri,
   progress,
   className,
+  badges,
 }: {
   uri?: string | null;
   progress?: number;
   className?: string;
+  badges?: PosterBadges;
 }) {
+  const downloaded = useDownloaded(badges);
   return (
     <View className={`aspect-[2/3] overflow-hidden rounded-card bg-surface-2 ${className ?? ""}`}>
       {uri ? (
@@ -175,6 +204,25 @@ export function Poster({
           <Film color={COLORS.faint} size={28} />
         </View>
       )}
+      {badges?.inWatchlist || downloaded ? (
+        <View className="absolute left-1.5 top-1.5 flex-row gap-1">
+          {badges?.inWatchlist ? (
+            <CornerBadge>
+              <BookmarkCheck color={COLORS.accent} size={13} />
+            </CornerBadge>
+          ) : null}
+          {downloaded ? (
+            <CornerBadge>
+              <HardDriveDownload color={COLORS.fg} size={13} />
+            </CornerBadge>
+          ) : null}
+        </View>
+      ) : null}
+      {badges?.watched ? (
+        <View className="absolute right-1.5 top-1.5 size-6 items-center justify-center rounded-full bg-accent">
+          <Check color={COLORS.accentInk} size={14} strokeWidth={3} />
+        </View>
+      ) : null}
       {progress ? (
         <View className="absolute inset-x-2 bottom-2">
           <ProgressBar value={progress} />

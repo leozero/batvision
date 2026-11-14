@@ -6,6 +6,7 @@ import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-na
 import { Hero } from "../../components/Detail";
 import { COLORS, LoadError, Loading, Muted, Poster, Rating, Screen } from "../../components/ui";
 import { imageUrl } from "../../lib/api";
+import { setMovieList } from "../../lib/browse";
 import { collectionQuery } from "../../lib/queries";
 
 /** A saga (D101): the library's movies of a TMDB collection, in release order. */
@@ -41,11 +42,18 @@ export default function SagaScreen() {
             {s.movies.map((m) => (
               <Link key={m.id} href={`/movie/${m.id}`} asChild>
                 <Pressable
+                  onPressIn={() => setMovieList(s.movies.map((x) => x.id))}
                   testID={`saga-movie-${m.id}`}
                   style={{ width: `${100 / columns - 3}%` }}
                   className="active:opacity-70"
                 >
                   <Poster
+                    badges={{
+                      kind: "movie",
+                      id: m.id,
+                      watched: m.played,
+                      inWatchlist: m.in_watchlist,
+                    }}
                     uri={imageUrl(m.poster_path, "w342")}
                     progress={
                       m.duration_ms && m.position_ms ? m.position_ms / m.duration_ms : undefined

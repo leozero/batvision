@@ -1,3 +1,9 @@
+import {
+  LANGUAGE_PRESETS,
+  presetOf,
+  presetPreferences,
+  trackLanguage,
+} from "@batvision/core/languages";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
@@ -18,6 +24,7 @@ import { useTranslation } from "react-i18next";
 import {
   Badge,
   Button,
+  cx,
   ErrorText,
   Field,
   Input,
@@ -129,6 +136,7 @@ function PlaybackCard() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const { data: prefs } = useQuery(preferencesQuery);
+  const { data: me } = useQuery(meQuery);
   const save = useMutation({
     mutationFn: (body: Schemas["PreferencesUpdate"]) =>
       call(api.PUT("/api/me/preferences", { body })),
@@ -151,14 +159,42 @@ function PlaybackCard() {
       {names.of(short[code] ?? code)}
     </option>
   );
+  const language = trackLanguage(me?.language ?? i18n.language);
+  const current = presetOf(prefs, language);
   return (
     <Card title={t("account.tracks")} description={t("account.tracksHint")}>
+      <p className="mb-3 text-sm font-medium">{t("account.howYouWatch")}</p>
+      <div className="mb-2 grid gap-3 sm:grid-cols-3">
+        {LANGUAGE_PRESETS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            data-testid={`preset-${p}`}
+            aria-pressed={current === p}
+            onClick={() => save.mutate({ ...prefs, ...presetPreferences(p, language) })}
+            className={cx(
+              "cursor-pointer rounded-xl border p-4 text-left transition",
+              current === p
+                ? "border-accent bg-accent/10"
+                : "border-line bg-surface-2 hover:border-white/20",
+            )}
+          >
+            <span className="block font-semibold">{t(`account.preset.${p}`)}</span>
+            <span className="mt-1 block text-xs text-muted">{t(`account.preset.${p}Hint`)}</span>
+          </button>
+        ))}
+      </div>
+      {current === "custom" ? (
+        <p className="mb-2 text-xs text-faint">{t("account.preset.custom")}</p>
+      ) : null}
+      <p className="mb-3 mt-5 text-sm font-medium">{t("account.details")}</p>
       <div className="grid gap-5 sm:grid-cols-2">
         <Field label={t("account.audioLanguage")}>
           <Select
             value={prefs.audio_language ?? ""}
             onChange={(e) => save.mutate({ ...prefs, audio_language: e.target.value || null })}
           >
+            <option value="original">{t("account.originalAudio")}</option>
             <option value="">{t("account.original")}</option>
             {TRACK_LANGUAGES.map(option)}
           </Select>

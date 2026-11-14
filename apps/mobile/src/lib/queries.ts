@@ -1,4 +1,9 @@
-import type { SortDirection, SortOrder } from "@batvision/core/sort";
+import {
+  type SortDirection,
+  type SortOrder,
+  type WatchedFilter,
+  watchedParam,
+} from "@batvision/core/sort";
 import {
   infiniteQueryOptions,
   queryOptions,
@@ -7,8 +12,9 @@ import {
 } from "@tanstack/react-query";
 import { BatvisionSync } from "../../modules/batvision-sync";
 import { ApiError, api, call, type Schemas } from "./api";
+import { cachePreferences } from "./prefsCache";
 
-export type { SortDirection, SortOrder } from "@batvision/core/sort";
+export type { SortDirection, SortOrder, WatchedFilter } from "@batvision/core/sort";
 
 /** The signed-in user, or `null` when the token is no longer valid. */
 export const meQuery = queryOptions({
@@ -31,13 +37,15 @@ export const homeQuery = queryOptions({
 
 const PAGE = 60;
 
-export const moviesQuery = (sort: SortOrder, order: SortDirection) =>
+export const moviesQuery = (sort: SortOrder, order: SortDirection, filter: WatchedFilter = "all") =>
   infiniteQueryOptions({
-    queryKey: ["movies", sort, order],
+    queryKey: ["movies", sort, order, filter],
     queryFn: ({ pageParam }) =>
       call(
         api().GET("/api/movies", {
-          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+          params: {
+            query: { sort, order, watched: watchedParam(filter), limit: PAGE, offset: pageParam },
+          },
         }),
       ),
     initialPageParam: 0,
@@ -47,13 +55,19 @@ export const moviesQuery = (sort: SortOrder, order: SortDirection) =>
     },
   });
 
-export const seriesListQuery = (sort: SortOrder, order: SortDirection) =>
+export const seriesListQuery = (
+  sort: SortOrder,
+  order: SortDirection,
+  filter: WatchedFilter = "all",
+) =>
   infiniteQueryOptions({
-    queryKey: ["series", sort, order],
+    queryKey: ["series", sort, order, filter],
     queryFn: ({ pageParam }) =>
       call(
         api().GET("/api/series", {
-          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+          params: {
+            query: { sort, order, watched: watchedParam(filter), limit: PAGE, offset: pageParam },
+          },
         }),
       ),
     initialPageParam: 0,
@@ -108,7 +122,11 @@ export const watchlistQuery = queryOptions({
 
 export const preferencesQuery = queryOptions({
   queryKey: ["preferences"],
-  queryFn: () => call(api().GET("/api/me/preferences")),
+  queryFn: async () => {
+    const prefs = await call(api().GET("/api/me/preferences"));
+    cachePreferences(prefs);
+    return prefs;
+  },
 });
 
 export const downloadsQuery = queryOptions({
@@ -218,6 +236,7 @@ export function useSavePreferences() {
       call(api().PUT("/api/me/preferences", { body })),
     onSuccess: (prefs) => {
       qc.setQueryData(preferencesQuery.queryKey, prefs);
+      cachePreferences(prefs);
       BatvisionSync.syncNow();
     },
   });

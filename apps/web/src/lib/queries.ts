@@ -1,4 +1,9 @@
-import type { SortDirection, SortOrder } from "@batvision/core/sort";
+import {
+  type SortDirection,
+  type SortOrder,
+  type WatchedFilter,
+  watchedParam,
+} from "@batvision/core/sort";
 import {
   infiniteQueryOptions,
   keepPreviousData,
@@ -37,13 +42,15 @@ export const homeQuery = queryOptions({
 
 const PAGE = 60;
 
-export const moviesQuery = (sort: SortOrder, order: SortDirection) =>
+export const moviesQuery = (sort: SortOrder, order: SortDirection, filter: WatchedFilter = "all") =>
   infiniteQueryOptions({
-    queryKey: ["movies", sort, order],
+    queryKey: ["movies", sort, order, filter],
     queryFn: ({ pageParam }) =>
       call(
         api.GET("/api/movies", {
-          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+          params: {
+            query: { sort, order, watched: watchedParam(filter), limit: PAGE, offset: pageParam },
+          },
         }),
       ),
     initialPageParam: 0,
@@ -53,13 +60,19 @@ export const moviesQuery = (sort: SortOrder, order: SortDirection) =>
     },
   });
 
-export const seriesListQuery = (sort: SortOrder, order: SortDirection) =>
+export const seriesListQuery = (
+  sort: SortOrder,
+  order: SortDirection,
+  filter: WatchedFilter = "all",
+) =>
   infiniteQueryOptions({
-    queryKey: ["series", sort, order],
+    queryKey: ["series", sort, order, filter],
     queryFn: ({ pageParam }) =>
       call(
         api.GET("/api/series", {
-          params: { query: { sort, order, limit: PAGE, offset: pageParam } },
+          params: {
+            query: { sort, order, watched: watchedParam(filter), limit: PAGE, offset: pageParam },
+          },
         }),
       ),
     initialPageParam: 0,

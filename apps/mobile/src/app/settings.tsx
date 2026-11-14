@@ -1,3 +1,9 @@
+import {
+  LANGUAGE_PRESETS,
+  presetOf,
+  presetPreferences,
+  trackLanguage,
+} from "@batvision/core/languages";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { ArrowLeft, ChevronRight, ShieldCheck } from "lucide-react-native";
@@ -6,7 +12,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { DeviceSettings } from "../components/DeviceSettings";
 import { Button, COLORS, EmptyState, Loading, Screen } from "../components/ui";
 import { api } from "../lib/api";
-import { downloadsQuery, meQuery } from "../lib/queries";
+import { downloadsQuery, meQuery, preferencesQuery, useSavePreferences } from "../lib/queries";
 import { session } from "../lib/session";
 import { BatvisionSync } from "../lib/sync";
 
@@ -68,6 +74,7 @@ export default function Settings() {
             <ChevronRight color={COLORS.faint} size={20} />
           </Pressable>
         ) : null}
+        <LanguagePreset />
         <Text className="mt-2 text-lg font-semibold text-fg">{t("mobile.settings")}</Text>
         {device ? (
           <DeviceSettings device={device} />
@@ -91,5 +98,39 @@ export default function Settings() {
         </Button>
       </ScrollView>
     </Screen>
+  );
+}
+
+/** Dubbed, original with subtitles, or original alone (D103): for every device. */
+function LanguagePreset() {
+  const { t, i18n } = useTranslation();
+  const { data: me } = useQuery(meQuery);
+  const { data: prefs } = useQuery(preferencesQuery);
+  const save = useSavePreferences();
+  if (!prefs) return null;
+  const language = trackLanguage(me?.language ?? i18n.language);
+  const current = presetOf(prefs, language);
+  return (
+    <View className="gap-2">
+      <Text className="mt-2 text-lg font-semibold text-fg">{t("account.howYouWatch")}</Text>
+      {LANGUAGE_PRESETS.map((p) => (
+        <Pressable
+          key={p}
+          testID={`preset-${p}`}
+          accessibilityRole="button"
+          accessibilityState={{ selected: current === p }}
+          onPress={() => save.mutate({ ...prefs, ...presetPreferences(p, language) })}
+          className={`rounded-card border p-4 active:opacity-70 ${
+            current === p ? "border-accent bg-accent/10" : "border-line bg-surface"
+          }`}
+        >
+          <Text className="text-base font-semibold text-fg">{t(`account.preset.${p}`)}</Text>
+          <Text className="mt-1 text-sm text-muted">{t(`account.preset.${p}Hint`)}</Text>
+        </Pressable>
+      ))}
+      {current === "custom" ? (
+        <Text className="text-xs text-faint">{t("mobile.customTracks")}</Text>
+      ) : null}
+    </View>
   );
 }

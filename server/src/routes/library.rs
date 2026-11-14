@@ -591,6 +591,9 @@ pub struct BrowseQuery {
     /// Default 50, max 200.
     pub limit: Option<i64>,
     pub offset: Option<i64>,
+    /// Only what the caller has watched (`true`) or not yet (`false`); everything when
+    /// absent. A series counts as watched once all its episodes are.
+    pub watched: Option<bool>,
 }
 
 impl BrowseQuery {
@@ -625,6 +628,8 @@ pub struct MovieSummary {
     /// The caller's resume position (0 if not started or already watched).
     pub position_ms: i64,
     pub played: bool,
+    /// In the caller's watchlist.
+    pub in_watchlist: bool,
     #[schema(value_type = Vec<Rating>)]
     pub ratings: Ratings,
 }
@@ -668,6 +673,8 @@ pub async fn query_movies(
                 WHERE u.user_id = ?7 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS position_ms,
              COALESCE((SELECT played FROM user_item_data u
                 WHERE u.user_id = ?7 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) AS played,
+             EXISTS (SELECT 1 FROM watchlist w WHERE w.user_id = ?7 AND w.movie_id = m.id)
+               AS in_watchlist,
              ",
         ratings_sql!("movie", "m.id"),
         " AS ratings, ",
@@ -676,6 +683,7 @@ pub async fn query_movies(
            FROM movies m
            WHERE m.missing_since IS NULL AND (?3 IS NULL OR m.library_id = ?3)
              AND (?8 IS NULL OR m.id IN (SELECT value FROM json_each(?8))))
+         WHERE ?10 IS NULL OR played = ?10
          -- ?9: 1 ascending, -1 descending. Items without a year or rating stay last.
          ORDER BY
            CASE WHEN ?4 = 'year' THEN year IS NULL ELSE 0 END,
@@ -695,14 +703,19 @@ pub async fn query_movies(
     .bind(user.id)
     .bind(&ids)
     .bind(q.sign())
+    .bind(q.watched)
     .fetch_all(&state.db)
     .await?;
     let total = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM movies WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)
-         AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))",
+        "SELECT COUNT(*) FROM movies m WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)
+         AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))
+         AND (?3 IS NULL OR COALESCE((SELECT played FROM user_item_data u
+           WHERE u.user_id = ?4 AND u.item_kind = 'movie' AND u.item_id = m.id), 0) = ?3)",
     )
     .bind(q.library_id)
     .bind(&ids)
+    .bind(q.watched)
+    .bind(user.id)
     .fetch_one(&state.db)
     .await?;
     Ok(MoviePage { items, total })
@@ -858,6 +871,8 @@ pub struct SeriesSummary {
     pub episode_count: i64,
     /// Episodes the caller hasn't watched yet.
     pub unplayed_count: i64,
+    /// In the caller's watchlist (D73).
+    pub in_watchlist: bool,
     pub added_at: i64,
     #[schema(value_type = Vec<Rating>)]
     pub ratings: Ratings,
@@ -901,6 +916,8 @@ pub async fn query_series(
              (SELECT COUNT(*) FROM episodes e WHERE e.series_id = s.id AND e.missing_since IS NULL
                 AND NOT EXISTS (SELECT 1 FROM user_item_data u WHERE u.user_id = ?7
                   AND u.item_kind = 'episode' AND u.item_id = e.id AND u.played = 1)) AS unplayed_count,
+             EXISTS (SELECT 1 FROM watchlist_series w WHERE w.user_id = ?7 AND w.series_id = s.id)
+               AS in_watchlist,
              -- A new episode brings the series back to the top of recently added.
              COALESCE((SELECT MAX(e.added_at) FROM episodes e
                        WHERE e.series_id = s.id AND e.missing_since IS NULL), s.added_at) AS added_at,
@@ -912,6 +929,7 @@ pub async fn query_series(
            FROM series s
            WHERE s.missing_since IS NULL AND (?3 IS NULL OR s.library_id = ?3)
              AND (?8 IS NULL OR s.id IN (SELECT value FROM json_each(?8))))
+         WHERE ?10 IS NULL OR (episode_count > 0 AND unplayed_count = 0) = ?10
          -- ?9: 1 ascending, -1 descending. Items without a year or rating stay last.
          ORDER BY
            CASE WHEN ?4 = 'year' THEN year IS NULL ELSE 0 END,
@@ -931,14 +949,23 @@ pub async fn query_series(
     .bind(user.id)
     .bind(&ids)
     .bind(q.sign())
+    .bind(q.watched)
     .fetch_all(&state.db)
     .await?;
     let total = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM series WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)
-         AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))",
+        "SELECT COUNT(*) FROM series s WHERE missing_since IS NULL AND (?1 IS NULL OR library_id = ?1)
+         AND (?2 IS NULL OR id IN (SELECT value FROM json_each(?2)))
+         AND (?3 IS NULL OR (EXISTS (SELECT 1 FROM episodes e
+                 WHERE e.series_id = s.id AND e.missing_since IS NULL)
+               AND NOT EXISTS (SELECT 1 FROM episodes e WHERE e.series_id = s.id
+                 AND e.missing_since IS NULL AND NOT EXISTS (SELECT 1 FROM user_item_data u
+                   WHERE u.user_id = ?4 AND u.item_kind = 'episode' AND u.item_id = e.id
+                     AND u.played = 1))) = ?3)",
     )
     .bind(q.library_id)
     .bind(&ids)
+    .bind(q.watched)
+    .bind(user.id)
     .fetch_one(&state.db)
     .await?;
     Ok(SeriesPage { items, total })

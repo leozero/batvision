@@ -4,7 +4,10 @@ pub mod tmdb;
 
 use std::collections::HashMap;
 
-use crate::db::{Db, now};
+use crate::{
+    db::{Db, now},
+    playback::normalize_language,
+};
 use tmdb::{TmdbClient, TmdbError, best_match};
 
 /// An item without a TMDB match is searched again after this long.
@@ -159,7 +162,7 @@ pub async fn refresh_movie(
     let main = &details[0].1;
     sqlx::query(
         "UPDATE movies SET tmdb_id = ?, release_date = ?, runtime_minutes = ?, poster_path = ?,
-         backdrop_path = ?, metadata_updated_at = ? WHERE id = ?",
+         backdrop_path = ?, original_language = ?, metadata_updated_at = ? WHERE id = ?",
     )
     .bind(tmdb_id)
     // TMDB sends "" for a title without a date.
@@ -167,6 +170,11 @@ pub async fn refresh_movie(
     .bind(main.runtime)
     .bind(&main.poster_path)
     .bind(&main.backdrop_path)
+    .bind(
+        main.original_language
+            .as_deref()
+            .and_then(normalize_language),
+    )
     .bind(now())
     .bind(movie_id)
     .execute(db)
@@ -356,12 +364,17 @@ pub async fn refresh_series(
     let main = &shows[0].1;
     sqlx::query(
         "UPDATE series SET tmdb_id = ?, first_air_date = ?, poster_path = ?, backdrop_path = ?,
-         metadata_updated_at = ? WHERE id = ?",
+         original_language = ?, metadata_updated_at = ? WHERE id = ?",
     )
     .bind(tmdb_id)
     .bind(main.first_air_date.as_deref().filter(|d| !d.is_empty()))
     .bind(&main.poster_path)
     .bind(&main.backdrop_path)
+    .bind(
+        main.original_language
+            .as_deref()
+            .and_then(normalize_language),
+    )
     .bind(now())
     .bind(series_id)
     .execute(db)

@@ -886,3 +886,205 @@ async fn admins_see_where_an_item_comes_from_before_identifying_it() {
         .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn lists_filter_on_watched_and_flag_the_watchlist() {
+    let f = fixture().await;
+    touch(f.media.path(), "Films/Seen (2020)/Seen.mkv");
+    touch(f.media.path(), "Films/Unseen (2021)/Unseen.mkv");
+    touch(f.media.path(), "Shows/Done/Season 01/Done - S01E01.mkv");
+    touch(
+        f.media.path(),
+        "Shows/Started/Season 01/Started - S01E01.mkv",
+    );
+    touch(
+        f.media.path(),
+        "Shows/Started/Season 01/Started - S01E02.mkv",
+    );
+    f.library("movies", "Films").await;
+    f.library("series", "Shows").await;
+    let id_of = |list: &Value, title: &str| {
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["title"] == title)
+            .unwrap()["id"]
+            .as_i64()
+            .unwrap()
+    };
+    let movies = f.get("/api/movies").await;
+    let (seen, unseen) = (id_of(&movies, "Seen"), id_of(&movies, "Unseen"));
+    let series = f.get("/api/series").await;
+    let (done, started) = (id_of(&series, "Done"), id_of(&series, "Started"));
+    let put = |uri: String, body: Value| {
+        let f = &f;
+        async move {
+            let (status, b) = f
+                .app
+                .request(Method::PUT, &uri, Some(&f.admin), Some(body))
+                .await;
+            assert_eq!(status, StatusCode::NO_CONTENT, "{uri}: {b}");
+        }
+    };
+    put(
+        format!("/api/played/movie/{seen}"),
+        json!({ "played": true }),
+    )
+    .await;
+    put(
+        format!("/api/played/series/{done}"),
+        json!({ "played": true }),
+    )
+    .await;
+    let e1 = f.episodes(started, 1).await[0]["id"].as_i64().unwrap();
+    put(
+        format!("/api/played/episode/{e1}"),
+        json!({ "played": true }),
+    )
+    .await;
+    put(
+        format!("/api/watchlist/{unseen}"),
+        json!({ "audio_language": null }),
+    )
+    .await;
+    put(format!("/api/watchlist/series/{started}"), json!({})).await;
+
+    let titles = |page: Value| {
+        let titles: Vec<String> = page["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["title"].as_str().unwrap().to_owned())
+            .collect();
+        (titles, page["total"].as_i64().unwrap())
+    };
+    assert_eq!(
+        titles(f.get("/api/movies?watched=true").await),
+        (vec!["Seen".to_owned()], 1)
+    );
+    assert_eq!(
+        titles(f.get("/api/movies?watched=false").await),
+        (vec!["Unseen".to_owned()], 1)
+    );
+    // Half-watched still counts as not watched.
+    assert_eq!(
+        titles(f.get("/api/series?watched=true").await),
+        (vec!["Done".to_owned()], 1)
+    );
+    assert_eq!(
+        titles(f.get("/api/series?watched=false").await),
+        (vec!["Started".to_owned()], 1)
+    );
+
+    let movies = f.get("/api/movies").await;
+    let flag = |list: &Value, id: i64| {
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["id"] == id)
+            .unwrap()["in_watchlist"]
+            .clone()
+    };
+    assert_eq!(flag(&movies, unseen), json!(true));
+    assert_eq!(flag(&movies, seen), json!(false));
+    let series = f.get("/api/series").await;
+    assert_eq!(flag(&series, started), json!(true));
+    assert_eq!(flag(&series, done), json!(false));
+}
+
+#[tokio::test]
+async fn original_version_plays_the_language_the_movie_was_made_in() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    // French first and default, as French releases often are; English second.
+    let file = f.media.path().join("Films/Heat (1995)/Heat.mkv");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let status = Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=duration=2:size=320x240:rate=25",
+        ])
+        .args([
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=duration=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=duration=2",
+        ])
+        .args([
+            "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-c:a", "aac",
+        ])
+        .args([
+            "-metadata:s:a:0",
+            "language=fre",
+            "-metadata:s:a:1",
+            "language=eng",
+        ])
+        .args(["-disposition:a:0", "default", "-shortest"])
+        .arg(&file)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    f.library("movies", "Films").await;
+    let id = f.get("/api/movies").await["items"][0]["id"]
+        .as_i64()
+        .unwrap();
+    sqlx::query("UPDATE movies SET original_language = 'eng' WHERE id = ?")
+        .bind(id)
+        .execute(&f.app.state.db)
+        .await
+        .unwrap();
+    let info = f.get(&format!("/api/movies/{id}")).await;
+    let audio = info["file"]["media"]["audio"].as_array().unwrap().clone();
+    let index_of =
+        |lang: &str| audio.iter().find(|a| a["language"] == lang).unwrap()["index"].clone();
+    let play = |prefs: Value| {
+        let f = &f;
+        async move {
+            let (status, body) = f
+                .app
+                .request(
+                    Method::PUT,
+                    "/api/me/preferences",
+                    Some(&f.admin),
+                    Some(prefs),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK, "{body}");
+            let (status, info) = f
+                .app
+                .post(
+                    "/api/playback",
+                    Some(&f.admin),
+                    json!({ "kind": "movie", "id": id, "capabilities": browser_caps() }),
+                )
+                .await;
+            assert_eq!(status, StatusCode::OK, "{info}");
+            info["audio_index"].clone()
+        }
+    };
+    let vo = json!({ "audio_language": "original", "subtitle_language": "fre", "subtitle_mode": "never" });
+    assert_eq!(play(vo).await, index_of("eng"), "original version");
+    let vf =
+        json!({ "audio_language": "fre", "subtitle_language": "fre", "subtitle_mode": "foreign" });
+    assert_eq!(play(vf).await, index_of("fre"), "dubbed");
+    // Unknown original language: the file's default track.
+    sqlx::query("UPDATE movies SET original_language = NULL WHERE id = ?")
+        .bind(id)
+        .execute(&f.app.state.db)
+        .await
+        .unwrap();
+    let vo = json!({ "audio_language": "original", "subtitle_language": null, "subtitle_mode": "never" });
+    assert_eq!(play(vo).await, index_of("fre"));
+}

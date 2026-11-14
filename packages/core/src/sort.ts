@@ -31,3 +31,18 @@ export function parseSort(
 export function directionLabelKey(sort: SortOrder, direction: SortDirection): string {
   return `browse.direction.${sort}.${direction}`;
 }
+
+/** Browse pages can show everything, only what's left to watch, or only what was watched. */
+export type WatchedFilter = "all" | "unwatched" | "watched";
+
+export const WATCHED_FILTERS: readonly WatchedFilter[] = ["all", "unwatched", "watched"];
+
+/** A remembered filter, or `all`. */
+export function parseWatchedFilter(value: string | null | undefined): WatchedFilter {
+  return WATCHED_FILTERS.includes(value as WatchedFilter) ? (value as WatchedFilter) : "all";
+}
+
+/** The API's `watched` parameter for a filter: absent for `all`. */
+export function watchedParam(filter: WatchedFilter): boolean | undefined {
+  return filter === "all" ? undefined : filter === "watched";
+}

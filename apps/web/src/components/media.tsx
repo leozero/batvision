@@ -1,9 +1,20 @@
 import { Link } from "@tanstack/react-router";
-import { Check, ChevronLeft, ChevronRight, Film, Info, Play, Tv } from "lucide-react";
+import {
+  BookmarkCheck,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Film,
+  HardDriveDownload,
+  Info,
+  Play,
+  Tv,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { imageUrl, type Schemas } from "../lib/api";
+import { useDownloadsState } from "../lib/desktop";
 import { episodeCode, formatRuntime, progressRatio } from "../lib/format";
 import { pickRating, Rating } from "./rating";
 import { buttonClass, cx, ProgressBar, Skeleton } from "./ui";
@@ -71,8 +82,19 @@ export type PosterItem = {
   position_ms?: number;
   duration_ms?: number | null;
   unplayed_count?: number;
+  in_watchlist?: boolean;
   ratings?: Schemas["Rating"][];
 };
+
+/** Desktop app: the movie, or an episode of the series, is on this computer. */
+function useDownloaded(kind: "movie" | "series", id: number) {
+  const state = useDownloadsState();
+  return !!state?.items.some((i) =>
+    kind === "movie"
+      ? i.kind === "movie" && i.id === id && i.status === "done"
+      : i.kind === "episode" && i.meta.seriesId === id && i.status === "done",
+  );
+}
 
 export function PosterCard({
   item,
@@ -83,7 +105,9 @@ export function PosterCard({
   kind: "movie" | "series";
   index?: number;
 }) {
+  const { t } = useTranslation();
   const progress = progressRatio(item.position_ms ?? 0, item.duration_ms);
+  const downloaded = useDownloaded(kind, item.id);
   const to = kind === "movie" ? "/movies/$id" : "/series/$id";
   return (
     <motion.div
@@ -111,6 +135,26 @@ export function PosterCard({
           ) : item.unplayed_count ? (
             <span className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-0.5 text-xs font-semibold backdrop-blur">
               {item.unplayed_count}
+            </span>
+          ) : null}
+          {item.in_watchlist || downloaded ? (
+            <span className="absolute left-2 top-2 flex gap-1">
+              {item.in_watchlist ? (
+                <span
+                  title={t("watchlist.inWatchlist")}
+                  className="flex size-6 items-center justify-center rounded-full bg-black/70 text-accent shadow backdrop-blur"
+                >
+                  <BookmarkCheck className="size-3.5" aria-label={t("watchlist.inWatchlist")} />
+                </span>
+              ) : null}
+              {downloaded ? (
+                <span
+                  title={t("desktop.downloaded")}
+                  className="flex size-6 items-center justify-center rounded-full bg-black/70 text-fg shadow backdrop-blur"
+                >
+                  <HardDriveDownload className="size-3.5" aria-label={t("desktop.downloaded")} />
+                </span>
+              ) : null}
             </span>
           ) : null}
           {progress > 0 ? (

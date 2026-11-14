@@ -1,5 +1,6 @@
 import { formatBytes } from "@batvision/core/bytes";
 import { formatClock, languageName, sameLanguage } from "@batvision/core/format";
+import { defaultSubtitle, trackLanguage } from "@batvision/core/languages";
 import { type Cue, cueAt, parseWebVtt } from "@batvision/core/subtitles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { File } from "expo-file-system";
@@ -28,12 +29,14 @@ import {
   Pressable,
   ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Video, { SelectedTrackType, type VideoRef } from "react-native-video";
 import { COLORS } from "../../../components/ui";
 import { ApiError, api, call, type Schemas, Unreachable } from "../../../lib/api";
+import { cachedPreferences } from "../../../lib/prefsCache";
 import {
   type AutoInput,
   autoStep,
@@ -44,7 +47,7 @@ import {
   saveAutoLevel,
   saveQualityMode,
 } from "../../../lib/quality";
-import { episodeQuery, movieQuery } from "../../../lib/queries";
+import { episodeQuery, meQuery, movieQuery, preferencesQuery } from "../../../lib/queries";
 import { session } from "../../../lib/session";
 import { BatvisionSync } from "../../../lib/sync";
 
@@ -91,9 +94,22 @@ export default function Player() {
   // its tracks switch in place.
   const [localAudio, setLocalAudio] = useState<LocalAudio[]>([]);
   const [localAudioIndex, setLocalAudioIndex] = useState<number | null>(null);
-  const [localSubtitle, setLocalSubtitle] = useState<number | null>(() =>
-    local?.subtitles.length ? 0 : null,
-  );
+  // A downloaded copy starts with the subtitle the account's preferences call for (D103),
+  // until one is picked in the menu. Offline before they were ever loaded: forced only.
+  const { data: me } = useQuery({ ...meQuery, enabled: !offline });
+  const { data: prefs } = useQuery({ ...preferencesQuery, enabled: !offline, retry: false });
+  const pickedSubtitle = useRef(false);
+  const [localSubtitle, setLocalSubtitle] = useState<number | null>(null);
+  useEffect(() => {
+    if (!local || pickedSubtitle.current) return;
+    const i = defaultSubtitle(
+      local.subtitles,
+      local.audioLanguage,
+      prefs ?? cachedPreferences(),
+      trackLanguage(me?.language ?? i18n.language),
+    );
+    setLocalSubtitle(i >= 0 ? i : null);
+  }, [local, prefs, me, i18n.language]);
   // Subtitles are drawn here, from their WebVTT file, rather than by react-native-video:
   // given side-loaded subtitles, iOS keeps only the first audio track of the video, and
   // Android shows nothing.
@@ -124,6 +140,17 @@ export default function Player() {
   const [ended, setEnded] = useState(false);
   const positionRef = useRef(0); // absolute ms
   const barWidth = useRef(0);
+  const { width: screenWidth } = useWindowDimensions();
+  // Double tap on a side: back or forward 10 s, again for each extra tap (like most players).
+  const lastTap = useRef<{ at: number; side: "left" | "right" | null; seeking: boolean }>({
+    at: 0,
+    side: null,
+    seeking: false,
+  });
+  const [seekFlash, setSeekFlash] = useState<{ side: "left" | "right"; total: number } | null>(
+    null,
+  );
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Where the bar starts on screen, and the time under the finger while it drags (s).
   const barLeft = useRef(0);
   const [scrub, setScrub] = useState<number | null>(null);
@@ -468,8 +495,50 @@ export default function Player() {
       <Pressable
         testID="player-surface"
         className="absolute inset-0"
-        onPress={() => setControls((c) => !c)}
+        onPress={(e) => {
+          const x = e.nativeEvent.locationX / (screenWidth || 1);
+          const side = x < 1 / 3 ? "left" : x > 2 / 3 ? "right" : null;
+          const now = Date.now();
+          const last = lastTap.current;
+          if (side && last.side === side && now - last.at < 350) {
+            seekTo(positionRef.current + (side === "left" ? -10_000 : 10_000));
+            // The first tap of the pair showed or hid the controls: put them back.
+            if (!last.seeking) setControls((c) => !c);
+            setSeekFlash((f) => ({
+              side,
+              total: (f && f.side === side && last.seeking ? f.total : 0) + 10,
+            }));
+            if (flashTimer.current) clearTimeout(flashTimer.current);
+            flashTimer.current = setTimeout(() => setSeekFlash(null), 700);
+            lastTap.current = { at: now, side, seeking: true };
+            return;
+          }
+          lastTap.current = { at: now, side, seeking: false };
+          setControls((c) => !c);
+        }}
       />
+
+      {seekFlash ? (
+        <View
+          testID="seek-flash"
+          pointerEvents="none"
+          className={`absolute inset-y-0 w-1/3 items-center justify-center ${
+            seekFlash.side === "left" ? "left-0" : "right-0"
+          }`}
+        >
+          <View className="flex-row items-center gap-2 rounded-full bg-black/60 px-4 py-2">
+            {seekFlash.side === "left" ? (
+              <RotateCcw color={COLORS.fg} size={18} />
+            ) : (
+              <RotateCw color={COLORS.fg} size={18} />
+            )}
+            <Text className="text-sm font-semibold text-fg">
+              {seekFlash.side === "left" ? "−" : "+"}
+              {seekFlash.total} s
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       {loading && !error ? (
         <View
@@ -801,10 +870,13 @@ export default function Player() {
                   ].map((s) => (
                     <Pressable
                       key={s.id ?? "off"}
+                      testID={`subtitle-${s.id ?? "off"}`}
                       onPress={() => {
                         setSheet(null);
-                        if (local) setLocalSubtitle(s.id === null ? null : Number(s.id.slice(1)));
-                        else
+                        if (local) {
+                          pickedSubtitle.current = true;
+                          setLocalSubtitle(s.id === null ? null : Number(s.id.slice(1)));
+                        } else
                           void start({
                             startMs: positionRef.current,
                             subtitle: s.id,

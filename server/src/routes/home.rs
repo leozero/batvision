@@ -171,6 +171,7 @@ fn recent(sort: SortOrder) -> BrowseQuery {
         order: None,
         limit: Some(20),
         offset: None,
+        watched: None,
     }
 }
 
@@ -291,6 +292,7 @@ pub async fn search(
         order: None,
         limit: Some(60),
         offset: None,
+        watched: None,
     };
     let movies = library::query_movies(&state, &current.user, &all, Some(&movie_ids))
         .await?
@@ -305,7 +307,8 @@ pub async fn search(
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, sqlx::FromRow)]
 pub struct Preferences {
-    /// ISO 639-2 code (`fre`, `eng`…). `None`: the file's default track.
+    /// ISO 639-2 code (`fre`, `eng`…), or `original`: the language the movie or series
+    /// was made in (D103). `None`: the file's default track.
     pub audio_language: Option<String>,
     pub subtitle_language: Option<String>,
     pub subtitle_mode: SubtitleMode,
@@ -362,8 +365,9 @@ pub async fn put_preferences(
             "watchlist_episodes must be between 1 and 10",
         ));
     }
-    if !valid_language_code(&prefs.audio_language) || !valid_language_code(&prefs.subtitle_language)
-    {
+    let audio_ok = prefs.audio_language.as_deref() == Some(crate::playback::ORIGINAL)
+        || valid_language_code(&prefs.audio_language);
+    if !audio_ok || !valid_language_code(&prefs.subtitle_language) {
         return Err(ApiError::bad_request(
             "invalid_language",
             "track languages are ISO 639-2 codes such as fre or eng",

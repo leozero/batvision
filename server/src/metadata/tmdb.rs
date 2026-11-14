@@ -69,6 +69,9 @@ pub struct MovieDetails {
     /// The saga the movie belongs to, if any.
     #[serde(default)]
     pub belongs_to_collection: Option<CollectionRef>,
+    /// ISO 639-1 (`en`, `fr`…).
+    #[serde(default)]
+    pub original_language: Option<String>,
 }
 
 /// A collection as embedded in a movie's details.
@@ -149,6 +152,9 @@ pub struct TvDetails {
     pub vote_average: Option<f64>,
     #[serde(default)]
     pub vote_count: Option<i64>,
+    /// ISO 639-1 (`en`, `fr`…).
+    #[serde(default)]
+    pub original_language: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

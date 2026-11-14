@@ -2279,6 +2279,18 @@
               ],
               "format": "int64"
             }
+          },
+          {
+            "name": "watched",
+            "in": "query",
+            "description": "Only what the caller has watched (`true`) or not yet (`false`); everything when\nabsent. A series counts as watched once all its episodes are.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -2719,6 +2731,18 @@
                 "null"
               ],
               "format": "int64"
+            }
+          },
+          {
+            "name": "watched",
+            "in": "query",
+            "description": "Only what the caller has watched (`true`) or not yet (`false`); everything when\nabsent. A series counts as watched once all its episodes are.",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
             }
           }
         ],
@@ -4891,6 +4915,7 @@
           "added_at",
           "position_ms",
           "played",
+          "in_watchlist",
           "ratings"
         ],
         "properties": {
@@ -4914,6 +4939,10 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "in_watchlist": {
+            "type": "boolean",
+            "description": "In the caller's watchlist."
           },
           "played": {
             "type": "boolean"
@@ -5290,7 +5319,7 @@
               "string",
               "null"
             ],
-            "description": "ISO 639-2 code (`fre`, `eng`…). `None`: the file's default track."
+            "description": "ISO 639-2 code (`fre`, `eng`…), or `original`: the language the movie or series\nwas made in (D103). `None`: the file's default track."
           },
           "subtitle_language": {
             "type": [
@@ -5894,6 +5923,7 @@
           "title",
           "episode_count",
           "unplayed_count",
+          "in_watchlist",
           "added_at",
           "ratings"
         ],
@@ -5915,6 +5945,10 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "in_watchlist": {
+            "type": "boolean",
+            "description": "In the caller's watchlist (D73)."
           },
           "poster_path": {
             "type": [

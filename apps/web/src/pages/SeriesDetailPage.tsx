@@ -24,7 +24,7 @@ import {
 } from "../components/ui";
 import { ApiError, imageUrl, type Schemas } from "../lib/api";
 import { episodeCode, formatRuntime, progressRatio } from "../lib/format";
-import { episodeQuery, seasonQuery, seriesQuery, useSetPlayed } from "../lib/queries";
+import { seasonQuery, seriesQuery, useSetPlayed } from "../lib/queries";
 import { NotFoundPage } from "./NotFoundPage";
 
 function seasonLabel(t: TFunction, n: number) {
@@ -148,13 +148,6 @@ export function SeriesDetailPage() {
   // A disabled query stays pending: without a season there is nothing to wait for.
   const episodesPending = !!current && episodesQuery.isPending;
 
-  // Audio languages offered when downloading: those of the next (or first) episode.
-  const sampleEpisode = series?.up_next?.id ?? episodes?.[0]?.id;
-  const { data: sample } = useQuery({
-    ...episodeQuery(sampleEpisode ?? 0),
-    enabled: sampleEpisode !== undefined,
-  });
-
   if (isPending) {
     return (
       <Page className="mx-auto max-w-6xl px-4 pt-28 sm:px-10">
@@ -228,7 +221,7 @@ export function SeriesDetailPage() {
               {allPlayed ? t("detail.markUnwatched") : t("detail.markSeriesWatched")}
             </Button>
             <SeriesWatchlistButton series={series} />
-            <DownloadSeriesButton series={series} episodeFile={sample?.file} />
+            <DownloadSeriesButton series={series} />
             <IdentifyButton kind="series" id={seriesId} title={series.title} year={series.year} />
           </>
         }

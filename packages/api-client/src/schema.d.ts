@@ -1762,6 +1762,8 @@ export interface components {
             duration_ms?: number | null;
             /** Format: int64 */
             id: number;
+            /** @description In the caller's watchlist. */
+            in_watchlist: boolean;
             played: boolean;
             /**
              * Format: int64
@@ -1887,7 +1889,10 @@ export interface components {
             subtitle?: string | null;
         };
         Preferences: {
-            /** @description ISO 639-2 code (`fre`, `eng`…). `None`: the file's default track. */
+            /**
+             * @description ISO 639-2 code (`fre`, `eng`…), or `original`: the language the movie or series
+             *     was made in (D103). `None`: the file's default track.
+             */
             audio_language?: string | null;
             subtitle_language?: string | null;
             subtitle_mode: components["schemas"]["SubtitleMode"];
@@ -2079,6 +2084,8 @@ export interface components {
             episode_count: number;
             /** Format: int64 */
             id: number;
+            /** @description In the caller's watchlist (D73). */
+            in_watchlist: boolean;
             poster_path?: string | null;
             ratings: components["schemas"]["Rating"][];
             title: string;
@@ -3994,6 +4001,11 @@ export interface operations {
                 /** @description Default 50, max 200. */
                 limit?: number | null;
                 offset?: number | null;
+                /**
+                 * @description Only what the caller has watched (`true`) or not yet (`false`); everything when
+                 *     absent. A series counts as watched once all its episodes are.
+                 */
+                watched?: boolean | null;
             };
             header?: never;
             path?: never;
@@ -4238,6 +4250,11 @@ export interface operations {
                 /** @description Default 50, max 200. */
                 limit?: number | null;
                 offset?: number | null;
+                /**
+                 * @description Only what the caller has watched (`true`) or not yet (`false`); everything when
+                 *     absent. A series counts as watched once all its episodes are.
+                 */
+                watched?: boolean | null;
             };
             header?: never;
             path?: never;

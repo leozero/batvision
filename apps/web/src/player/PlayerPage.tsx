@@ -1,4 +1,5 @@
 import type { LocalPlayback } from "@batvision/bridge";
+import { defaultSubtitle, type TrackPreferences, trackLanguage } from "@batvision/core/languages";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useNavigate,
@@ -33,7 +34,13 @@ import { ApiError, api, call, type Schemas } from "../lib/api";
 import { formatBytes } from "../lib/bytes";
 import { desktop, localPlaybackQuery } from "../lib/desktop";
 import { episodeCode, formatClock, languageName, sameLanguage } from "../lib/format";
-import { episodeQuery, invalidateLibrary, movieQuery } from "../lib/queries";
+import {
+  episodeQuery,
+  invalidateLibrary,
+  meQuery,
+  movieQuery,
+  preferencesQuery,
+} from "../lib/queries";
 import { detectCapabilities } from "./capabilities";
 import {
   autoStep,
@@ -86,8 +93,12 @@ function localInfo(
   opts: StartOptions,
   restart: boolean | undefined,
   tracks: readonly LocalAudio[],
+  prefs: TrackPreferences | undefined,
+  language: string,
 ): Info {
-  const forced = local.subtitles.findIndex((s) => s.kind === "forced");
+  // The account's preferences when known (D103); offline before they were ever loaded,
+  // only a "forced" track.
+  const forced = defaultSubtitle(local.subtitles, local.audioLanguage, prefs, language);
   const chosen =
     opts.subtitle === undefined
       ? forced
@@ -201,6 +212,12 @@ export function PlayerPage() {
   const hlsRef = useRef<Hls | null>(null);
   const loadedUrl = useRef<string | null>(null);
   const localAudio = useRef<LocalAudio[]>([]);
+  const { data: me } = useQuery({ ...meQuery, enabled: !offlineRoute });
+  const { data: prefs } = useQuery({ ...preferencesQuery, enabled: !offlineRoute });
+  const prefsRef = useRef<TrackPreferences | undefined>(prefs);
+  prefsRef.current = prefs;
+  const trackLanguageRef = useRef("fre");
+  trackLanguageRef.current = trackLanguage(me?.language ?? i18n.language);
   const capabilities = useMemo(() => detectCapabilities(), []);
 
   const [info, setInfo] = useState<Info | null>(null);
@@ -241,6 +258,18 @@ export function PlayerPage() {
   const offset = info?.hls ? info.start_ms : 0;
   const duration = info?.duration_ms ?? 0;
   const timeRef = useRef(0);
+  // Touch screens: a tap shows the controls; a double tap on a side goes back or forward
+  // 10 s, again for each extra tap. A mouse keeps click to pause, double click for full screen.
+  const touchRef = useRef(false);
+  const lastTap = useRef<{ at: number; side: "left" | "right" | null; seeking: boolean }>({
+    at: 0,
+    side: null,
+    seeking: false,
+  });
+  const [seekFlash, setSeekFlash] = useState<{ side: "left" | "right"; total: number } | null>(
+    null,
+  );
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   timeRef.current = time;
   const infoRef = useRef<Info | null>(null);
   infoRef.current = info;
@@ -257,7 +286,16 @@ export function PlayerPage() {
       if (local) {
         // Same file (new subtitles): nothing reloads, so no `canplay` would end the spinner.
         if (loadedUrl.current !== local.url) setWaiting(true);
-        setInfo(localInfo(local, opts, restart, localAudio.current));
+        setInfo(
+          localInfo(
+            local,
+            opts,
+            restart,
+            localAudio.current,
+            prefsRef.current,
+            trackLanguageRef.current,
+          ),
+        );
         return;
       }
       setWaiting(true);
@@ -794,8 +832,36 @@ export function PlayerPage() {
         className="size-full"
         playsInline
         crossOrigin="anonymous"
-        onClick={togglePlay}
-        onDoubleClick={toggleFullscreen}
+        onPointerDown={(e) => {
+          touchRef.current = e.pointerType === "touch";
+        }}
+        onClick={(e) => {
+          if (!touchRef.current) {
+            togglePlay();
+            return;
+          }
+          const rect = e.currentTarget.getBoundingClientRect();
+          const x = (e.clientX - rect.left) / (rect.width || 1);
+          const side = x < 1 / 3 ? "left" : x > 2 / 3 ? "right" : null;
+          const now = Date.now();
+          const last = lastTap.current;
+          if (side && last.side === side && now - last.at < 350) {
+            seekTo(timeRef.current + (side === "left" ? -10_000 : 10_000));
+            setSeekFlash((f) => ({
+              side,
+              total: (f && f.side === side && last.seeking ? f.total : 0) + 10,
+            }));
+            if (flashTimer.current) clearTimeout(flashTimer.current);
+            flashTimer.current = setTimeout(() => setSeekFlash(null), 700);
+            lastTap.current = { at: now, side, seeking: true };
+            return;
+          }
+          lastTap.current = { at: now, side, seeking: false };
+          poke();
+        }}
+        onDoubleClick={() => {
+          if (!touchRef.current) toggleFullscreen();
+        }}
         onPlay={() => {
           setPlaying(true);
           poke();
@@ -821,6 +887,26 @@ export function PlayerPage() {
           <track key={info.subtitle_url} kind="subtitles" src={info.subtitle_url} default />
         ) : null}
       </video>
+
+      {seekFlash ? (
+        <div
+          data-testid="seek-flash"
+          className={cx(
+            "pointer-events-none absolute inset-y-0 flex w-1/3 items-center justify-center",
+            seekFlash.side === "left" ? "left-0" : "right-0",
+          )}
+        >
+          <span className="flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm font-semibold">
+            {seekFlash.side === "left" ? (
+              <RotateCcw className="size-4" />
+            ) : (
+              <RotateCw className="size-4" />
+            )}
+            {seekFlash.side === "left" ? "−" : "+"}
+            {seekFlash.total} s
+          </span>
+        </div>
+      ) : null}
 
       <AnimatePresence>
         {cue ? (

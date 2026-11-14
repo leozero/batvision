@@ -11,9 +11,10 @@ import {
   View,
 } from "react-native";
 import { UpdateBanner } from "../../components/UpdateBanner";
-import { EmptyState, Loading, Poster, Screen } from "../../components/ui";
+import { EmptyState, Loading, Poster, type PosterBadges, Screen } from "../../components/ui";
 import { HeaderButtons } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
+import { setMovieList } from "../../lib/browse";
 import { homeQuery } from "../../lib/queries";
 
 type Card = {
@@ -23,6 +24,7 @@ type Card = {
   subtitle?: string | null;
   poster?: string | null;
   progress?: number;
+  badges?: PosterBadges;
 };
 
 function Row({
@@ -56,8 +58,15 @@ function Row({
         contentContainerClassName="gap-3 px-4"
         renderItem={({ item }) => (
           <Link href={item.href as never} asChild>
-            <Pressable className="w-32 active:opacity-70">
-              <Poster uri={item.poster} progress={item.progress} />
+            <Pressable
+              className="w-32 active:opacity-70"
+              onPressIn={() =>
+                setMovieList(
+                  items.flatMap((i) => (i.badges?.kind === "movie" ? [i.badges.id] : [])),
+                )
+              }
+            >
+              <Poster uri={item.poster} progress={item.progress} badges={item.badges} />
               <Text numberOfLines={1} className="mt-2 text-sm font-medium text-fg">
                 {item.title}
               </Text>
@@ -125,6 +134,7 @@ export default function HomeScreen() {
             title: m.title,
             subtitle: m.year ? String(m.year) : null,
             poster: imageUrl(m.poster_path, "w342"),
+            badges: { kind: "movie", id: m.id, watched: m.played, inWatchlist: m.in_watchlist },
           }))}
         />
         <Row
@@ -136,6 +146,7 @@ export default function HomeScreen() {
             title: m.title,
             subtitle: m.year ? String(m.year) : null,
             poster: imageUrl(m.poster_path, "w342"),
+            badges: { kind: "movie", id: m.id, watched: m.played, inWatchlist: m.in_watchlist },
           }))}
         />
         <Row
@@ -146,6 +157,12 @@ export default function HomeScreen() {
             title: s.title,
             subtitle: s.year ? String(s.year) : null,
             poster: imageUrl(s.poster_path, "w342"),
+            badges: {
+              kind: "series",
+              id: s.id,
+              watched: s.episode_count > 0 && s.unplayed_count === 0,
+              inWatchlist: s.in_watchlist,
+            },
           }))}
         />
       </ScrollView>

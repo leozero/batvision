@@ -5,6 +5,8 @@ import {
   SORT_ORDERS,
   type SortDirection,
   type SortOrder,
+  WATCHED_FILTERS,
+  type WatchedFilter,
 } from "@batvision/core/sort";
 import { Link } from "expo-router";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react-native";
@@ -12,7 +14,8 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { FlatList, Pressable, RefreshControl, Text, useWindowDimensions, View } from "react-native";
 import type { Schemas } from "../lib/api";
-import { COLORS, EmptyState, Loading, Poster, Rating } from "./ui";
+import { setMovieList } from "../lib/browse";
+import { COLORS, EmptyState, Loading, Poster, type PosterBadges, Rating } from "./ui";
 import { HeaderButtons } from "./Watchlist";
 
 export type Sorting = { sort: SortOrder; direction: SortDirection };
@@ -25,6 +28,7 @@ export type CatalogItem = {
   poster?: string;
   progress?: number;
   ratings?: Schemas["Rating"][];
+  badges?: PosterBadges;
 };
 
 const SORT_LABEL: Record<SortOrder, string> = {
@@ -44,6 +48,8 @@ export function Catalog(props: {
   onEnd: () => void;
   sorting: Sorting;
   onSort: (sorting: Sorting) => void;
+  filter: WatchedFilter;
+  onFilter: (filter: WatchedFilter) => void;
   empty: string;
   header?: ReactNode;
 }) {
@@ -67,6 +73,27 @@ export function Catalog(props: {
           <View className="flex-row items-center justify-between">
             <Text className="text-2xl font-bold text-fg">{props.title}</Text>
             <HeaderButtons />
+          </View>
+          <View className="flex-row self-start rounded-full bg-surface-2 p-1">
+            {WATCHED_FILTERS.map((f) => {
+              const active = f === props.filter;
+              return (
+                <Pressable
+                  key={f}
+                  testID={`watched-${f}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => props.onFilter(f)}
+                  className={`rounded-full px-3 py-1.5 ${active ? "bg-accent" : ""}`}
+                >
+                  <Text
+                    className={`text-xs font-semibold ${active ? "text-accent-ink" : "text-muted"}`}
+                  >
+                    {t(`browse.watched.${f}`)}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
           <View className="flex-row flex-wrap gap-2">
             {SORT_ORDERS.map((s) => {
@@ -110,11 +137,29 @@ export function Catalog(props: {
           {props.header}
         </View>
       }
-      ListEmptyComponent={<EmptyState title={props.empty} />}
+      ListEmptyComponent={
+        <EmptyState
+          title={
+            props.filter === "unwatched"
+              ? t("browse.noneUnwatched")
+              : props.filter === "watched"
+                ? t("browse.noneWatched")
+                : props.empty
+          }
+        />
+      }
       renderItem={({ item }) => (
         <Link href={item.href as never} asChild>
-          <Pressable style={{ width: `${100 / columns - 3}%` }} className="active:opacity-70">
-            <Poster uri={item.poster} progress={item.progress} />
+          <Pressable
+            style={{ width: `${100 / columns - 3}%` }}
+            className="active:opacity-70"
+            onPressIn={() =>
+              setMovieList(
+                props.items.flatMap((i) => (i.badges?.kind === "movie" ? [i.badges.id] : [])),
+              )
+            }
+          >
+            <Poster uri={item.poster} progress={item.progress} badges={item.badges} />
             <Text numberOfLines={1} className="mt-1.5 text-xs font-medium text-fg">
               {item.title}
             </Text>

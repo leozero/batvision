@@ -1,13 +1,10 @@
-import { languageName } from "@batvision/core/format";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Bookmark, BookmarkCheck, Search } from "lucide-react-native";
-import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import type { Schemas } from "../lib/api";
-import { meQuery, preferencesQuery, useWatchlist } from "../lib/queries";
-import { ChoiceList, Sheet } from "./Sheet";
+import { meQuery, useWatchlist } from "../lib/queries";
 import { Button, COLORS, ErrorText } from "./ui";
 
 /** The magnifier at the top of Home, Movies and Series (search left the tab bar). */
@@ -57,81 +54,28 @@ export function HeaderButtons() {
   );
 }
 
-const same = (a: string, b: string) =>
-  a === b || (a === "fra" && b === "fre") || (a === "fre" && b === "fra");
-
-/** Adds a movie: with several audio languages, asks which one to download (D40). */
+/** Adds a movie in one tap: every audio track is downloaded (D40), the preferred
+ * language plays first. */
 export function MovieWatchlistButton({ movie }: { movie: Schemas["MovieDetail"] }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const watchlist = useWatchlist();
-  const { data: prefs } = useQuery(preferencesQuery);
-  const [open, setOpen] = useState(false);
-  const languages = [
-    ...new Set(
-      (movie.file?.media?.audio ?? []).map((a) => a.language).filter((l): l is string => !!l),
-    ),
-  ];
-  const preferred = languages.find((l) => prefs?.audio_language && same(l, prefs.audio_language));
-  const [audio, setAudio] = useState<string>("");
-  const add = (audioLanguage: string | null) =>
-    watchlist.mutate(
-      { kind: "movie", id: movie.id, add: true, audioLanguage },
-      { onSuccess: () => setOpen(false) },
-    );
-  if (movie.in_watchlist) {
-    return (
-      <Button
-        testID="watchlist"
-        loading={watchlist.isPending}
-        icon={<BookmarkCheck color={COLORS.accent} size={18} />}
-        onPress={() => watchlist.mutate({ kind: "movie", id: movie.id, add: false })}
-      >
-        {t("watchlist.inWatchlist")}
-      </Button>
-    );
-  }
   return (
     <>
       <Button
         testID="watchlist"
-        loading={watchlist.isPending && !open}
-        icon={<Bookmark color={COLORS.fg} size={18} />}
-        onPress={() => {
-          if (languages.length > 1) {
-            setAudio(preferred ?? "");
-            setOpen(true);
-          } else add(languages[0] ?? null);
-        }}
+        loading={watchlist.isPending}
+        icon={
+          movie.in_watchlist ? (
+            <BookmarkCheck color={COLORS.accent} size={18} />
+          ) : (
+            <Bookmark color={COLORS.fg} size={18} />
+          )
+        }
+        onPress={() => watchlist.mutate({ kind: "movie", id: movie.id, add: !movie.in_watchlist })}
       >
-        {t("watchlist.addLong")}
+        {movie.in_watchlist ? t("watchlist.inWatchlist") : t("watchlist.addLong")}
       </Button>
-      <Sheet
-        open={open}
-        onClose={() => setOpen(false)}
-        title={t("downloads.audioLanguage")}
-        description={t("watchlist.intro")}
-      >
-        <ChoiceList
-          value={audio}
-          onChange={setAudio}
-          options={[
-            { value: "", label: t("downloads.defaultTrack") },
-            ...languages.map((code) => ({
-              value: code,
-              label: languageName(code, i18n.language) ?? code,
-            })),
-          ]}
-        />
-        <ErrorText>{watchlist.error ? String(watchlist.error.message) : null}</ErrorText>
-        <Button
-          testID="watchlist-add"
-          variant="primary"
-          loading={watchlist.isPending}
-          onPress={() => add(audio || null)}
-        >
-          {t("watchlist.addLong")}
-        </Button>
-      </Sheet>
+      <ErrorText>{watchlist.error ? String(watchlist.error.message) : null}</ErrorText>
     </>
   );
 }

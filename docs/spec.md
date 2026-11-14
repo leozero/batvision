@@ -109,6 +109,9 @@ docs/
 - Matched items are **fetched from TMDB again every 30 days**, a few per scan, oldest first.
 - **Ratings** (D59): TMDB's average out of 10 for movies, series, seasons and episodes, hidden when fewer than 5 people voted (a season counts its episodes' votes). The API returns a list per source, so other sources can be added later. They show on posters, detail pages, the season picker and episode rows, and the movie and series pages can sort by rating.
 - **Sorting** (D75): the movie and series pages sort by date added, title, year or rating. Each sort has a natural direction (A to Z for titles, newest or best first for the others) that a button reverses; items without a year or rating stay last either way. The choice is remembered per page.
+- **Watched filter**: the movie and series pages show everything, only what's left to watch, or only what was watched (a series once all its episodes are). Remembered per page on the web.
+- **Poster marks**: watched (a check), in the watchlist (a bookmark), and downloaded on this computer or phone.
+- **Mobile**: on a movie page, a horizontal swipe goes to the previous or next movie of the list it was opened from.
 - **Top-rated movies** (D76): a home page rail with the 20 best-rated movies having at least 50 TMDB votes (fewer lets obscure titles in), watched ones included, and a link to the movies page sorted by rating.
 - **Sagas** (D101): movies TMDB groups into a collection (The Lord of the Rings, Back to the Future…) are grouped. A movie page links to its saga; the saga page shows its name, overview and backdrop, the library's movies of it in release order, and how many movies it has in all (released ones only: TMDB also lists announced movies). A Sagas page lists those with at least two movies in the library. The saga is read from the movie's TMDB details, so matched movies got theirs on the stale-metadata refresh after the update.
 
@@ -133,6 +136,8 @@ docs/
   - **Auto** (the default) starts where it settled last time on the device. It goes down after two stalls within a minute, a stall of 4 s, a stream that shows nothing for 10 s, or a measured throughput under 1.5 times the stream's bitrate. It goes back up, straight to the best level the throughput carries twice over, after 2 minutes without a stall and at most once every 5 minutes;
   - changing level restarts the session at the current position, like a seek: a device still uses a single encode.
 - Resume playback, "Continue watching", "Next up".
+- **How you watch** (D103): dubbed, original version with subtitles, or original version alone, chosen once in the preferences on any device; the detailed settings stay below. The original version is the language TMDB gives for the movie or series.
+- On touch screens, a double tap on the left or right third goes back or forward 10 s (again for each extra tap); a single tap shows the controls.
 - **Versions** (D102): a movie or episode can have several files (a 1080p and a 4K copy, a director's cut). Every video of a movie's folder is one, except parts (`CD2`); so is every copy of an episode. The detail and the playback session list them (resolution, codec, HDR, size, audio languages), largest first:
   - the largest plays by default; the player's quality menu offers the others when there are several, and switching restarts the session at the current position, with tracks picked again from the preferences;
   - the choice is remembered per user and item, on every device; picking the default again forgets it, so a larger file added later wins;

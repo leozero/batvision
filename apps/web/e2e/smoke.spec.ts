@@ -416,8 +416,8 @@ test("watchlist and series downloads show up for a download device", async ({ br
   // Movie → watchlist.
   await alice.goto("/movies");
   await alice.getByRole("link", { name: /^Heat/ }).first().click();
+  // One click: every audio track is downloaded, nothing to choose (D40).
   await alice.getByRole("button", { name: "Watchlist" }).click();
-  await alice.getByRole("button", { name: "Ajouter à la watchlist" }).click();
   await expect(alice.getByRole("button", { name: "Dans la watchlist" })).toBeVisible();
 
   // Series → next 2 episodes on the phone.
@@ -505,4 +505,22 @@ test("the watchlist page holds movies and series, and cancelling removes them", 
   await alice.getByRole("main").getByRole("link", { name: /^Dark/ }).hover();
   await alice.getByRole("button", { name: "Retirer Dark" }).click();
   await expect(alice.getByText("Votre watchlist est vide")).toBeVisible();
+});
+
+test("the account picks how you watch; the movies page filters what was watched", async () => {
+  await alice.goto("/account?tab=playback");
+  await alice.getByTestId("preset-original").click();
+  await expect(alice.getByTestId("preset-original")).toHaveAttribute("aria-pressed", "true");
+  await alice.reload();
+  await expect(alice.getByTestId("preset-original")).toHaveAttribute("aria-pressed", "true");
+  await alice.getByTestId("preset-dubbed").click();
+  await expect(alice.getByTestId("preset-dubbed")).toHaveAttribute("aria-pressed", "true");
+
+  await alice.goto("/movies");
+  await alice.getByTestId("watched-watched").click();
+  await expect(alice.getByTestId("watched-watched")).toHaveAttribute("aria-pressed", "true");
+  // Remembered on this page.
+  await alice.reload();
+  await expect(alice.getByTestId("watched-watched")).toHaveAttribute("aria-pressed", "true");
+  await alice.getByTestId("watched-all").click();
 });

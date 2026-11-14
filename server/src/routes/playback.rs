@@ -239,7 +239,13 @@ pub async fn start(
     } else {
         let prefs = crate::routes::home::load_preferences(&state, user.id).await?;
         let general = GeneralPreferences {
-            audio_language: prefs.audio_language.as_deref().and_then(normalize_language),
+            audio_language: playback::audio_for(
+                &state.db,
+                req.kind,
+                req.id,
+                prefs.audio_language.as_deref(),
+            )
+            .await?,
             subtitle_language: prefs
                 .subtitle_language
                 .as_deref()

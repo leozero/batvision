@@ -52,6 +52,32 @@ pub fn normalize_language(tag: &str) -> Option<String> {
     Some(code.to_owned())
 }
 
+/// Audio preference for "the language the movie or series was made in" (D103).
+pub const ORIGINAL: &str = "original";
+
+/// An audio preference made concrete for an item: `original` becomes the item's original
+/// language (its series' for an episode), `None` when unknown (the file's default track).
+pub async fn audio_for(
+    db: &crate::db::Db,
+    kind: crate::userdata::PlayableKind,
+    id: i64,
+    preference: Option<&str>,
+) -> sqlx::Result<Option<String>> {
+    if preference != Some(ORIGINAL) {
+        return Ok(preference.and_then(normalize_language));
+    }
+    let sql = match kind {
+        crate::userdata::PlayableKind::Movie => "SELECT original_language FROM movies WHERE id = ?",
+        crate::userdata::PlayableKind::Episode => {
+            "SELECT s.original_language FROM episodes e JOIN series s ON s.id = e.series_id
+             WHERE e.id = ?"
+        }
+    };
+    let language: Option<Option<String>> =
+        sqlx::query_scalar(sql).bind(id).fetch_optional(db).await?;
+    Ok(language.flatten())
+}
+
 fn same_language(a: Option<&str>, b: Option<&str>) -> bool {
     match (
         a.and_then(normalize_language),

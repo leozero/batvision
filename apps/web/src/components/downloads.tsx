@@ -1,55 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Bookmark, BookmarkCheck, Download } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { api, call, type Schemas } from "../lib/api";
 import { syncDesktop } from "../lib/desktop";
-import { languageName } from "../lib/format";
-import { devicesQuery, downloadsQuery, invalidateLibrary, preferencesQuery } from "../lib/queries";
+import { devicesQuery, downloadsQuery, invalidateLibrary } from "../lib/queries";
 import { errorText } from "../pages/account/AccountPage";
 import { Button, Dialog, ErrorText, Field, Select } from "./ui";
 
 type Profile = Schemas["Profile"];
-
-/** Distinct audio languages of a file, as ISO 639-2 codes. */
-export function audioLanguages(file: Schemas["FileInfo"] | null | undefined): string[] {
-  const langs = (file?.media?.audio ?? []).map((a) => a.language).filter((l): l is string => !!l);
-  return [...new Set(langs)];
-}
-
-function AudioSelect({
-  languages,
-  value,
-  onChange,
-}: {
-  languages: string[];
-  value: string;
-  onChange: (v: string) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  return (
-    <Field label={t("downloads.audioLanguage")}>
-      <Select value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{t("downloads.defaultTrack")}</option>
-        {languages.map((code) => (
-          <option key={code} value={code}>
-            {languageName(code, i18n.language) ?? code}
-          </option>
-        ))}
-      </Select>
-    </Field>
-  );
-}
-
-/** Default audio choice: the preferred language if the file has it. */
-function useDefaultAudio(languages: string[]) {
-  const { data: prefs } = useQuery(preferencesQuery);
-  const preferred = prefs?.audio_language ?? "";
-  const same = (a: string, b: string) =>
-    a === b || (a === "fra" && b === "fre") || (a === "fre" && b === "fra");
-  return languages.find((l) => preferred && same(l, preferred)) ?? "";
-}
 
 function ProfileSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const { t } = useTranslation();
@@ -88,73 +48,45 @@ function NoDevice() {
   );
 }
 
-/** Adds a movie to the watchlist (auto-downloaded on devices that allow it). */
+/** Adds a movie to the watchlist (auto-downloaded on devices that allow it). Every audio
+ * track is downloaded (D40): the preferred language plays first, nothing to choose. */
 export function WatchlistButton({ movie }: { movie: Schemas["MovieDetail"] }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const languages = useMemo(() => audioLanguages(movie.file), [movie.file]);
-  const preferred = useDefaultAudio(languages);
-  const [open, setOpen] = useState(false);
-  const [audio, setAudio] = useState<string | null>(null);
   const refresh = () => {
     syncDesktop();
     invalidateLibrary(qc);
     void qc.invalidateQueries({ queryKey: ["watchlist"] });
     void qc.invalidateQueries({ queryKey: downloadsQuery.queryKey });
   };
-  const add = useMutation({
-    mutationFn: () =>
-      call(
-        api.PUT("/api/watchlist/{movie_id}", {
-          params: { path: { movie_id: movie.id } },
-          body: { audio_language: (audio ?? preferred) || null },
-        }),
-      ),
-    onSuccess: () => {
-      setOpen(false);
-      refresh();
+  const toggle = useMutation({
+    mutationFn: () => {
+      const params = { params: { path: { movie_id: movie.id } } };
+      return call(
+        movie.in_watchlist
+          ? api.DELETE("/api/watchlist/{movie_id}", params)
+          : api.PUT("/api/watchlist/{movie_id}", { ...params, body: { audio_language: null } }),
+      );
     },
-  });
-  const remove = useMutation({
-    mutationFn: () =>
-      call(api.DELETE("/api/watchlist/{movie_id}", { params: { path: { movie_id: movie.id } } })),
     onSuccess: refresh,
   });
-
-  if (movie.in_watchlist) {
-    return (
-      <Button size="lg" variant="ghost" onClick={() => remove.mutate()} loading={remove.isPending}>
-        <BookmarkCheck className="size-5 text-accent" />
-        {t("watchlist.inWatchlist")}
-      </Button>
-    );
-  }
   return (
     <>
-      <Button size="lg" variant="ghost" onClick={() => setOpen(true)}>
-        <Bookmark className="size-5" />
-        {t("watchlist.add")}
-      </Button>
-      <Dialog
-        open={open}
-        onOpenChange={setOpen}
-        title={t("watchlist.addLong")}
-        description={t("watchlist.intro")}
+      <Button
+        size="lg"
+        variant="ghost"
+        onClick={() => toggle.mutate()}
+        loading={toggle.isPending}
+        aria-pressed={movie.in_watchlist}
       >
-        <form
-          className="flex flex-col gap-4"
-          onSubmit={(e: FormEvent) => {
-            e.preventDefault();
-            add.mutate();
-          }}
-        >
-          <AudioSelect languages={languages} value={audio ?? preferred} onChange={setAudio} />
-          <ErrorText>{add.error ? errorText(t, add.error) : null}</ErrorText>
-          <Button type="submit" variant="primary" loading={add.isPending}>
-            {t("watchlist.addLong")}
-          </Button>
-        </form>
-      </Dialog>
+        {movie.in_watchlist ? (
+          <BookmarkCheck className="size-5 text-accent" />
+        ) : (
+          <Bookmark className="size-5" />
+        )}
+        {movie.in_watchlist ? t("watchlist.inWatchlist") : t("watchlist.add")}
+      </Button>
+      {toggle.error ? <ErrorText>{errorText(t, toggle.error)}</ErrorText> : null}
     </>
   );
 }
@@ -204,11 +136,8 @@ export function DownloadMovieButton({ movie }: { movie: Schemas["MovieDetail"] }
   const { data: overview } = useQuery(downloadsQuery);
   const devices = overview?.devices ?? [];
   const current = useCurrentDeviceId();
-  const languages = useMemo(() => audioLanguages(movie.file), [movie.file]);
-  const preferred = useDefaultAudio(languages);
   const [open, setOpen] = useState(false);
   const [device, setDevice] = useState<number | null>(null);
-  const [audio, setAudio] = useState<string | null>(null);
   const [profile, setProfile] = useState("");
   const deviceId = device ?? defaultDevice(devices, current);
   const add = useMutation({
@@ -220,7 +149,7 @@ export function DownloadMovieButton({ movie }: { movie: Schemas["MovieDetail"] }
             kind: "movie",
             id: movie.id,
             profile: (profile || null) as Profile | null,
-            audio_language: (audio ?? preferred) || null,
+            audio_language: null,
           },
         }),
       ),
@@ -248,7 +177,6 @@ export function DownloadMovieButton({ movie }: { movie: Schemas["MovieDetail"] }
             }}
           >
             <DeviceSelect devices={devices} value={deviceId} onChange={setDevice} />
-            <AudioSelect languages={languages} value={audio ?? preferred} onChange={setAudio} />
             <ProfileSelect value={profile} onChange={setProfile} />
             <ErrorText>{add.error ? errorText(t, add.error) : null}</ErrorText>
             <Button type="submit" variant="primary" loading={add.isPending}>
@@ -285,27 +213,18 @@ function DeviceSelect({
 }
 
 /** Downloads a series on a device: the next X unwatched episodes, or one season. */
-export function DownloadSeriesButton({
-  series,
-  episodeFile,
-}: {
-  series: Schemas["SeriesDetail"];
-  episodeFile: Schemas["FileInfo"] | null | undefined;
-}) {
+export function DownloadSeriesButton({ series }: { series: Schemas["SeriesDetail"] }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { data: overview } = useQuery(downloadsQuery);
   const devices = overview?.devices ?? [];
   const current = useCurrentDeviceId();
-  const languages = useMemo(() => audioLanguages(episodeFile), [episodeFile]);
-  const preferred = useDefaultAudio(languages);
   const seasons = series.seasons;
   const [open, setOpen] = useState(false);
   const [device, setDevice] = useState<number | null>(null);
   const [mode, setMode] = useState<"rolling" | "season">("rolling");
   const [count, setCount] = useState(3);
   const [season, setSeason] = useState<number | null>(null);
-  const [audio, setAudio] = useState<string | null>(null);
   const [profile, setProfile] = useState("");
   const deviceId = device ?? defaultDevice(devices, current);
   const seasonNumber = season ?? seasons.find((s) => s.season_number > 0)?.season_number ?? 1;
@@ -320,7 +239,7 @@ export function DownloadSeriesButton({
             count: mode === "rolling" ? count : null,
             season_number: mode === "season" ? seasonNumber : null,
             profile: (profile || null) as Profile | null,
-            audio_language: (audio ?? preferred) || null,
+            audio_language: null,
           },
         }),
       ),
@@ -385,7 +304,6 @@ export function DownloadSeriesButton({
                 </Select>
               </Field>
             )}
-            <AudioSelect languages={languages} value={audio ?? preferred} onChange={setAudio} />
             <ProfileSelect value={profile} onChange={setProfile} />
             <div className="sm:col-span-2">
               {subscribed.length ? (

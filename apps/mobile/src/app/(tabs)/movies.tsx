@@ -1,4 +1,4 @@
-import { parseSort } from "@batvision/core/sort";
+import { parseSort, type WatchedFilter } from "@batvision/core/sort";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
@@ -16,7 +16,8 @@ export default function Movies() {
   useEffect(() => {
     if (linked) setSorting(parseSort(linked, null));
   }, [linked]);
-  const q = useInfiniteQuery(moviesQuery(sorting.sort, sorting.direction));
+  const [filter, setFilter] = useState<WatchedFilter>("all");
+  const q = useInfiniteQuery(moviesQuery(sorting.sort, sorting.direction, filter));
   const items = (q.data?.pages ?? [])
     .flatMap((p) => p.items)
     .map((m) => ({
@@ -27,6 +28,7 @@ export default function Movies() {
       poster: imageUrl(m.poster_path, "w342"),
       progress: m.duration_ms && m.position_ms ? m.position_ms / m.duration_ms : undefined,
       ratings: m.ratings,
+      badges: { kind: "movie" as const, id: m.id, watched: m.played, inWatchlist: m.in_watchlist },
     }));
   return (
     <Screen>
@@ -39,6 +41,8 @@ export default function Movies() {
         onEnd={() => q.hasNextPage && !q.isFetchingNextPage && void q.fetchNextPage()}
         sorting={sorting}
         onSort={setSorting}
+        filter={filter}
+        onFilter={setFilter}
         empty={t("browse.noMovies")}
       />
     </Screen>
