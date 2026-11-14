@@ -21,6 +21,7 @@ import { SeriesWatchlistButton } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { seasonQuery, seriesQuery, useManualDownload, useSubscribe } from "../../lib/queries";
 import { session } from "../../lib/session";
+import { useLocalItem } from "../../lib/sync";
 
 const ROLLING = 5;
 
@@ -28,6 +29,8 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
   const { t } = useTranslation();
   const download = useManualDownload();
   const [requested, setRequested] = useState(false);
+  // Already on this phone, or on its way: the mark next to the rating says so.
+  const local = useLocalItem("episode", e.id);
   const progress = e.duration_ms && e.position_ms && !e.played ? e.position_ms / e.duration_ms : 0;
   return (
     <View className="flex-row gap-3 py-3">
@@ -64,24 +67,26 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
           {e.played ? <WatchedMark /> : null}
           <LocalMark kind="episode" id={e.id} />
         </View>
-        <Pressable
-          testID={`download-episode-${e.id}`}
-          accessibilityRole="button"
-          accessibilityLabel={t("mobile.downloadHere")}
-          hitSlop={8}
-          disabled={requested}
-          onPress={() => {
-            const deviceId = session().deviceId;
-            if (deviceId != null)
-              download.mutate(
-                { device_id: deviceId, kind: "episode", id: e.id },
-                { onSuccess: () => setRequested(true) },
-              );
-          }}
-          className="self-start"
-        >
-          <Download color={requested ? COLORS.faint : COLORS.muted} size={18} />
-        </Pressable>
+        {local ? null : (
+          <Pressable
+            testID={`download-episode-${e.id}`}
+            accessibilityRole="button"
+            accessibilityLabel={t("mobile.downloadHere")}
+            hitSlop={8}
+            disabled={requested}
+            onPress={() => {
+              const deviceId = session().deviceId;
+              if (deviceId != null)
+                download.mutate(
+                  { device_id: deviceId, kind: "episode", id: e.id },
+                  { onSuccess: () => setRequested(true) },
+                );
+            }}
+            className="self-start"
+          >
+            <Download color={requested ? COLORS.faint : COLORS.muted} size={18} />
+          </Pressable>
+        )}
       </View>
     </View>
   );
