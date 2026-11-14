@@ -31,12 +31,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Video, {
-  type ISO639_1,
-  SelectedTrackType,
-  TextTrackType,
-  type VideoRef,
-} from "react-native-video";
+import Video, { SelectedTrackType, type VideoRef } from "react-native-video";
 import { COLORS } from "../../../components/ui";
 import { ApiError, api, call, type Schemas, Unreachable } from "../../../lib/api";
 import {
@@ -99,18 +94,25 @@ export default function Player() {
   const [localSubtitle, setLocalSubtitle] = useState<number | null>(() =>
     local?.subtitles.length ? 0 : null,
   );
-  // iOS rebuilds a video with side-loaded subtitles keeping only its first audio track:
-  // a downloaded copy's subtitles are drawn here instead.
-  const drawSubtitles = Platform.OS === "ios" && local !== null;
+  // Subtitles are drawn here, from their WebVTT file, rather than by react-native-video:
+  // given side-loaded subtitles, iOS keeps only the first audio track of the video, and
+  // Android shows nothing.
   const [cues, setCues] = useState<Cue[]>([]);
-  const subtitleUrl =
-    drawSubtitles && localSubtitle !== null ? local?.subtitles[localSubtitle]?.url : undefined;
+  const subtitleUrl = local
+    ? localSubtitle !== null
+      ? local.subtitles[localSubtitle]?.url
+      : undefined
+    : info?.subtitle_url
+      ? absolute(info.subtitle_url)
+      : undefined;
   useEffect(() => {
     setCues([]);
     if (!subtitleUrl) return;
     let current = true;
-    new File(subtitleUrl)
-      .text()
+    (subtitleUrl.startsWith("file:")
+      ? new File(subtitleUrl).text()
+      : fetch(subtitleUrl).then((r) => (r.ok ? r.text() : Promise.reject(new Error(r.statusText))))
+    )
       .then((vtt) => current && setCues(parseWebVtt(vtt)))
       .catch(() => {});
     return () => {
@@ -343,37 +345,15 @@ export default function Player() {
   const source = useMemo(
     () =>
       local
-        ? {
-            uri: local.url,
-            startPosition: local.positionMs,
-            textTracks: (drawSubtitles ? [] : local.subtitles).map((s, i) => ({
-              title: s.language ?? `sub ${i}`,
-              language: (s.language ?? "und") as ISO639_1,
-              type: TextTrackType.VTT,
-              uri: s.url,
-            })),
-          }
+        ? { uri: local.url, startPosition: local.positionMs }
         : info
           ? {
               uri: absolute(info.url),
               type: info.hls ? "m3u8" : undefined,
               startPosition: info.hls ? 0 : info.start_ms,
-              // iOS: the subtitle is listed inside the HLS stream (D88).
-              inStream: Boolean(info.hls && info.subtitle_url && Platform.OS === "ios"),
-              textTracks:
-                info.subtitle_url && !(info.hls && Platform.OS === "ios")
-                  ? [
-                      {
-                        title: "sub",
-                        language: "und" as ISO639_1,
-                        type: TextTrackType.VTT,
-                        uri: absolute(info.subtitle_url),
-                      },
-                    ]
-                  : [],
             }
           : null,
-    [local, info, drawSubtitles],
+    [local, info],
   );
 
   const title = local
@@ -412,6 +392,8 @@ export default function Player() {
   const languageLabel = (code: string | null | undefined) =>
     languageName(code, i18n.language) ?? t("player.unknownLanguage");
   const position = positionRef.current / 1000;
+  // A transcode's subtitles are shifted to its start, like its stream.
+  const streamTime = (positionRef.current - offset) / 1000;
   const nextId = local ? local.nextEpisodeId : info?.next_episode_id;
 
   return (
@@ -434,17 +416,10 @@ export default function Player() {
               ? { type: SelectedTrackType.INDEX, value: localAudioIndex }
               : undefined
           }
-          selectedTextTrack={
-            local
-              ? localSubtitle === null || drawSubtitles
-                ? { type: SelectedTrackType.DISABLED }
-                : { type: SelectedTrackType.INDEX, value: localSubtitle }
-              : source.textTracks.length || ("inStream" in source && source.inStream)
-                ? { type: SelectedTrackType.INDEX, value: 0 }
-                : { type: SelectedTrackType.DISABLED }
-          }
-          // Drawn subtitles (iOS downloads) follow the clock: a quarter second keeps them in step.
-          progressUpdateInterval={drawSubtitles ? 250 : 500}
+          // Subtitles are drawn over the video (see `cues`), never by the player itself.
+          selectedTextTrack={{ type: SelectedTrackType.DISABLED }}
+          // Drawn subtitles follow the clock: a quarter second keeps them in step.
+          progressUpdateInterval={250}
           onLoad={(data) => {
             if (local) {
               const tracks = (data.audioTracks ?? []).map((a) => ({
@@ -488,19 +463,6 @@ export default function Player() {
           }}
           onError={() => setError(t("player.error"))}
         />
-      ) : null}
-
-      {drawSubtitles && cueAt(cues, position) ? (
-        <View
-          testID="subtitle-cue"
-          pointerEvents="none"
-          className="absolute inset-x-0 items-center px-8"
-          style={{ bottom: insets.bottom + 32 }}
-        >
-          <Text className="rounded-md bg-black/60 px-2 py-1 text-center text-lg text-white">
-            {cueAt(cues, position)}
-          </Text>
-        </View>
       ) : null}
 
       <Pressable
@@ -675,6 +637,24 @@ export default function Player() {
               <Text className="text-xs text-fg">{duration ? formatClock(duration) : ""}</Text>
             </View>
           </View>
+        </View>
+      ) : null}
+
+      {/* Over the controls, undimmed: under another layer, iOS also hides it from accessibility. */}
+      {cueAt(cues, streamTime) ? (
+        <View
+          // box-none, not none: iOS leaves untouchable views out of the accessibility tree.
+          pointerEvents="box-none"
+          className="absolute inset-x-0 items-center px-8"
+          // Above the seek bar while the controls show.
+          style={{ bottom: insets.bottom + (controls ? 112 : 32) }}
+        >
+          <Text
+            testID="subtitle-cue"
+            className="rounded-md bg-black/60 px-2 py-1 text-center text-lg text-white"
+          >
+            {cueAt(cues, streamTime)}
+          </Text>
         </View>
       ) : null}
 

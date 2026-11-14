@@ -39,7 +39,8 @@ export class TestServer {
     ]);
     writeFileSync(
       join(dirname(movie), "Test Movie (2020).fr.srt"),
-      "1\n00:00:00,500 --> 00:00:05,000\nBonjour depuis le disque\n",
+      // Long enough for the mobile players to show it once they've started.
+      "1\n00:00:00,500 --> 00:01:00,000\nBonjour depuis le disque\n",
     );
     execFileSync(
       "cargo",

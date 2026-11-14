@@ -18,6 +18,11 @@ appId: ${APP_ID}
     notVisible:
       id: player-loading
     timeout: 15000
+# The copy's subtitle shows, drawn by the app (react-native-video shows none on Android).
+- extendedWaitUntil:
+    visible:
+      text: "Bonjour depuis le disque"
+    timeout: 15000
 # Paused, then 70 s in: past the 60 s resume threshold, before 90 % (watched) (D36).
 - tapOn:
     id: play-pause
