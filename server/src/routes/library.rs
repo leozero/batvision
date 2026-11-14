@@ -329,6 +329,47 @@ pub struct IdentifyRequest {
     pub tmdb_id: i64,
 }
 
+/// Where an item comes from on disk, to tell what it really is before identifying it.
+#[derive(Serialize, ToSchema)]
+pub struct ItemSource {
+    /// Paths relative to the media folder: a movie's files, or a series' folder.
+    pub paths: Vec<String>,
+}
+
+#[utoipa::path(get, path = "/api/admin/movies/{id}/source", tag = "admin",
+    security(("bearer" = [])), params(("id" = i64, Path)),
+    responses((status = 200, body = ItemSource)))]
+pub async fn movie_source(
+    State(state): State<AppState>,
+    _: Admin,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<ItemSource>> {
+    let paths = sqlx::query_scalar(
+        "SELECT path FROM media_files WHERE item_kind = 'movie' AND item_id = ?
+           AND missing_since IS NULL ORDER BY size_bytes DESC",
+    )
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
+    Ok(Json(ItemSource { paths }))
+}
+
+#[utoipa::path(get, path = "/api/admin/series/{id}/source", tag = "admin",
+    security(("bearer" = [])), params(("id" = i64, Path)),
+    responses((status = 200, body = ItemSource), (status = 404, body = crate::error::ErrorBody)))]
+pub async fn series_source(
+    State(state): State<AppState>,
+    _: Admin,
+    Path(id): Path<i64>,
+) -> ApiResult<Json<ItemSource>> {
+    let path: String = sqlx::query_scalar("SELECT source_path FROM series WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(ApiError::NotFound)?;
+    Ok(Json(ItemSource { paths: vec![path] }))
+}
+
 /// Pins a movie to a TMDB id. Later scans never override a manual identification.
 #[utoipa::path(post, path = "/api/admin/movies/{id}/identify", tag = "admin",
     security(("bearer" = [])), params(("id" = i64, Path)), request_body = IdentifyRequest,

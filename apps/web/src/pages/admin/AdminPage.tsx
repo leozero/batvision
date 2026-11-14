@@ -42,6 +42,7 @@ import {
   meQuery,
   scansQuery,
   systemQuery,
+  trickplayAdminQuery,
   usersQuery,
 } from "../../lib/queries";
 import { Card, errorText } from "../account/AccountPage";
@@ -88,6 +89,7 @@ export function AdminPage() {
         </TabPanel>
         <TabPanel value="encodes" className="space-y-6">
           <EncodesCard />
+          <TrickplayCard />
         </TabPanel>
         <TabPanel value="system" className="space-y-6">
           <SystemCard />
@@ -519,6 +521,96 @@ function SystemCard() {
               : t("admin.gpuMissing")}
         </dd>
       </dl>
+    </Card>
+  );
+}
+
+/** Timeline thumbnails (D99): how many videos have them, and batches for the rest. */
+function TrickplayCard() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { data } = useQuery(trickplayAdminQuery);
+  const [size, setSize] = useState("50");
+  const refresh = () => qc.invalidateQueries({ queryKey: trickplayAdminQuery.queryKey });
+  const generate = useMutation({
+    mutationFn: (count: number | null) =>
+      call(api.POST("/api/admin/trickplay/generate", { body: { count } })),
+    onSuccess: refresh,
+  });
+  const stop = useMutation({
+    mutationFn: () => call(api.DELETE("/api/admin/trickplay/queue")),
+    onSuccess: refresh,
+  });
+  const batch = Math.max(1, Math.floor(Number(size) || 0));
+  const busy = !!data && (data.waiting > 0 || !!data.current);
+  return (
+    <Card title={t("admin.trickplay")} description={t("admin.trickplayHint")}>
+      {data ? (
+        <div className="space-y-4">
+          <div>
+            <div className="mb-1.5 flex flex-wrap justify-between gap-x-4 text-xs text-muted">
+              <span>{t("admin.trickplayReady", { count: data.ready, videos: data.videos })}</span>
+              {data.unavailable ? (
+                <span>{t("admin.trickplayUnavailable", { count: data.unavailable })}</span>
+              ) : null}
+            </div>
+            <ProgressBar value={data.videos ? data.ready / data.videos : 0} />
+          </div>
+          {busy ? (
+            <div className="flex items-center gap-3 text-sm">
+              <Spinner className="size-4" />
+              <div className="min-w-0 flex-1">
+                {data.current ? (
+                  <p className="truncate font-mono text-xs">
+                    {t("admin.trickplayCurrent", { file: data.current })}
+                  </p>
+                ) : null}
+                <p className="text-xs text-faint">
+                  {t("admin.trickplayWaiting", { count: data.waiting })}
+                </p>
+              </div>
+              {data.waiting ? (
+                <Button size="sm" variant="ghost" onClick={() => stop.mutate()}>
+                  {t("admin.trickplayStop")}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {data.missing ? (
+            <div className="flex flex-wrap items-end gap-3">
+              <Field label={t("admin.trickplayBatch")}>
+                <Input
+                  type="number"
+                  min={1}
+                  value={size}
+                  onChange={(e) => setSize(e.target.value)}
+                  className="w-28"
+                />
+              </Field>
+              <Button
+                variant="primary"
+                loading={generate.isPending && generate.variables !== null}
+                onClick={() => generate.mutate(Math.min(batch, data.missing))}
+              >
+                {t("admin.trickplayGenerate", { count: Math.min(batch, data.missing) })}
+              </Button>
+              <Button
+                loading={generate.isPending && generate.variables === null}
+                onClick={() => generate.mutate(null)}
+              >
+                {t("admin.trickplayAll", { count: data.missing })}
+              </Button>
+            </div>
+          ) : !busy ? (
+            <p className="text-sm text-muted">{t("admin.trickplayDone")}</p>
+          ) : null}
+          {generate.error || stop.error ? (
+            <ErrorText>{errorText(t, generate.error ?? stop.error)}</ErrorText>
+          ) : null}
+        </div>
+      ) : (
+        <Spinner />
+      )}
     </Card>
   );
 }

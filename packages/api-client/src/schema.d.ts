@@ -153,6 +153,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/movies/{id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["movie_source"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/scans": {
         parameters: {
             query?: never;
@@ -181,6 +197,75 @@ export interface paths {
         /** Pins a series to a TMDB id and refetches its seasons and episodes. */
         post: operations["identify_series"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/series/{id}/source": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["series_source"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/trickplay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["trickplay_overview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/trickplay/generate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Makes the missing timeline thumbnails in the background, one file at a time, after
+         *     what players wait for.
+         */
+        post: operations["generate_trickplay"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/trickplay/queue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Stops the batches: the files still waiting are dropped, the one being made finishes. */
+        delete: operations["stop_trickplay"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1478,6 +1563,13 @@ export interface components {
             /** Format: int64 */
             size_bytes: number;
         };
+        GenerateTrickplay: {
+            /**
+             * Format: int64
+             * @description How many files to queue, newest first; all the missing ones when absent.
+             */
+            count?: number | null;
+        };
         Health: {
             status: string;
             version: string;
@@ -1545,6 +1637,11 @@ export interface components {
             /** Format: int64 */
             id: number;
             kind: components["schemas"]["PlayableKind"];
+        };
+        /** @description Where an item comes from on disk, to tell what it really is before identifying it. */
+        ItemSource: {
+            /** @description Paths relative to the media folder: a movie's files, or a series' folder. */
+            paths: string[];
         };
         Library: {
             /** Format: int64 */
@@ -2144,6 +2241,34 @@ export interface components {
             /** Format: int64 */
             width: number;
         };
+        /** @description Timeline thumbnails across the library (one file per movie or episode). */
+        TrickplayOverview: {
+            /** @description The file being made, relative to the media folder. */
+            current?: string | null;
+            /**
+             * Format: int64
+             * @description Not made yet, or made for an older version of the file.
+             */
+            missing: number;
+            /** Format: int64 */
+            ready: number;
+            /**
+             * Format: int64
+             * @description No video, or ffmpeg failed on them.
+             */
+            unavailable: number;
+            /** Format: int64 */
+            videos: number;
+            /**
+             * Format: int64
+             * @description Files waiting in the queue.
+             */
+            waiting: number;
+        };
+        TrickplayQueued: {
+            /** Format: int64 */
+            queued: number;
+        };
         /** @enum {string} */
         TrickplayStatus: "ready" | "pending" | "unavailable";
         UpdateMeRequest: {
@@ -2519,6 +2644,27 @@ export interface operations {
             };
         };
     };
+    movie_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemSource"];
+                };
+            };
+        };
+    };
     list_scans: {
         parameters: {
             query?: never;
@@ -2566,6 +2712,94 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
                 };
+            };
+        };
+    };
+    series_source: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ItemSource"];
+                };
+            };
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    trickplay_overview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrickplayOverview"];
+                };
+            };
+        };
+    };
+    generate_trickplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GenerateTrickplay"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrickplayQueued"];
+                };
+            };
+        };
+    };
+    stop_trickplay: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

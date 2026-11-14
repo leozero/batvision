@@ -92,6 +92,27 @@ test("admin adds libraries and the scan fills the catalog", async () => {
   await expect(page.getByRole("link", { name: "Lecture", exact: true })).toBeVisible();
 });
 
+test("identifying a movie shows its file", async () => {
+  await page.goto("/movies");
+  await page.getByRole("link", { name: /^Heat/ }).first().click();
+  await page.getByRole("button", { name: "Identifier" }).click();
+  await expect(page.getByText("Movies/Heat (1995)/Heat (1995).mkv")).toBeVisible();
+  await page.keyboard.press("Escape");
+});
+
+test("the admin makes the missing timeline thumbnails in a batch", async () => {
+  await page.goto("/admin?tab=encodes");
+  await expect(page.getByText("Vignettes de la timeline")).toBeVisible();
+  // Heat is the only analyzed video (the others are fake files).
+  await expect(page.getByText("0 vidéo sur 1 a ses vignettes")).toBeVisible();
+  await page.getByLabel("Taille du lot").fill("5");
+  await page.getByRole("button", { name: "Générer la suivante" }).click();
+  await expect(page.getByText("Toutes les vidéos ont leurs vignettes.")).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByText("1 vidéo sur 1 a ses vignettes")).toBeVisible();
+});
+
 test("series page lists episodes and marks them watched", async () => {
   await page.goto("/series");
   await page.getByRole("link", { name: /^Dark/ }).first().click();

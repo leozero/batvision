@@ -777,3 +777,112 @@ async fn timeline_thumbnails_are_made_on_first_request() {
     let (status, _) = f.app.get(&url.replace("/0.jpg", "x/0.jpg"), None).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn admins_make_the_missing_thumbnails_in_batches() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    make_video(f.media.path(), "Films/One (2020)/One.mp4", "aac");
+    make_video(f.media.path(), "Films/Two (2021)/Two.mp4", "aac");
+    f.library("movies", "Films").await;
+    let overview = f.get("/api/admin/trickplay").await;
+    assert_eq!(
+        (
+            &overview["videos"],
+            &overview["ready"],
+            &overview["missing"]
+        ),
+        (&json!(2), &json!(0), &json!(2))
+    );
+
+    // Queued, then stopped before the worker starts: nothing is left waiting.
+    let (_, body) = f
+        .app
+        .post("/api/admin/trickplay/generate", Some(&f.admin), json!({}))
+        .await;
+    assert_eq!(body["queued"], 2);
+    assert_eq!(f.get("/api/admin/trickplay").await["waiting"], 2);
+    let (status, _) = f
+        .app
+        .request(
+            Method::DELETE,
+            "/api/admin/trickplay/queue",
+            Some(&f.admin),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    assert_eq!(f.get("/api/admin/trickplay").await["waiting"], 0);
+
+    // A batch of one, then the rest.
+    f.app.state.trickplay.clone().spawn();
+    let wait_ready = |ready: i64| {
+        let f = &f;
+        async move {
+            for _ in 0..300 {
+                let o = f.get("/api/admin/trickplay").await;
+                if o["ready"] == ready && o["waiting"] == 0 && o["current"].is_null() {
+                    return o;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            panic!("thumbnails not made");
+        }
+    };
+    let (_, body) = f
+        .app
+        .post(
+            "/api/admin/trickplay/generate",
+            Some(&f.admin),
+            json!({ "count": 1 }),
+        )
+        .await;
+    assert_eq!(body["queued"], 1);
+    assert_eq!(wait_ready(1).await["missing"], 1);
+    let (_, body) = f
+        .app
+        .post("/api/admin/trickplay/generate", Some(&f.admin), json!({}))
+        .await;
+    assert_eq!(body["queued"], 1, "only what's missing");
+    assert_eq!(wait_ready(2).await["missing"], 0);
+
+    // Administrators only.
+    let (status, _) = f.app.get("/api/admin/trickplay", None).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn admins_see_where_an_item_comes_from_before_identifying_it() {
+    let f = fixture().await;
+    touch(
+        f.media.path(),
+        "Films/Wrong Name (2020)/Wrong.Name.2020.1080p.mkv",
+    );
+    touch(
+        f.media.path(),
+        "Shows/Some Show/Season 01/Some Show - S01E01.mkv",
+    );
+    f.library("movies", "Films").await;
+    f.library("series", "Shows").await;
+    let movie = f.get("/api/movies").await["items"][0]["id"]
+        .as_i64()
+        .unwrap();
+    let series = f.get("/api/series").await["items"][0]["id"]
+        .as_i64()
+        .unwrap();
+    assert_eq!(
+        f.get(&format!("/api/admin/movies/{movie}/source")).await["paths"],
+        json!(["Films/Wrong Name (2020)/Wrong.Name.2020.1080p.mkv"])
+    );
+    assert_eq!(
+        f.get(&format!("/api/admin/series/{series}/source")).await["paths"],
+        json!(["Shows/Some Show"])
+    );
+    let (status, _) = f
+        .app
+        .get(&format!("/api/admin/movies/{movie}/source"), None)
+        .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

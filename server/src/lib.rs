@@ -80,6 +80,8 @@ use crate::{
         routes::library::search_metadata,
         routes::library::identify_movie,
         routes::library::identify_series,
+        routes::library::movie_source,
+        routes::library::series_source,
         routes::library::libraries,
         routes::library::movies,
         routes::library::movie,
@@ -100,6 +102,9 @@ use crate::{
         routes::playback::stop,
         routes::playback::trickplay,
         routes::playback::trickplay_sheet,
+        routes::playback::trickplay_overview,
+        routes::playback::generate_trickplay,
+        routes::playback::stop_trickplay,
         routes::playback::stream,
         routes::playback::subtitle,
         routes::playback::hls,
@@ -302,6 +307,8 @@ pub fn app(state: AppState) -> Router {
         .route("/admin/scans", get(library::list_scans))
         .route("/admin/metadata/search", get(library::search_metadata))
         .route("/admin/movies/{id}/identify", post(library::identify_movie))
+        .route("/admin/movies/{id}/source", get(library::movie_source))
+        .route("/admin/series/{id}/source", get(library::series_source))
         .route(
             "/admin/series/{id}/identify",
             post(library::identify_series),
@@ -355,6 +362,12 @@ pub fn app(state: AppState) -> Router {
         .route("/downloads/manual/{id}", delete(downloads::remove_manual))
         .route("/admin/encodes", get(downloads::encodes))
         .route("/admin/encodes/{id}", delete(downloads::delete_encode))
+        .route("/admin/trickplay", get(playback::trickplay_overview))
+        .route(
+            "/admin/trickplay/generate",
+            post(playback::generate_trickplay),
+        )
+        .route("/admin/trickplay/queue", delete(playback::stop_trickplay))
         .route("/playback", post(playback::start))
         .route("/playback/stop", post(playback::stop))
         .route("/playback/trickplay", get(playback::trickplay))

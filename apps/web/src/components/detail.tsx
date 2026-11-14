@@ -115,6 +115,17 @@ export function IdentifyButton({
   const [results, setResults] = useState<Schemas["MetadataCandidate"][] | null>(null);
   const [busy, setBusy] = useState<number | "search" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The file names say what the item really is.
+  const source = useQuery({
+    queryKey: ["admin", "source", kind, id],
+    queryFn: () =>
+      call(
+        kind === "movies"
+          ? api.GET("/api/admin/movies/{id}/source", { params: { path: { id } } })
+          : api.GET("/api/admin/series/{id}/source", { params: { path: { id } } }),
+      ),
+    enabled: open,
+  });
 
   if (me?.role !== "admin") return null;
 
@@ -170,6 +181,18 @@ export function IdentifyButton({
         description={t("detail.identifyHint")}
         wide
       >
+        {source.data?.paths.length ? (
+          <div className="mb-4 rounded-lg bg-white/5 px-3 py-2">
+            <p className="text-xs text-muted">
+              {t(kind === "movies" ? "detail.identifyFiles" : "detail.identifyFolder")}
+            </p>
+            {source.data.paths.map((p) => (
+              <p key={p} className="break-all font-mono text-xs text-fg">
+                {p}
+              </p>
+            ))}
+          </div>
+        ) : null}
         <form onSubmit={search} className="mb-4 flex gap-2">
           <Input
             value={query}

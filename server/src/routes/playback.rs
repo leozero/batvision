@@ -16,7 +16,7 @@ use utoipa::{IntoParams, ToSchema};
 
 use crate::{
     AppState,
-    auth::CurrentDevice,
+    auth::{Admin, CurrentDevice},
     db::now,
     error::{ApiError, ApiResult},
     library::{
@@ -589,6 +589,86 @@ pub async fn trickplay(
             .map(|n| format!("/api/trickplay/{token}/{n}.jpg"))
             .collect(),
     }))
+}
+
+/// Timeline thumbnails across the library (one file per movie or episode).
+#[derive(Serialize, ToSchema)]
+pub struct TrickplayOverview {
+    pub videos: i64,
+    pub ready: i64,
+    /// No video, or ffmpeg failed on them.
+    pub unavailable: i64,
+    /// Not made yet, or made for an older version of the file.
+    pub missing: i64,
+    /// Files waiting in the queue.
+    pub waiting: i64,
+    /// The file being made, relative to the media folder.
+    pub current: Option<String>,
+}
+
+#[utoipa::path(get, path = "/api/admin/trickplay", tag = "admin", security(("bearer" = [])),
+    responses((status = 200, body = TrickplayOverview)))]
+pub async fn trickplay_overview(
+    State(state): State<AppState>,
+    _: Admin,
+) -> ApiResult<Json<TrickplayOverview>> {
+    let trickplay::Counts {
+        videos,
+        ready,
+        unavailable,
+    } = state.trickplay.counts().await?;
+    let queue = state.trickplay.queue_state();
+    let current = match queue.current {
+        Some(id) => {
+            sqlx::query_scalar("SELECT path FROM media_files WHERE id = ?")
+                .bind(id)
+                .fetch_optional(&state.db)
+                .await?
+        }
+        None => None,
+    };
+    Ok(Json(TrickplayOverview {
+        videos,
+        ready,
+        unavailable,
+        missing: videos - ready - unavailable,
+        waiting: queue.waiting as i64,
+        current,
+    }))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct GenerateTrickplay {
+    /// How many files to queue, newest first; all the missing ones when absent.
+    pub count: Option<i64>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TrickplayQueued {
+    pub queued: i64,
+}
+
+/// Makes the missing timeline thumbnails in the background, one file at a time, after
+/// what players wait for.
+#[utoipa::path(post, path = "/api/admin/trickplay/generate", tag = "admin", security(("bearer" = [])),
+    request_body = GenerateTrickplay, responses((status = 200, body = TrickplayQueued)))]
+pub async fn generate_trickplay(
+    State(state): State<AppState>,
+    _: Admin,
+    Json(req): Json<GenerateTrickplay>,
+) -> ApiResult<Json<TrickplayQueued>> {
+    let queued = state.trickplay.queue_missing(req.count).await?;
+    Ok(Json(TrickplayQueued {
+        queued: queued as i64,
+    }))
+}
+
+/// Stops the batches: the files still waiting are dropped, the one being made finishes.
+#[utoipa::path(delete, path = "/api/admin/trickplay/queue", tag = "admin", security(("bearer" = [])),
+    responses((status = 204)))]
+pub async fn stop_trickplay(State(state): State<AppState>, _: Admin) -> StatusCode {
+    state.trickplay.clear_batch();
+    StatusCode::NO_CONTENT
 }
 
 /// A sheet of timeline thumbnails.

@@ -197,6 +197,13 @@ export const downloadsQuery = queryOptions({
       : false,
 });
 
+/** Timeline thumbnails across the library (D99): followed while a batch runs. */
+export const trickplayAdminQuery = queryOptions({
+  queryKey: ["admin", "trickplay"],
+  queryFn: () => call(api.GET("/api/admin/trickplay")),
+  refetchInterval: (q) => (q.state.data?.waiting || q.state.data?.current ? 3000 : false),
+});
+
 export const encodesQuery = queryOptions({
   queryKey: ["admin", "encodes"],
   queryFn: () => call(api.GET("/api/admin/encodes")),

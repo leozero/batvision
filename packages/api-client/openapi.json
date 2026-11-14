@@ -434,6 +434,41 @@
         ]
       }
     },
+    "/api/admin/movies/{id}/source": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "movie_source",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemSource"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/api/admin/scans": {
       "get": {
         "tags": [
@@ -500,6 +535,126 @@
               }
             }
           }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/series/{id}/source": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "series_source",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemSource"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/trickplay": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "operationId": "trickplay_overview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrickplayOverview"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/trickplay/generate": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Makes the missing timeline thumbnails in the background, one file at a time, after\nwhat players wait for.",
+        "operationId": "generate_trickplay",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateTrickplay"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrickplayQueued"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
+    "/api/admin/trickplay/queue": {
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Stops the batches: the files still waiting are dropped, the one being made finishes.",
+        "operationId": "stop_trickplay",
+        "responses": {
+          "204": {}
         },
         "security": [
           {
@@ -3991,6 +4146,19 @@
           }
         }
       },
+      "GenerateTrickplay": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "How many files to queue, newest first; all the missing ones when absent."
+          }
+        }
+      },
       "Health": {
         "type": "object",
         "required": [
@@ -4234,6 +4402,22 @@
           },
           "kind": {
             "$ref": "#/components/schemas/PlayableKind"
+          }
+        }
+      },
+      "ItemSource": {
+        "type": "object",
+        "description": "Where an item comes from on disk, to tell what it really is before identifying it.",
+        "required": [
+          "paths"
+        ],
+        "properties": {
+          "paths": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Paths relative to the media folder: a movie's files, or a series' folder."
           }
         }
       },
@@ -6241,6 +6425,61 @@
             "$ref": "#/components/schemas/TrickplayStatus"
           },
           "width": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "TrickplayOverview": {
+        "type": "object",
+        "description": "Timeline thumbnails across the library (one file per movie or episode).",
+        "required": [
+          "videos",
+          "ready",
+          "unavailable",
+          "missing",
+          "waiting"
+        ],
+        "properties": {
+          "current": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The file being made, relative to the media folder."
+          },
+          "missing": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Not made yet, or made for an older version of the file."
+          },
+          "ready": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "unavailable": {
+            "type": "integer",
+            "format": "int64",
+            "description": "No video, or ffmpeg failed on them."
+          },
+          "videos": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "waiting": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Files waiting in the queue."
+          }
+        }
+      },
+      "TrickplayQueued": {
+        "type": "object",
+        "required": [
+          "queued"
+        ],
+        "properties": {
+          "queued": {
             "type": "integer",
             "format": "int64"
           }

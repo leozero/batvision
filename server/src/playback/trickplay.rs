@@ -1,6 +1,7 @@
 //! Timeline thumbnails ("trickplay", D99): sheets of 10 × 10 thumbnails, one every
-//! 10 s, made from the key frames only (fast) when a player first asks for them.
-//! One file at a time; stored in `cache/trickplay/<media_file_id>/<sheet>.jpg`.
+//! 10 s, made from the key frames only (fast). Made when a player first asks for them,
+//! or in batches an administrator starts; what a player waits for goes first. One file
+//! at a time; stored in `cache/trickplay/<media_file_id>/<sheet>.jpg`.
 
 use std::{
     collections::VecDeque,
@@ -15,6 +16,26 @@ use crate::{
     library::media_info,
     playback::transcode,
 };
+
+/// SQL condition: `mf` (a `media_files` row) is the file players use for its movie or
+/// episode: present, analyzed, and the largest one of the item. A macro, so the queries
+/// using it stay static strings.
+macro_rules! main_file {
+    () => {
+        "mf.missing_since IS NULL AND mf.probe_json IS NOT NULL
+         AND mf.id = (SELECT m2.id FROM media_files m2 WHERE m2.item_kind = mf.item_kind
+           AND m2.item_id = mf.item_id AND m2.missing_since IS NULL
+           ORDER BY m2.size_bytes DESC LIMIT 1)"
+    };
+}
+
+/// How the library's thumbnails stand: videos, with thumbnails, without possible ones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counts {
+    pub videos: i64,
+    pub ready: i64,
+    pub unavailable: i64,
+}
 
 /// One thumbnail every…
 pub const INTERVAL_MS: i64 = 10_000;
@@ -36,8 +57,26 @@ pub enum Status {
 
 #[derive(Default)]
 struct Queue {
-    pending: VecDeque<i64>,
+    /// Asked for by a player (and the next episode): before any batch.
+    urgent: VecDeque<i64>,
+    /// Started by an administrator.
+    batch: VecDeque<i64>,
     current: Option<i64>,
+}
+
+impl Queue {
+    fn holds(&self, id: i64) -> bool {
+        self.current == Some(id) || self.urgent.contains(&id) || self.batch.contains(&id)
+    }
+}
+
+/// What the queue holds, for the administration page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueueState {
+    /// Files waiting, urgent and batch together.
+    pub waiting: usize,
+    /// The file being made.
+    pub current: Option<i64>,
 }
 
 pub struct Trickplay {
@@ -80,18 +119,84 @@ impl Trickplay {
             Some((Some(count), true)) => Status::Ready { count },
             Some((None, true)) => Status::Unavailable,
             _ => {
-                self.enqueue(media_file_id);
+                self.enqueue_urgent(media_file_id);
                 Status::Pending
             }
         })
     }
 
-    fn enqueue(&self, media_file_id: i64) {
+    /// A player waits for it: ahead of every batch (moved there if a batch holds it).
+    fn enqueue_urgent(&self, media_file_id: i64) {
         let mut queue = self.queue.lock().unwrap();
-        if queue.current != Some(media_file_id) && !queue.pending.contains(&media_file_id) {
-            queue.pending.push_back(media_file_id);
+        queue.batch.retain(|id| *id != media_file_id);
+        if !queue.holds(media_file_id) {
+            queue.urgent.push_back(media_file_id);
             // A stored permit: the worker sees it even if it isn't waiting yet.
             self.wake.notify_one();
+        }
+    }
+
+    /// Queues the main file of up to `limit` movies and episodes without thumbnails (or
+    /// with thumbnails of an older version of the file), newest first. All of them
+    /// without a limit. Returns how many were added.
+    pub async fn queue_missing(&self, limit: Option<i64>) -> anyhow::Result<usize> {
+        let missing: Vec<i64> = sqlx::query_scalar(concat!(
+            "SELECT mf.id FROM media_files mf LEFT JOIN trickplay t ON t.media_file_id = mf.id
+             WHERE ",
+            main_file!(),
+            " AND (t.media_file_id IS NULL
+               OR t.size_bytes != mf.size_bytes OR t.modified_at != mf.modified_at)
+             ORDER BY mf.id DESC"
+        ))
+        .fetch_all(&self.db)
+        .await?;
+        let mut queue = self.queue.lock().unwrap();
+        let wanted = limit.map_or(usize::MAX, |l| l.max(0) as usize);
+        let mut added = 0;
+        for id in missing {
+            if added == wanted {
+                break;
+            }
+            if !queue.holds(id) {
+                queue.batch.push_back(id);
+                added += 1;
+            }
+        }
+        if added > 0 {
+            self.wake.notify_one();
+        }
+        Ok(added)
+    }
+
+    pub async fn counts(&self) -> anyhow::Result<Counts> {
+        let (videos, ready, unavailable) = sqlx::query_as(concat!(
+            "SELECT COUNT(*),
+               COALESCE(SUM(t.count IS NOT NULL AND t.size_bytes = mf.size_bytes
+                 AND t.modified_at = mf.modified_at), 0),
+               COALESCE(SUM(t.media_file_id IS NOT NULL AND t.count IS NULL
+                 AND t.size_bytes = mf.size_bytes AND t.modified_at = mf.modified_at), 0)
+             FROM media_files mf LEFT JOIN trickplay t ON t.media_file_id = mf.id WHERE ",
+            main_file!()
+        ))
+        .fetch_one(&self.db)
+        .await?;
+        Ok(Counts {
+            videos,
+            ready,
+            unavailable,
+        })
+    }
+
+    /// Drops the batches still waiting; what players wait for and the file being made stay.
+    pub fn clear_batch(&self) {
+        self.queue.lock().unwrap().batch.clear();
+    }
+
+    pub fn queue_state(&self) -> QueueState {
+        let queue = self.queue.lock().unwrap();
+        QueueState {
+            waiting: queue.urgent.len() + queue.batch.len(),
+            current: queue.current,
         }
     }
 
@@ -104,7 +209,7 @@ impl Trickplay {
             loop {
                 let next = {
                     let mut queue = self.queue.lock().unwrap();
-                    queue.current = queue.pending.pop_front();
+                    queue.current = queue.urgent.pop_front().or_else(|| queue.batch.pop_front());
                     queue.current
                 };
                 match next {
