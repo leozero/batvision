@@ -261,6 +261,7 @@ A series in the watchlist (D73) is not a subscription: it belongs to the account
 - Files go to the app's own folder on the phone or the SD card (setting `storage`), moved when it changes; 20 GB quota by default (D70). Downloaded items' metadata and images are kept next to them for the offline library.
 - Sync on open, when the network returns and every 30 minutes (WorkManager may delay it). Syncs the app asks for don't wait for Android to validate internet access, so a server on the home network works without it. While the server encodes for the phone, the engine checks again every 15 s (up to 8 minutes) so the download starts as soon as the file is ready.
 - Player: react-native-video (Media3) with HLS, audio and subtitle tracks (subtitles drawn by the app from WebVTT, D100), the quality menu (D60), resume, next episode, picture in picture, landscape, screen kept on (D71).
+- A profile button (the user's initial) next to search, top right of Home, Movies and Series, opens the account: this device's settings, sign-out, and for administrators an administration screen with what is useful away from a computer (library scans, the encode queue, timeline thumbnail batches, the server's state). Accounts and new libraries stay on the web.
 - Offline library when the server is unreachable, as on desktop (D72).
 - The app reports its model as device name and whether it decodes AV1 in hardware (MediaCodec).
 - Distribution: signed APK attached to the GitHub releases; the app shows a banner when a newer one exists (D65, D66).

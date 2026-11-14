@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { UpdateBanner } from "../../components/UpdateBanner";
 import { EmptyState, Loading, Poster, Screen } from "../../components/ui";
-import { SearchButton } from "../../components/Watchlist";
+import { HeaderButtons } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { homeQuery } from "../../lib/queries";
 
@@ -107,7 +107,7 @@ export default function HomeScreen() {
       >
         <View className="flex-row items-center justify-between px-4 pt-4">
           <Text className="text-3xl font-bold text-accent">BatVision</Text>
-          <SearchButton />
+          <HeaderButtons />
         </View>
         {/* iOS: TestFlight and the App Store update the app (D90). */}
         {Platform.OS === "android" ? <UpdateBanner /> : null}

@@ -4,9 +4,9 @@ import { router } from "expo-router";
 import { Bookmark, BookmarkCheck, Search } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import type { Schemas } from "../lib/api";
-import { preferencesQuery, useWatchlist } from "../lib/queries";
+import { meQuery, preferencesQuery, useWatchlist } from "../lib/queries";
 import { ChoiceList, Sheet } from "./Sheet";
 import { Button, COLORS, ErrorText } from "./ui";
 
@@ -24,6 +24,36 @@ export function SearchButton() {
     >
       <Search color={COLORS.fg} size={20} />
     </Pressable>
+  );
+}
+
+/** The account, next to search: the user's initial, opening their profile and settings. */
+export function ProfileButton() {
+  const { t } = useTranslation();
+  const { data: me } = useQuery(meQuery);
+  return (
+    <Pressable
+      testID="open-profile"
+      accessibilityRole="button"
+      accessibilityLabel={t("nav.account")}
+      hitSlop={8}
+      onPress={() => router.push("/settings")}
+      className="size-10 items-center justify-center rounded-full bg-accent active:opacity-70"
+    >
+      <Text className="text-base font-bold text-accent-ink">
+        {me?.username.charAt(0).toUpperCase() ?? ""}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** Top right of Home, Movies and Series: search and the account. */
+export function HeaderButtons() {
+  return (
+    <View className="flex-row items-center gap-2">
+      <SearchButton />
+      <ProfileButton />
+    </View>
   );
 }
 

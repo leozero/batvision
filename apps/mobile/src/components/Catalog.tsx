@@ -13,7 +13,7 @@ import { useTranslation } from "react-i18next";
 import { FlatList, Pressable, RefreshControl, Text, useWindowDimensions, View } from "react-native";
 import type { Schemas } from "../lib/api";
 import { COLORS, EmptyState, Loading, Poster, Rating } from "./ui";
-import { SearchButton } from "./Watchlist";
+import { HeaderButtons } from "./Watchlist";
 
 export type Sorting = { sort: SortOrder; direction: SortDirection };
 
@@ -66,7 +66,7 @@ export function Catalog(props: {
         <View className="gap-3 px-1 pt-4">
           <View className="flex-row items-center justify-between">
             <Text className="text-2xl font-bold text-fg">{props.title}</Text>
-            <SearchButton />
+            <HeaderButtons />
           </View>
           <View className="flex-row flex-wrap gap-2">
             {SORT_ORDERS.map((s) => {
