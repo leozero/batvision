@@ -15,6 +15,9 @@ appId: ${APP_ID}
     text: "Test Movie.*"
 - tapOn:
     id: watchlist
+# Two audio tracks: the language is asked first (the file's default track here).
+- tapOn:
+    id: watchlist-add
 # The screen's own back button: iOS has no system one.
 - tapOn:
     id: back

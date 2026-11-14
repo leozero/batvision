@@ -105,6 +105,16 @@ describe("decide", () => {
     expect(d.actions.map((a) => a.type)).toEqual(["download"]);
   });
 
+  it("keeps a copy when only the audio language changed (every track is in it)", () => {
+    const d = decide(
+      [entry(1, "downloaded", { audio_language: "fre" })],
+      new Map([local(1, { audioLanguage: "eng" })]),
+      null,
+    );
+    expect(d.remove).toEqual([]);
+    expect(d.actions).toEqual([]);
+  });
+
   it("drops a partial file from another variant, keeps one from the same", () => {
     const same = decide(
       [entry(1, "ready")],

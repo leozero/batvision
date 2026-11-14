@@ -100,6 +100,18 @@ class PlannerTest {
   }
 
   @Test
+  fun `keeps a copy when only the audio language changed`() {
+    val (key, record) = local(1)
+    val d = Planner.decide(
+      listOf(entry(1, "downloaded").copy(audioLanguage = "fre")),
+      linkedMapOf(key to record.copy(audioLanguage = "eng")),
+      null,
+    )
+    assertEquals(emptyList<String>(), d.remove)
+    assertEquals(emptyList<String>(), d.steps())
+  }
+
+  @Test
   fun `drops a partial file from another variant, keeps one from the same`() {
     val same = Planner.decide(listOf(entry(1, "ready")), linkedMapOf(local(1, complete = false, sizeBytes = 100)), null)
     assertEquals(emptyList<String>(), same.remove)

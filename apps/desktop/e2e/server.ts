@@ -20,6 +20,9 @@ export class TestServer {
       ...["-loglevel", "error", "-y"],
       ...["-f", "lavfi", "-i", "testsrc2=duration=100:size=320x180:rate=10"],
       ...["-f", "lavfi", "-i", "sine=frequency=440:duration=100"],
+      ...["-f", "lavfi", "-i", "sine=frequency=880:duration=100"],
+      // Two audio tracks: downloads carry both (D40).
+      ...["-map", "0", "-map", "1", "-map", "2"],
       ...[
         "-c:v",
         "libx264",
@@ -29,6 +32,8 @@ export class TestServer {
         "aac",
         "-metadata:s:a:0",
         "language=fre",
+        "-metadata:s:a:1",
+        "language=eng",
       ],
       movie,
     ]);

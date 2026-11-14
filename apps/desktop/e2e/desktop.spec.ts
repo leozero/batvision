@@ -176,6 +176,25 @@ test("without the server, the offline library plays the local copy", async () =>
     .poll(() => video.evaluate((v: HTMLVideoElement) => v.currentTime), { timeout: 15_000 })
     .toBeGreaterThan(1.5);
   await shot("offline-player");
+
+  // The copy holds both audio tracks: the menu lists them and switches in place.
+  await page.mouse.move(400, 300);
+  await page.getByRole("button", { name: "Audio et sous-titres" }).click();
+  await page.getByRole("button", { name: /^Anglais/ }).click();
+  await expect
+    .poll(() =>
+      video.evaluate((v) =>
+        Array.from(
+          (
+            v as HTMLVideoElement & {
+              audioTracks: ArrayLike<{ language: string; enabled: boolean }>;
+            }
+          ).audioTracks,
+          (a) => `${a.language}:${a.enabled}`,
+        ).join(" "),
+      ),
+    )
+    .toMatch(/^\S+:false \S+:true$/);
   await video.evaluate((v: HTMLVideoElement) => {
     v.pause();
     v.currentTime = 70;

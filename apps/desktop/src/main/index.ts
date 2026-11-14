@@ -31,6 +31,10 @@ app.setPath(
 if (process.env.BATVISION_VIDEOS_DIR)
   app.setPath("videos", resolve(process.env.BATVISION_VIDEOS_DIR));
 
+// Downloads hold every audio track (D40): the player switches them through
+// `HTMLMediaElement.audioTracks`, which Chromium keeps behind this flag.
+app.commandLine.appendSwitch("enable-blink-features", "AudioVideoTracks");
+
 registerScheme();
 
 if (!app.requestSingleInstanceLock()) app.quit();

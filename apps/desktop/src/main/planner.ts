@@ -65,9 +65,10 @@ export interface Decision {
 
 export const itemKey = (kind: string, id: number) => `${kind}-${id}`;
 
-/** A complete local copy that still matches what the server expects. */
+/** A complete local copy that still matches what the server expects. The audio language
+ * doesn't matter: every track is in the file, it only says which one plays first (D40). */
 function matches(local: LocalRecord, entry: PlanEntry) {
-  return local.profile === entry.profile && local.audioLanguage === (entry.audio_language ?? null);
+  return local.profile === entry.profile;
 }
 
 /**

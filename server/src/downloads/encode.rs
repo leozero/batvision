@@ -1,5 +1,5 @@
-//! Encoded variants for download: an MP4 per media file × profile × codec × audio
-//! track, plus its text subtitles as WebVTT. Encoded only when a device asks.
+//! Encoded variants for download: an MP4 per media file × profile × codec with every
+//! audio track, plus its text subtitles as WebVTT. Encoded only when a device asks.
 
 use std::{
     collections::HashMap,
@@ -21,7 +21,7 @@ use super::plan::Profile;
 use crate::{
     db::{Db, now},
     ffmpeg::FfmpegInfo,
-    library::media_info::{self, MediaInfo, TrackKind},
+    library::media_info::{self, TrackKind},
     playback::{gpu, normalize_language, subtitles, transcode},
 };
 
@@ -80,24 +80,13 @@ pub fn codec_label(plan: VideoPlan, source_codec: &str) -> String {
     }
 }
 
-/// Audio track for a language: a normal track in that language, else the file's
-/// default, else the first.
-pub fn pick_audio(info: &MediaInfo, language: Option<&str>) -> Option<i64> {
-    let wanted = language.and_then(normalize_language);
-    info.audio
-        .iter()
-        .find(|a| {
-            a.kind == TrackKind::Normal
-                && wanted.is_some()
-                && a.language.as_deref().and_then(normalize_language) == wanted
-        })
-        .or_else(|| {
-            info.audio
-                .iter()
-                .find(|a| a.default && a.kind != TrackKind::Commentary)
-        })
-        .or(info.audio.first())
-        .map(|a| a.index)
+/// An audio track of the source, re-encoded into the download.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AudioOut {
+    pub index: i64,
+    pub channels: Option<i64>,
+    /// The source's track name ("Commentary"…), shown by players as the track's label.
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -111,8 +100,8 @@ pub struct EncodeJob {
     pub source_hevc: bool,
     pub hdr: bool,
     pub source: gpu::Source,
-    pub audio_index: Option<i64>,
-    pub audio_channels: Option<i64>,
+    /// Every audio track goes in, in the source's order (D40).
+    pub audio: Vec<AudioOut>,
     pub encoders: Encoders,
 }
 
@@ -206,21 +195,33 @@ pub fn ffmpeg_args(job: &EncodeJob, out: &Path) -> Vec<String> {
         args.extend(["-tag:v".into(), "hvc1".into()]);
     }
 
-    if let Some(audio) = job.audio_index {
-        args.extend([
-            "-map".into(),
-            format!("0:{audio}"),
-            "-c:a".into(),
-            "aac".into(),
-        ]);
-        let surround = job.audio_channels.unwrap_or(2) > 2;
+    for audio in &job.audio {
+        args.extend(["-map".into(), format!("0:{}", audio.index)]);
+    }
+    if !job.audio.is_empty() {
+        args.extend(["-c:a".into(), "aac".into()]);
+    }
+    for (n, audio) in job.audio.iter().enumerate() {
+        let surround = audio.channels.unwrap_or(2) > 2;
         let (channels, bitrate) = match job.profile {
             Profile::Max if surround => ("6", "384k"),
             Profile::Max => ("2", "192k"),
             Profile::Mobile => ("2", "128k"),
             Profile::Saver => ("2", "96k"),
         };
-        args.extend(["-ac".into(), channels.into(), "-b:a".into(), bitrate.into()]);
+        args.extend([
+            format!("-ac:a:{n}"),
+            channels.into(),
+            format!("-b:a:{n}"),
+            bitrate.into(),
+        ]);
+        // MP4 keeps a track's name as its handler name.
+        if let Some(title) = audio.title.as_deref().filter(|t| !t.trim().is_empty()) {
+            args.extend([
+                format!("-metadata:s:a:{n}"),
+                format!("handler_name={title}"),
+            ]);
+        }
     }
 
     args.extend(
@@ -485,9 +486,17 @@ impl Encoder {
             VideoPlan::Hevc
         };
         let input = self.media_root.join(&row.path);
-        let audio = row
-            .audio_index
-            .and_then(|i| info.audio.iter().find(|a| a.index == i));
+        // Variants from before D40 was revised hold one track.
+        let audio = info
+            .audio
+            .iter()
+            .filter(|a| row.audio_index.is_none_or(|i| a.index == i))
+            .map(|a| AudioOut {
+                index: a.index,
+                channels: a.channels,
+                title: a.title.clone(),
+            })
+            .collect();
         let job = EncodeJob {
             input: input.clone(),
             profile: row.profile,
@@ -497,8 +506,7 @@ impl Encoder {
             source_hevc: video.codec == "hevc",
             hdr: video.hdr,
             source: gpu::Source::of(video),
-            audio_index: row.audio_index,
-            audio_channels: audio.and_then(|a| a.channels),
+            audio,
             encoders,
         };
 
@@ -707,7 +715,6 @@ impl Encoder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::media_info::AudioTrack;
 
     fn job(profile: Profile, video: VideoPlan) -> EncodeJob {
         EncodeJob {
@@ -722,8 +729,11 @@ mod tests {
                 decode: true,
                 deep: true,
             },
-            audio_index: Some(2),
-            audio_channels: Some(6),
+            audio: vec![AudioOut {
+                index: 2,
+                channels: Some(6),
+                title: None,
+            }],
             encoders: Encoders {
                 hevc_nvenc: true,
                 av1_nvenc: true,
@@ -772,7 +782,7 @@ mod tests {
     fn max_copies_video_and_keeps_surround() {
         let args = joined(&job(Profile::Max, VideoPlan::Copy));
         assert!(args.contains("-map 0:0 -c:v copy"));
-        assert!(args.contains("-map 0:2 -c:a aac -ac 6 -b:a 384k"));
+        assert!(args.contains("-map 0:2 -c:a aac -ac:a:0 6 -b:a:0 384k"));
         assert!(args.contains("-movflags +faststart"));
         assert!(!args.contains("-vf"));
         assert!(args.ends_with("/cache/v/1/video.partial.mp4"));
@@ -785,7 +795,7 @@ mod tests {
         assert!(args.contains(
             "-c:v av1_nvenc -preset p5 -rc vbr -b:v 1500k -maxrate 2250k -bufsize 4500k"
         ));
-        assert!(args.contains("-ac 2 -b:a 128k"));
+        assert!(args.contains("-ac:a:0 2 -b:a:0 128k"));
     }
 
     #[test]
@@ -847,43 +857,30 @@ mod tests {
         assert!(joined(&j).contains("-vf format=yuv420p"));
     }
 
-    fn track(index: i64, lang: &str, kind: TrackKind, default: bool) -> AudioTrack {
-        AudioTrack {
-            index,
-            codec: "aac".into(),
-            language: Some(lang.into()),
-            title: None,
-            channels: Some(2),
-            default,
-            kind,
-        }
-    }
-
     #[test]
-    fn audio_is_picked_by_language() {
-        let info = MediaInfo {
-            duration_ms: None,
-            container: None,
-            size_bytes: None,
-            bitrate: None,
-            video: None,
-            audio: vec![
-                track(1, "eng", TrackKind::Normal, true),
-                track(2, "fra", TrackKind::Commentary, false),
-                track(3, "fre", TrackKind::Normal, false),
-            ],
-            subtitles: vec![],
-        };
-        assert_eq!(
-            pick_audio(&info, Some("fre")),
-            Some(3),
-            "fra/fre are the same, commentary skipped"
+    fn every_audio_track_goes_in_with_its_own_layout() {
+        let mut j = job(Profile::Max, VideoPlan::Copy);
+        j.audio = vec![
+            AudioOut {
+                index: 1,
+                channels: Some(6),
+                title: None,
+            },
+            AudioOut {
+                index: 3,
+                channels: Some(2),
+                title: Some("Commentary".into()),
+            },
+        ];
+        let args = joined(&j);
+        assert!(args.contains(
+            "-map 0:1 -map 0:3 -c:a aac -ac:a:0 6 -b:a:0 384k -ac:a:1 2 -b:a:1 192k \
+                 -metadata:s:a:1 handler_name=Commentary"
+        ));
+        j.audio.clear();
+        assert!(
+            !joined(&j).contains("-c:a"),
+            "a silent video has no audio options"
         );
-        assert_eq!(
-            pick_audio(&info, Some("jpn")),
-            Some(1),
-            "missing: file default"
-        );
-        assert_eq!(pick_audio(&info, None), Some(1));
     }
 }

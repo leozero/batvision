@@ -72,8 +72,8 @@ fun itemKey(kind: String, id: Long) = "$kind-$id"
  * known size: it's requested only while there is room left.
  */
 object Planner {
-  private fun matches(local: LocalRecord, entry: PlanEntry) =
-    local.profile == entry.profile && local.audioLanguage == entry.audioLanguage
+  /** The audio language doesn't matter: every track is in the file (D40). */
+  private fun matches(local: LocalRecord, entry: PlanEntry) = local.profile == entry.profile
 
   /** The first download still to do, in the plan's order; `skip` says which keys are settled. */
   fun nextDownload(actions: List<Action>, skip: (String) -> Boolean): Action.Download? =

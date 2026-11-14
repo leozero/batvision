@@ -883,7 +883,8 @@ async fn request_encode_download_confirm_and_cache_cleanup() {
     assert_eq!(status, StatusCode::PARTIAL_CONTENT);
     assert_eq!(headers["content-length"], "100");
 
-    // The video is an MP4 with only the French track, as AAC.
+    // The plan says which track plays first; the MP4 holds both, as AAC, in the source's order.
+    assert_eq!(item["audio_language"], "fre");
     let out = f.app.state.encoder.dir(variant).join("video.mp4");
     let probe = Command::new("ffprobe")
         .args([
@@ -903,9 +904,10 @@ async fn request_encode_download_confirm_and_cache_cleanup() {
         .iter()
         .filter(|s| s["codec_type"] == "audio")
         .collect();
-    assert_eq!(audio.len(), 1);
-    assert_eq!(audio[0]["codec_name"], "aac");
-    assert_eq!(audio[0]["tags"]["language"], "fre");
+    assert_eq!(audio.len(), 2);
+    assert!(audio.iter().all(|a| a["codec_name"] == "aac"));
+    assert_eq!(audio[0]["tags"]["language"], "eng");
+    assert_eq!(audio[1]["tags"]["language"], "fre");
     assert!(
         streams
             .iter()

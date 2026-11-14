@@ -172,7 +172,7 @@ All the logic deciding what to download and what to delete lives in **one place*
 | Series `season(n)`  | Every episode of season n, once. It never moves on to the next season.                                                                    |
 | Manual download     | A movie or episode added by hand for one device.                                                                                          |
 
-Series subscriptions and manual downloads are explicit requests for one device: they apply even with automatic downloads off. The audio track is chosen when requesting (default: the user's preferred audio language).
+Series subscriptions and manual downloads are explicit requests for one device: they apply even with automatic downloads off. The audio language is chosen when requesting (default: the user's preferred audio language): every track is downloaded, this one plays first (D40).
 
 A series in the watchlist (D73) is not a subscription: it belongs to the account, applies to every device with automatic downloads, and uses the account's X. Its audio language is the one remembered for the series (D20), else the preferred one; its quality is the device's. It stays in the watchlist once everything is watched, so new episodes download when they arrive. When a subscription and the watchlist want the same episode, it downloads once, under the subscription. Watchlist entries are taken oldest first, movies and series together.
 
@@ -197,7 +197,7 @@ A series in the watchlist (D73) is not a subscription: it belongs to the account
 | `mobile` | 720p, about 1.5 Mb/s                        | AAC stereo    |
 | `saver`  | 480p, about 700 kb/s                        | AAC stereo    |
 
-- Output is always MP4 with **one audio track** (the chosen language), so it plays in any player.
+- Output is always MP4 with **every audio track** of the source, as AAC, so it plays in any player and the language can change offline (D40). The language chosen when requesting only picks the track that plays first.
 - **Codec for lighter profiles:** AV1 if the device decodes it in hardware, otherwise HEVC. HDR is tone-mapped, on the GPU when there is one (D57).
 - Default profile per device (desktop: `max`, Android: `mobile`), overridable per series or manual download.
 - **All text subtitles** (embedded and external) are delivered as separate WebVTT files.

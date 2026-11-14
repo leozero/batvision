@@ -84,6 +84,17 @@ final class PlannerTests: XCTestCase {
     XCTAssertEqual(steps(d), ["download:episode-1"])
   }
 
+  func testKeepsACopyWhenOnlyTheAudioLanguageChanged() {
+    var wanted = entry(1, "downloaded")
+    wanted.audioLanguage = "fre"
+    let copy = LocalRecord(
+      key: "episode-1", complete: true, variantId: 10, profile: "max", audioLanguage: "eng", sizeBytes: gb
+    )
+    let d = Planner.decide(plan: [wanted], local: [copy], quotaBytes: nil)
+    XCTAssertEqual(d.remove, [])
+    XCTAssertEqual(steps(d), [])
+  }
+
   func testDropsAPartialDownloadFromAnotherVariantKeepsOneFromTheSame() {
     let same = Planner.decide(plan: [entry(1, "ready")], local: [local(1, complete: false, sizeBytes: 100)], quotaBytes: nil)
     XCTAssertEqual(same.remove, [])

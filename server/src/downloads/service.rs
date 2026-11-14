@@ -369,7 +369,6 @@ pub struct VariantKey {
     pub media_file_id: i64,
     pub profile: Profile,
     pub codec: String,
-    pub audio_index: Option<i64>,
 }
 
 pub fn encoders(state: &AppState) -> Encoders {
@@ -384,7 +383,6 @@ pub fn encoders(state: &AppState) -> Encoders {
 async fn variant_key(
     state: &AppState,
     item: &ExpectedItem,
-    preferred_audio: Option<&str>,
     device_av1: bool,
 ) -> ApiResult<Option<VariantKey>> {
     let row: Option<(i64, Option<String>)> = sqlx::query_as(
@@ -409,7 +407,6 @@ async fn variant_key(
         media_file_id,
         profile: item.profile,
         codec: encode::codec_label(plan, &video.codec),
-        audio_index: encode::pick_audio(&info, item.audio_language.as_deref().or(preferred_audio)),
     }))
 }
 
@@ -467,7 +464,12 @@ pub async fn plan_for_device(
     .collect();
 
     let mut items = Vec::with_capacity(expected.len());
-    for item in expected {
+    for mut item in expected {
+        // Every audio track is in the file (D40): the language says which one the device
+        // plays first.
+        if item.audio_language.is_none() {
+            item.audio_language.clone_from(&prefs.audio_language);
+        }
         let card = crate::routes::home::item_card(state, user, item.kind, item.id).await?;
         let mut out = PlanItem {
             title: card.title,
@@ -496,9 +498,7 @@ pub async fn plan_for_device(
             items.push(out);
             continue;
         }
-        if let Some(key) =
-            variant_key(state, &out.item, prefs.audio_language.as_deref(), av1).await?
-        {
+        if let Some(key) = variant_key(state, &out.item, av1).await? {
             #[derive(sqlx::FromRow)]
             struct V {
                 id: i64,
@@ -512,15 +512,14 @@ pub async fn plan_for_device(
             }
             let variant: Option<V> = sqlx::query_as(
                 "SELECT v.id, v.status, v.progress, v.size_bytes, v.subtitles_json, v.error, v.created_at,
-                   (SELECT confirmed_at FROM variant_requests r WHERE r.variant_id = v.id AND r.device_id = ?5)
+                   (SELECT confirmed_at FROM variant_requests r WHERE r.variant_id = v.id AND r.device_id = ?4)
                      AS confirmed
                  FROM variants v WHERE v.media_file_id = ?1 AND v.profile = ?2 AND v.codec = ?3
-                   AND v.audio_index IS ?4",
+                   AND v.audio_index IS NULL",
             )
             .bind(key.media_file_id)
             .bind(key.profile)
             .bind(&key.codec)
-            .bind(key.audio_index)
             .bind(device_id)
             .fetch_optional(&state.db)
             .await?;
@@ -600,13 +599,12 @@ pub async fn request(
         .ok_or_else(|| {
             ApiError::conflict("not_expected", "this item isn't in the device's downloads")
         })?;
-    let prefs = crate::routes::home::load_preferences(state, user.id).await?;
-    let key = variant_key(state, &item, prefs.audio_language.as_deref(), av1)
+    let key = variant_key(state, &item, av1)
         .await?
         .ok_or_else(|| ApiError::conflict("unreadable_file", "the file hasn't been analyzed"))?;
     let variant_id: i64 = sqlx::query_scalar(
         "INSERT INTO variants (media_file_id, profile, codec, audio_index, status, created_at)
-         VALUES (?, ?, ?, ?, 'queued', ?)
+         VALUES (?, ?, ?, NULL, 'queued', ?)
          ON CONFLICT (media_file_id, profile, codec, COALESCE(audio_index, -1)) DO UPDATE SET
            status = CASE WHEN variants.status = 'failed' THEN 'queued' ELSE variants.status END,
            error = CASE WHEN variants.status = 'failed' THEN NULL ELSE variants.error END
@@ -615,7 +613,6 @@ pub async fn request(
     .bind(key.media_file_id)
     .bind(key.profile)
     .bind(&key.codec)
-    .bind(key.audio_index)
     .bind(now())
     .fetch_one(&state.db)
     .await?;

@@ -1,5 +1,7 @@
-import { formatClock } from "@batvision/core/format";
+import { formatClock, languageName, sameLanguage } from "@batvision/core/format";
+import { type Cue, cueAt, parseWebVtt } from "@batvision/core/subtitles";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { File } from "expo-file-system";
 import { useKeepAwake } from "expo-keep-awake";
 import * as NavigationBar from "expo-navigation-bar";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
@@ -52,6 +54,7 @@ import { BatvisionSync } from "../../../lib/sync";
 type Kind = "movie" | "episode";
 type Info = Schemas["PlaybackInfo"];
 type Local = NonNullable<ReturnType<typeof BatvisionSync.localPlayback>>;
+type LocalAudio = { index: number; language: string | null; title: string | null };
 
 const PROGRESS_EVERY_MS = 10_000;
 const AUTO_EVERY_MS = 2_000;
@@ -64,7 +67,7 @@ const absolute = (url: string) =>
 
 export default function Player() {
   useKeepAwake();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const qc = useQueryClient();
   const params = useLocalSearchParams<{ kind: Kind; id: string; offline?: string }>();
   const kind: Kind = params.kind === "episode" ? "episode" : "movie";
@@ -87,6 +90,31 @@ export default function Player() {
   // iPadOS keeps its status bar and window controls over the top corners.
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<"tracks" | "quality" | null>(null);
+  // A downloaded copy holds every audio track (D40), listed by the player once loaded;
+  // its tracks switch in place.
+  const [localAudio, setLocalAudio] = useState<LocalAudio[]>([]);
+  const [localAudioIndex, setLocalAudioIndex] = useState<number | null>(null);
+  const [localSubtitle, setLocalSubtitle] = useState<number | null>(() =>
+    local?.subtitles.length ? 0 : null,
+  );
+  // iOS rebuilds a video with side-loaded subtitles keeping only its first audio track:
+  // a downloaded copy's subtitles are drawn here instead.
+  const drawSubtitles = Platform.OS === "ios" && local !== null;
+  const [cues, setCues] = useState<Cue[]>([]);
+  const subtitleUrl =
+    drawSubtitles && localSubtitle !== null ? local?.subtitles[localSubtitle]?.url : undefined;
+  useEffect(() => {
+    setCues([]);
+    if (!subtitleUrl) return;
+    let current = true;
+    new File(subtitleUrl)
+      .text()
+      .then((vtt) => current && setCues(parseWebVtt(vtt)))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [subtitleUrl]);
   const [mode, setMode] = useState<QualityMode>("auto");
   const modeLoaded = useRef(false);
   const [ended, setEnded] = useState(false);
@@ -288,7 +316,7 @@ export default function Player() {
         ? {
             uri: local.url,
             startPosition: local.positionMs,
-            textTracks: local.subtitles.map((s, i) => ({
+            textTracks: (drawSubtitles ? [] : local.subtitles).map((s, i) => ({
               title: s.language ?? `sub ${i}`,
               language: (s.language ?? "und") as ISO639_1,
               type: TextTrackType.VTT,
@@ -315,7 +343,7 @@ export default function Player() {
                   : [],
             }
           : null,
-    [local, info],
+    [local, info, drawSubtitles],
   );
 
   const title = local
@@ -324,6 +352,35 @@ export default function Player() {
       ? (movie.data?.title ?? "")
       : [episode.data?.series_title, episode.data?.title].filter(Boolean).join(" · ");
   const currentSubtitle = info?.subtitle && info.subtitle !== "off" ? info.subtitle : null;
+  // The tracks menu, from the server's session or from the downloaded copy.
+  const audioOptions: LocalAudio[] = local
+    ? localAudio
+    : (info?.audio_tracks ?? []).map((a) => ({
+        index: a.index,
+        language: a.language ?? null,
+        title: a.title ?? null,
+      }));
+  const audioSelected = local ? (localAudioIndex ?? localAudio[0]?.index) : info?.audio_index;
+  const subtitleOptions = local
+    ? local.subtitles.map((s, i) => ({
+        id: `l${i}`,
+        language: s.language,
+        title: null as string | null,
+        kind: s.kind,
+      }))
+    : (info?.subtitles ?? []).map((s) => ({
+        id: s.id,
+        language: s.language ?? null,
+        title: s.title ?? null,
+        kind: s.kind as string,
+      }));
+  const subtitleSelected = local
+    ? localSubtitle === null
+      ? null
+      : `l${localSubtitle}`
+    : currentSubtitle;
+  const languageLabel = (code: string | null | undefined) =>
+    languageName(code, i18n.language) ?? t("player.unknownLanguage");
   const position = positionRef.current / 1000;
   const nextId = local ? local.nextEpisodeId : info?.next_episode_id;
 
@@ -342,13 +399,35 @@ export default function Player() {
           controlsStyles={{ hideLiveBadge: true }}
           reportBandwidth
           enterPictureInPictureOnLeave
-          selectedTextTrack={
-            source.textTracks.length || ("inStream" in source && source.inStream)
-              ? { type: SelectedTrackType.INDEX, value: 0 }
-              : { type: SelectedTrackType.DISABLED }
+          selectedAudioTrack={
+            local && localAudioIndex !== null
+              ? { type: SelectedTrackType.INDEX, value: localAudioIndex }
+              : undefined
           }
-          progressUpdateInterval={500}
-          onLoad={() => {
+          selectedTextTrack={
+            local
+              ? localSubtitle === null || drawSubtitles
+                ? { type: SelectedTrackType.DISABLED }
+                : { type: SelectedTrackType.INDEX, value: localSubtitle }
+              : source.textTracks.length || ("inStream" in source && source.inStream)
+                ? { type: SelectedTrackType.INDEX, value: 0 }
+                : { type: SelectedTrackType.DISABLED }
+          }
+          // Drawn subtitles (iOS downloads) follow the clock: a quarter second keeps them in step.
+          progressUpdateInterval={drawSubtitles ? 250 : 500}
+          onLoad={(data) => {
+            if (local) {
+              const tracks = (data.audioTracks ?? []).map((a) => ({
+                index: a.index,
+                language: a.language || null,
+                // ffmpeg's default handler name says nothing.
+                title: a.title && a.title !== "SoundHandler" ? a.title : null,
+              }));
+              setLocalAudio(tracks);
+              // The language asked for when downloading plays first.
+              const preferred = tracks.find((a) => sameLanguage(a.language, local.audioLanguage));
+              setLocalAudioIndex((chosen) => chosen ?? preferred?.index ?? null);
+            }
             setLoading(false);
             auto.current.loadingSince = null;
             auto.current.stableSince = Date.now();
@@ -379,6 +458,19 @@ export default function Player() {
           }}
           onError={() => setError(t("player.error"))}
         />
+      ) : null}
+
+      {drawSubtitles && cueAt(cues, position) ? (
+        <View
+          testID="subtitle-cue"
+          pointerEvents="none"
+          className="absolute inset-x-0 items-center px-8"
+          style={{ bottom: insets.bottom + 32 }}
+        >
+          <Text className="rounded-md bg-black/60 px-2 py-1 text-center text-lg text-white">
+            {cueAt(cues, position)}
+          </Text>
+        </View>
       ) : null}
 
       <Pressable
@@ -448,8 +540,9 @@ export default function Player() {
                 <Settings2 color={COLORS.fg} size={20} />
               </Pressable>
             ) : null}
-            {!local && info ? (
+            {local || info ? (
               <Pressable
+                testID="tracks-menu"
                 accessibilityRole="button"
                 accessibilityLabel={t("player.tracks")}
                 onPress={() => setSheet("tracks")}
@@ -536,11 +629,18 @@ export default function Player() {
         onRequestClose={() => setSheet(null)}
         supportedOrientations={["landscape"]}
       >
+        {/* Neither the backdrop nor the sheet become one element (iOS would merge every
+            choice into it): each choice stays its own button. */}
         <Pressable
+          accessible={false}
           className="flex-1 items-end justify-center bg-black/60 p-6"
           onPress={() => setSheet(null)}
         >
-          <Pressable className="max-h-full w-80 rounded-card bg-surface p-4" onPress={() => {}}>
+          <Pressable
+            accessible={false}
+            className="max-h-full w-80 rounded-card bg-surface p-4"
+            onPress={() => {}}
+          >
             <ScrollView contentContainerClassName="gap-1">
               {sheet === "quality" && info ? (
                 <>
@@ -577,30 +677,31 @@ export default function Player() {
                   })}
                 </>
               ) : null}
-              {sheet === "tracks" && info ? (
+              {sheet === "tracks" && (local || info) ? (
                 <>
                   <Text className="mb-2 text-base font-semibold text-fg">{t("player.audio")}</Text>
-                  {info.audio_tracks.map((a) => (
+                  {audioOptions.map((a) => (
                     <Pressable
                       key={a.index}
+                      testID={`audio-${a.index}`}
                       onPress={() => {
                         setSheet(null);
-                        void start({
-                          startMs: positionRef.current,
-                          audio: a.index,
-                          remember: true,
-                        });
+                        if (local) setLocalAudioIndex(a.index);
+                        else
+                          void start({
+                            startMs: positionRef.current,
+                            audio: a.index,
+                            remember: true,
+                          });
                       }}
-                      className={`rounded-lg px-3 py-2.5 ${a.index === info.audio_index ? "bg-accent/15" : ""}`}
+                      className={`rounded-lg px-3 py-2.5 ${a.index === audioSelected ? "bg-accent/15" : ""}`}
                     >
                       <Text
                         className={
-                          a.index === info.audio_index ? "font-semibold text-accent" : "text-fg"
+                          a.index === audioSelected ? "font-semibold text-accent" : "text-fg"
                         }
                       >
-                        {[a.language ?? t("player.unknownLanguage"), a.title]
-                          .filter(Boolean)
-                          .join(" · ")}
+                        {[languageLabel(a.language), a.title].filter(Boolean).join(" · ")}
                       </Text>
                     </Pressable>
                   ))}
@@ -609,10 +710,10 @@ export default function Player() {
                   </Text>
                   {[
                     { id: null as string | null, label: t("player.off") },
-                    ...info.subtitles.map((s) => ({
+                    ...subtitleOptions.map((s) => ({
                       id: s.id as string | null,
                       label: [
-                        s.language ?? t("player.unknownLanguage"),
+                        languageLabel(s.language),
                         s.title,
                         s.kind !== "normal"
                           ? t(`player.kind.${s.kind}`, { defaultValue: "" })
@@ -626,17 +727,19 @@ export default function Player() {
                       key={s.id ?? "off"}
                       onPress={() => {
                         setSheet(null);
-                        void start({
-                          startMs: positionRef.current,
-                          subtitle: s.id,
-                          remember: true,
-                        });
+                        if (local) setLocalSubtitle(s.id === null ? null : Number(s.id.slice(1)));
+                        else
+                          void start({
+                            startMs: positionRef.current,
+                            subtitle: s.id,
+                            remember: true,
+                          });
                       }}
-                      className={`rounded-lg px-3 py-2.5 ${currentSubtitle === s.id ? "bg-accent/15" : ""}`}
+                      className={`rounded-lg px-3 py-2.5 ${subtitleSelected === s.id ? "bg-accent/15" : ""}`}
                     >
                       <Text
                         className={
-                          currentSubtitle === s.id ? "font-semibold text-accent" : "text-fg"
+                          subtitleSelected === s.id ? "font-semibold text-accent" : "text-fg"
                         }
                       >
                         {s.label}

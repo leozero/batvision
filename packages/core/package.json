@@ -10,7 +10,8 @@
     "./bytes": "./src/bytes.ts",
     "./quality": "./src/quality.ts",
     "./version": "./src/version.ts",
-    "./sort": "./src/sort.ts"
+    "./sort": "./src/sort.ts",
+    "./subtitles": "./src/subtitles.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

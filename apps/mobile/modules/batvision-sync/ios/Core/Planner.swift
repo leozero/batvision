@@ -77,8 +77,9 @@ func itemKey(_ kind: String, _ id: Int64) -> String { "\(kind)-\(id)" }
 /// rest. An item not encoded yet has no known size: it's requested only while there is
 /// room left.
 enum Planner {
+  /// The audio language doesn't matter: every track is in the file (D40).
   private static func matches(_ local: LocalRecord, _ entry: PlanEntry) -> Bool {
-    local.profile == entry.profile && local.audioLanguage == entry.audioLanguage
+    local.profile == entry.profile
   }
 
   /// `local` in the library's order.

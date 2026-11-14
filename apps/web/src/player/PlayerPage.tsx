@@ -31,7 +31,7 @@ import { useTranslation } from "react-i18next";
 import { cx, IconButton, Spinner } from "../components/ui";
 import { ApiError, api, call, type Schemas } from "../lib/api";
 import { desktop, localPlaybackQuery } from "../lib/desktop";
-import { episodeCode, formatClock, languageName } from "../lib/format";
+import { episodeCode, formatClock, languageName, sameLanguage } from "../lib/format";
 import { episodeQuery, invalidateLibrary, movieQuery } from "../lib/queries";
 import { detectCapabilities } from "./capabilities";
 import {
@@ -52,8 +52,40 @@ type Info = Schemas["PlaybackInfo"];
 const isPlayed = (positionMs: number, durationMs: number | null | undefined) =>
   !!durationMs && positionMs >= durationMs * 0.9;
 
+/** An audio track as the <video> lists it (Chromium's AudioVideoTracks, on in Electron). */
+type ElementAudioTrack = { language: string; label: string; enabled: boolean };
+const elementAudioTracks = (video: HTMLVideoElement) =>
+  (video as HTMLVideoElement & { audioTracks?: ArrayLike<ElementAudioTrack> }).audioTracks;
+
+/** A downloaded copy's audio tracks, read from the file once it's loaded (D40). */
+type LocalAudio = { language: string | null; title: string | null };
+
+/** The audio menu of a downloaded copy; the language asked for when downloading plays first. */
+function localAudioMenu(
+  local: LocalPlayback,
+  tracks: readonly LocalAudio[],
+  chosen: number | null | undefined,
+): Pick<Info, "audio_tracks" | "audio_index"> {
+  if (!tracks.length) {
+    return {
+      audio_tracks: [{ index: 0, codec: "aac", kind: "normal", language: local.audioLanguage }],
+      audio_index: 0,
+    };
+  }
+  const preferred = tracks.findIndex((a) => sameLanguage(a.language, local.audioLanguage));
+  return {
+    audio_tracks: tracks.map((a, index) => ({ index, codec: "aac", kind: "normal", ...a })),
+    audio_index: chosen ?? Math.max(0, preferred),
+  };
+}
+
 /** A downloaded copy, described like a direct-play session. */
-function localInfo(local: LocalPlayback, opts: StartOptions, restart?: boolean): Info {
+function localInfo(
+  local: LocalPlayback,
+  opts: StartOptions,
+  restart: boolean | undefined,
+  tracks: readonly LocalAudio[],
+): Info {
   const forced = local.subtitles.findIndex((s) => s.kind === "forced");
   const chosen =
     opts.subtitle === undefined
@@ -69,8 +101,7 @@ function localInfo(local: LocalPlayback, opts: StartOptions, restart?: boolean):
     start_ms:
       opts.startMs !== undefined ? Math.round(opts.startMs) : restart ? 0 : local.positionMs,
     duration_ms: local.durationMs,
-    audio_tracks: [{ index: 0, codec: "aac", kind: "normal", language: local.audioLanguage }],
-    audio_index: 0,
+    ...localAudioMenu(local, tracks, opts.audio),
     subtitles: local.subtitles.map((s, i) => ({
       id: `l${i}`,
       external: true,
@@ -163,6 +194,7 @@ export function PlayerPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const loadedUrl = useRef<string | null>(null);
+  const localAudio = useRef<LocalAudio[]>([]);
   const capabilities = useMemo(() => detectCapabilities(), []);
 
   const [info, setInfo] = useState<Info | null>(null);
@@ -199,7 +231,7 @@ export function PlayerPage() {
       if (local) {
         // Same file (new subtitles): nothing reloads, so no `canplay` would end the spinner.
         if (loadedUrl.current !== local.url) setWaiting(true);
-        setInfo(localInfo(local, opts, restart));
+        setInfo(localInfo(local, opts, restart, localAudio.current));
         return;
       }
       setWaiting(true);
@@ -311,6 +343,39 @@ export function PlayerPage() {
     }
     return () => video.removeEventListener("loadedmetadata", onLoaded);
   }, [info, t]);
+
+  // A downloaded copy holds every audio track (D40): listed once the file is loaded.
+  useEffect(() => {
+    const video = videoRef.current;
+    localAudio.current = [];
+    if (!video || !local) return;
+    const read = () => {
+      const tracks = elementAudioTracks(video);
+      if (!tracks || tracks.length < 2) return;
+      localAudio.current = Array.from(tracks, (a) => ({
+        language: a.language || null,
+        // ffmpeg's default handler name says nothing.
+        title: a.label && a.label !== "SoundHandler" ? a.label : null,
+      }));
+      setInfo((current) =>
+        current?.url === local.url
+          ? { ...current, ...localAudioMenu(local, localAudio.current, undefined) }
+          : current,
+      );
+    };
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) read();
+    video.addEventListener("loadedmetadata", read);
+    return () => video.removeEventListener("loadedmetadata", read);
+  }, [local]);
+
+  // Switching one of them doesn't reload anything.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !info || !local || info.url !== local.url) return;
+    const tracks = elementAudioTracks(video);
+    if (!tracks || tracks.length < 2) return;
+    for (let i = 0; i < tracks.length; i++) tracks[i].enabled = i === info.audio_index;
+  }, [info, local]);
 
   // ---- Automatic quality ----------------------------------------------------------------
   // Stalls and throughput of the current stream; reset when a new one loads.

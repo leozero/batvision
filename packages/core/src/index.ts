@@ -3,4 +3,5 @@ export * from "./bytes";
 export * from "./format";
 export * from "./quality";
 export * from "./sort";
+export * from "./subtitles";
 export * from "./version";
