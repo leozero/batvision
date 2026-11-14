@@ -184,11 +184,6 @@ jobs:
     name: iOS (engine tests, end-to-end on a simulator)
     runs-on: macos-26
     timeout-minutes: 90
-    env:
-      # Native C, C++ and Objective-C of the libraries, cached between runs. ccache keeps to
-      # its default folder and React Native's settings (scripts/xcode/ccache.conf): Xcode's
-      # compilers find both whatever environment they're given.
-      USE_CCACHE: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -214,6 +209,14 @@ jobs:
           HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK: "1"
         run: |
           brew install ccache
+          # Native C, C++ and Objective-C of the libraries, cached between runs. Xcode calls
+          # it as the compiler launcher (below), with an environment of its own: the settings
+          # go in ccache's own config file. Same as React Native's (scripts/xcode/ccache.conf),
+          # minus depend mode, which doesn't cache clang modules.
+          ccache --set-config sloppiness=clang_index_store,file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
+          ccache --set-config file_clone=true
+          ccache --set-config inode_cache=true
+          ccache --set-config max_size=3G
           # Detached from the step's output, so the step ends without waiting for it.
           nohup sh -c 'brew install ffmpeg > "$RUNNER_TEMP/ffmpeg.log" 2>&1; echo $? > "$RUNNER_TEMP/ffmpeg.status"' > /dev/null 2>&1 &
       - uses: pnpm/action-setup@v6
@@ -239,17 +242,19 @@ jobs:
         working-directory: apps/mobile/ios
         run: |
           # arm64 only: the runner's simulator doesn't need the Intel half.
-          # No explicit clang modules: Xcode 26 then bypasses the ccache wrapper (CC).
+          # ccache as Xcode's compiler launcher. React Native's own wrapper (USE_CCACHE) runs
+          # plain clang under Xcode 26: the ccache path it needs is a build setting, not in
+          # the compiler's environment. No explicit clang modules: they skip the launcher.
+          ccache --zero-stats
           xcodebuild -workspace BatVision.xcworkspace -scheme BatVision -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CLANG_ENABLE_EXPLICIT_MODULES=NO \
+            C_COMPILER_LAUNCHER="$(command -v ccache)" \
             -derivedDataPath build/dd build > "$RUNNER_TEMP/xcodebuild.log" \
             || { tail -100 "$RUNNER_TEMP/xcodebuild.log"; exit 1; }
           tail -30 "$RUNNER_TEMP/xcodebuild.log"
-          # Whether the libraries' compilers went through ccache.
-          echo "pods with the ccache wrapper: $(grep -c 'ccache-clang' Pods/Pods.xcodeproj/project.pbxproj || true)"
-          echo "compiles through it: $(grep -c 'ccache-clang' "$RUNNER_TEMP/xcodebuild.log" || true)"
-          ccache --show-stats
+          echo "compiles through ccache: $(grep -c 'bin/ccache .*clang' "$RUNNER_TEMP/xcodebuild.log" || true)"
+          ccache --show-stats --verbose
       - if: always()
         uses: actions/cache/save@v4
         with:
