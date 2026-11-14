@@ -31,7 +31,7 @@ function NavLink({
   to,
   children,
 }: {
-  to: "/" | "/movies" | "/series" | "/watchlist" | "/downloads";
+  to: "/" | "/movies" | "/series" | "/sagas" | "/watchlist" | "/downloads";
   children: string;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -102,6 +102,7 @@ export function AppLayout() {
           <NavLink to="/">{t("nav.home")}</NavLink>
           <NavLink to="/movies">{t("nav.movies")}</NavLink>
           <NavLink to="/series">{t("nav.series")}</NavLink>
+          <NavLink to="/sagas">{t("nav.sagas")}</NavLink>
           <NavLink to="/watchlist">{t("nav.watchlist")}</NavLink>
           <NavLink to="/downloads">{t("nav.downloads")}</NavLink>
         </nav>

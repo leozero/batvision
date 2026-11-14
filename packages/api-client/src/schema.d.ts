@@ -367,6 +367,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Sagas with at least two movies in the library, by name. */
+        get: operations["collections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/collections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A saga and its movies in the library, in release order. 404 when the library
+         *     has none of them.
+         */
+        get: operations["collection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/downloads/cancel": {
         parameters: {
             query?: never;
@@ -1206,6 +1243,44 @@ export interface components {
             current_password: string;
             new_password: string;
         };
+        CollectionDetail: {
+            backdrop_path?: string | null;
+            /** Format: int64 */
+            id: number;
+            /** @description The saga's movies in the library, in release order. */
+            movies: components["schemas"]["MovieSummary"][];
+            name: string;
+            overview?: string | null;
+            poster_path?: string | null;
+            /**
+             * Format: int64
+             * @description Released movies of the saga, in the library or not. `None` until TMDB told.
+             */
+            total_count?: number | null;
+        };
+        /** @description The saga a movie belongs to. */
+        CollectionLink: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        CollectionSummary: {
+            backdrop_path?: string | null;
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description Movies of the saga in the library.
+             */
+            movie_count: number;
+            name: string;
+            poster_path?: string | null;
+            /**
+             * Format: int64
+             * @description Released movies of the saga, in the library or not. `None` until TMDB told.
+             */
+            total_count?: number | null;
+        };
         ConfirmRequest: {
             /** Format: int64 */
             variant_id: number;
@@ -1553,6 +1628,7 @@ export interface components {
             /** Format: int64 */
             added_at: number;
             backdrop_path?: string | null;
+            collection?: components["schemas"]["CollectionLink"] | null;
             file?: components["schemas"]["FileInfo"] | null;
             /** Format: int64 */
             id: number;
@@ -2874,6 +2950,54 @@ export interface operations {
                 };
             };
             429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    collections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionSummary"][];
+                };
+            };
+        };
+    };
+    collection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CollectionDetail"];
+                };
+            };
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

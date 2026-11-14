@@ -88,6 +88,8 @@ use crate::{
         routes::library::season_episodes,
         routes::library::episode,
         routes::library::image,
+        routes::collections::collections,
+        routes::collections::collection,
         routes::home::report_progress,
         routes::home::set_played,
         routes::home::home,
@@ -245,7 +247,7 @@ impl AppState {
 }
 
 pub fn app(state: AppState) -> Router {
-    use routes::{admin, auth, downloads, home, library, me, playback, system};
+    use routes::{admin, auth, collections, downloads, home, library, me, playback, system};
 
     let api = Router::new()
         .route("/health", get(system::health))
@@ -316,6 +318,8 @@ pub fn app(state: AppState) -> Router {
         )
         .route("/episodes/{id}", get(library::episode))
         .route("/images/{size}/{file}", get(library::image))
+        .route("/collections", get(collections::collections))
+        .route("/collections/{id}", get(collections::collection))
         .route("/home", get(home::home))
         .route("/search", get(home::search))
         .route("/progress", post(home::report_progress))

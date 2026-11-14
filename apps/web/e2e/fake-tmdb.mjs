@@ -4,6 +4,18 @@ import { createServer } from "node:http";
 
 const port = Number(process.env.FAKE_TMDB_PORT ?? 8422);
 
+// A made-up saga holding both movies, plus one the library doesn't have (D101).
+const saga = {
+  id: 10,
+  name: "Saga polar",
+  overview: "Des braquages qui tournent mal.",
+  parts: [
+    { id: 949, release_date: "1995-12-15" },
+    { id: 8195, release_date: "1998-09-25" },
+    { id: 1, release_date: "1999-01-01" },
+  ],
+};
+const inSaga = { id: saga.id, name: saga.name, poster_path: null, backdrop_path: null };
 const movies = {
   Ronin: {
     id: 8195,
@@ -11,8 +23,16 @@ const movies = {
     release_date: "1998-09-25",
     vote_average: 6.9,
     vote_count: 2400,
+    belongs_to_collection: inSaga,
   },
-  Heat: { id: 949, title: "Heat", release_date: "1995-12-15", vote_average: 7.9, vote_count: 7000 },
+  Heat: {
+    id: 949,
+    title: "Heat",
+    release_date: "1995-12-15",
+    vote_average: 7.9,
+    vote_count: 7000,
+    belongs_to_collection: inSaga,
+  },
 };
 const dark = {
   id: 70523,
@@ -42,6 +62,7 @@ function routes(path, query) {
   if (path === "/search/tv") return { results: query.get("query") === "Dark" ? [dark] : [] };
   const movie = Object.values(movies).find((m) => path === `/movie/${m.id}`);
   if (movie) return { ...movie, overview: `${movie.title}.` };
+  if (path === `/collection/${saga.id}`) return saga;
   if (path === `/tv/${dark.id}`) return dark;
   if (path === `/tv/${dark.id}/season/1`) return darkSeason1;
   return null;

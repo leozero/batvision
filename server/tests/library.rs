@@ -63,6 +63,7 @@ async fn mount_tmdb(server: &MockServer) {
         ]})))
         .mount(server)
         .await;
+    mount_back_to_the_future(server).await;
     Mock::given(method("GET"))
         .and(path("/search/movie"))
         .respond_with(json(json!({ "results": [] })))
@@ -152,6 +153,69 @@ async fn mount_tmdb(server: &MockServer) {
         .await;
     Mock::given(path("/w500/poster-fr.jpg"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"JPEGDATA".to_vec()))
+        .mount(server)
+        .await;
+}
+
+/// Two movies of a saga (D101): its French overview is empty, the English one is used.
+async fn mount_back_to_the_future(server: &MockServer) {
+    let json = |v: Value| ResponseTemplate::new(200).set_body_json(v);
+    let saga = |name: &str| {
+        json!({ "id": 264, "name": name, "poster_path": "/bttf-saga.jpg",
+                "backdrop_path": "/bttf-saga-backdrop.jpg" })
+    };
+    for (id, title, date) in [
+        (105, "Back to the Future", "1985-07-03"),
+        (165, "Back to the Future Part II", "1989-11-22"),
+    ] {
+        Mock::given(method("GET"))
+            .and(path("/search/movie"))
+            .and(query_param("query", title))
+            .respond_with(json(json!({ "results": [
+                { "id": id, "title": title, "release_date": date }
+            ]})))
+            .mount(server)
+            .await;
+        for (language, name) in [
+            ("fr-FR", "Retour vers le futur - Saga"),
+            ("en-US", "Back to the Future Collection"),
+        ] {
+            Mock::given(path(format!("/movie/{id}")))
+                .and(query_param("language", language))
+                .respond_with(json(json!({
+                    "id": id, "title": title, "overview": "Marty.", "release_date": date,
+                    "belongs_to_collection": saga(name)
+                })))
+                .mount(server)
+                .await;
+        }
+    }
+    let parts = json!([
+        { "id": 105, "release_date": "1985-07-03" },
+        { "id": 165, "release_date": "1989-11-22" },
+        { "id": 196, "release_date": "1990-05-25" },
+        // Announced: not counted.
+        { "id": 999, "release_date": "2099-01-01" }
+    ]);
+    Mock::given(path("/collection/264"))
+        .and(query_param("language", "fr-FR"))
+        .respond_with(json(json!({
+            "id": 264, "name": "Retour vers le futur - Saga", "overview": "",
+            "poster_path": "/bttf-saga.jpg", "parts": parts
+        })))
+        .mount(server)
+        .await;
+    Mock::given(path("/collection/264"))
+        .and(query_param("language", "en-US"))
+        .respond_with(json(json!({
+            "id": 264, "name": "Back to the Future Collection",
+            "overview": "Marty McFly travels through time.",
+            "poster_path": "/bttf-saga-en.jpg", "parts": parts
+        })))
+        .mount(server)
+        .await;
+    Mock::given(path("/w342/bttf-saga.jpg"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"SAGA".to_vec()))
         .mount(server)
         .await;
 }
@@ -743,4 +807,149 @@ async fn probes_real_files_with_ffprobe() {
     assert_eq!(media["audio"][0]["language"], "fre");
     let duration = media["duration_ms"].as_i64().unwrap();
     assert!((1900..=2200).contains(&duration), "{duration}");
+}
+
+async fn movie_id(f: &Fixture, title: &str) -> i64 {
+    f.get("/api/movies").await["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|m| m["title"] == title)
+        .unwrap_or_else(|| panic!("no movie {title}"))["id"]
+        .as_i64()
+        .unwrap()
+}
+
+async fn collection_requests(f: &Fixture) -> usize {
+    f.tmdb
+        .as_ref()
+        .unwrap()
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .filter(|r| r.url.path() == "/collection/264")
+        .count()
+}
+
+#[tokio::test]
+async fn groups_movies_into_sagas() {
+    let f = fixture(true).await;
+    let alice = f.app.create_user(&f.admin, "alice").await;
+    f.app
+        .request(
+            Method::PATCH,
+            "/api/me",
+            Some(&alice),
+            Some(json!({ "language": "en-US" })),
+        )
+        .await;
+    touch(
+        f.media.path(),
+        "Films/Back to the Future Part II (1989)/bttf2.mkv",
+    );
+    touch(f.media.path(), "Films/Back to the Future (1985)/bttf.mkv");
+    touch(f.media.path(), "Films/Inception (2010)/Inception.mkv");
+    f.create_library("Films", "movies", "Films").await;
+    // Fetched once for both movies, in each language; English is also the fallback.
+    assert_eq!(collection_requests(&f).await, 2);
+
+    let bttf2 = movie_id(&f, "Back to the Future Part II").await;
+    let detail = f.get(&format!("/api/movies/{bttf2}")).await;
+    assert_eq!(detail["collection"]["name"], "Retour vers le futur - Saga");
+    let saga = detail["collection"]["id"].as_i64().unwrap();
+    let inception = movie_id(&f, "Inception").await;
+    assert!(f.get(&format!("/api/movies/{inception}")).await["collection"].is_null());
+
+    let list = f.get("/api/collections").await;
+    assert_eq!(
+        list,
+        json!([{
+            "id": saga, "name": "Retour vers le futur - Saga",
+            "poster_path": "/bttf-saga.jpg", "backdrop_path": "/bttf-saga-backdrop.jpg",
+            "movie_count": 2, "total_count": 3
+        }])
+    );
+    let (_, list) = f.app.get("/api/collections", Some(&alice)).await;
+    assert_eq!(list[0]["name"], "Back to the Future Collection");
+
+    let page = f.get(&format!("/api/collections/{saga}")).await;
+    assert_eq!(
+        Fixture::titles(&json!({ "items": page["movies"] })),
+        ["Back to the Future", "Back to the Future Part II"],
+        "release order"
+    );
+    assert_eq!(page["total_count"], 3);
+    assert_eq!(
+        page["overview"], "Marty McFly travels through time.",
+        "no French overview: the English one"
+    );
+
+    let (status, body) = f.app.get("/api/images/w342/bttf-saga.jpg", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, Value::String("SAGA".into()));
+    let (status, _) = f.app.get("/api/collections/99999", Some(&f.admin)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_saga_with_one_movie_left_is_only_reached_from_it() {
+    let f = fixture(true).await;
+    touch(
+        f.media.path(),
+        "Films/Back to the Future Part II (1989)/bttf2.mkv",
+    );
+    touch(f.media.path(), "Films/Back to the Future (1985)/bttf.mkv");
+    // The scanner leaves alone a library that lost every video.
+    touch(f.media.path(), "Films/Inception (2010)/Inception.mkv");
+    let library = f.create_library("Films", "movies", "Films").await;
+    let bttf = movie_id(&f, "Back to the Future").await;
+    let saga = f.get(&format!("/api/movies/{bttf}")).await["collection"]["id"]
+        .as_i64()
+        .unwrap();
+
+    std::fs::remove_dir_all(
+        f.media
+            .path()
+            .join("Films/Back to the Future Part II (1989)"),
+    )
+    .unwrap();
+    f.rescan(library).await;
+    assert_eq!(f.get("/api/collections").await, json!([]));
+    let page = f.get(&format!("/api/collections/{saga}")).await;
+    assert_eq!(page["movies"].as_array().unwrap().len(), 1);
+
+    std::fs::remove_dir_all(f.media.path().join("Films/Back to the Future (1985)")).unwrap();
+    f.rescan(library).await;
+    let (status, _) = f
+        .app
+        .get(&format!("/api/collections/{saga}"), Some(&f.admin))
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn movies_matched_before_sagas_get_theirs_on_a_later_scan() {
+    let f = fixture(true).await;
+    touch(f.media.path(), "Films/Back to the Future (1985)/bttf.mkv");
+    let library = f.create_library("Films", "movies", "Films").await;
+
+    // As left by the collections migration.
+    let db = &f.app.state.db;
+    sqlx::query("UPDATE movies SET collection_id = NULL, metadata_updated_at = 0")
+        .execute(db)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM collections")
+        .execute(db)
+        .await
+        .unwrap();
+    let bttf = movie_id(&f, "Back to the Future").await;
+    assert!(f.get(&format!("/api/movies/{bttf}")).await["collection"].is_null());
+
+    assert_eq!(f.rescan(library).await.metadata_refreshed, 1);
+    assert_eq!(
+        f.get(&format!("/api/movies/{bttf}")).await["collection"]["name"],
+        "Retour vers le futur - Saga"
+    );
 }

@@ -66,6 +66,58 @@ pub struct MovieDetails {
     pub vote_average: Option<f64>,
     #[serde(default)]
     pub vote_count: Option<i64>,
+    /// The saga the movie belongs to, if any.
+    #[serde(default)]
+    pub belongs_to_collection: Option<CollectionRef>,
+}
+
+/// A collection as embedded in a movie's details.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CollectionRef {
+    pub id: i64,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub poster_path: Option<String>,
+    #[serde(default)]
+    pub backdrop_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CollectionPart {
+    pub id: i64,
+    #[serde(default)]
+    pub release_date: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CollectionDetails {
+    pub id: i64,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub overview: Option<String>,
+    #[serde(default)]
+    pub poster_path: Option<String>,
+    #[serde(default)]
+    pub backdrop_path: Option<String>,
+    #[serde(default)]
+    pub parts: Vec<CollectionPart>,
+}
+
+impl CollectionDetails {
+    /// Movies of the collection released by `today` (`YYYY-MM-DD`): TMDB also lists
+    /// announced ones, which nobody can have yet.
+    pub fn released_parts(&self, today: &str) -> i64 {
+        self.parts
+            .iter()
+            .filter(|p| {
+                p.release_date
+                    .as_deref()
+                    .is_some_and(|d| !d.is_empty() && d <= today)
+            })
+            .count() as i64
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -245,6 +297,14 @@ impl TmdbClient {
         .await
     }
 
+    pub async fn collection(&self, id: i64, language: &str) -> TmdbResult<CollectionDetails> {
+        self.get(
+            &format!("/collection/{id}"),
+            &[("language", language.to_owned())],
+        )
+        .await
+    }
+
     pub async fn tv(&self, id: i64, language: &str) -> TmdbResult<TvDetails> {
         self.get(&format!("/tv/{id}"), &[("language", language.to_owned())])
             .await
@@ -326,6 +386,42 @@ mod tests {
         assert_eq!(best_match(&results, Some(1980)).unwrap().id, 1);
         assert_eq!(best_match(&results, None).unwrap().id, 1);
         assert!(best_match(&[], Some(2000)).is_none());
+    }
+
+    #[test]
+    fn released_parts_leave_out_announced_movies() {
+        let collection: CollectionDetails = serde_json::from_value(serde_json::json!({
+            "id": 1241, "name": "Harry Potter Collection",
+            "parts": [
+                { "id": 1, "release_date": "2001-11-16" },
+                { "id": 2, "release_date": "2026-11-14" },
+                { "id": 3, "release_date": "2031-01-01" },
+                { "id": 4, "release_date": "" },
+                { "id": 5 }
+            ]
+        }))
+        .unwrap();
+        assert_eq!(collection.released_parts("2026-11-14"), 2);
+    }
+
+    #[test]
+    fn movie_details_carry_their_collection() {
+        let movie: MovieDetails = serde_json::from_value(serde_json::json!({
+            "id": 105, "title": "Back to the Future",
+            "belongs_to_collection": { "id": 264, "name": "Back to the Future Collection",
+              "poster_path": "/bttf.jpg", "backdrop_path": null }
+        }))
+        .unwrap();
+        let collection = movie.belongs_to_collection.unwrap();
+        assert_eq!(collection.id, 264);
+        assert_eq!(collection.poster_path.as_deref(), Some("/bttf.jpg"));
+        assert!(collection.backdrop_path.is_none());
+
+        let alone: MovieDetails = serde_json::from_value(serde_json::json!({
+            "id": 27205, "title": "Inception", "belongs_to_collection": null
+        }))
+        .unwrap();
+        assert!(alone.belongs_to_collection.is_none());
     }
 
     #[tokio::test]

@@ -156,6 +156,26 @@ test("home shows the top-rated movies, with a link to all of them", async () => 
   await expect(page.getByTestId("sort-direction")).toHaveText("Mieux notés d'abord");
 });
 
+test("a movie links to its saga, which lists the library's movies in release order", async () => {
+  await page.goto("/movies");
+  await page
+    .getByRole("link", { name: /^Ronin/ })
+    .first()
+    .click();
+  await page.getByTestId("saga-link").click();
+  await expect(page.getByRole("heading", { name: "Saga polar" })).toBeVisible();
+  await expect(page.getByText("2 films sur 3")).toBeVisible();
+  await expect(page.getByText("Des braquages qui tournent mal.")).toBeVisible();
+  const cards = page.getByRole("main").getByRole("link");
+  await expect(cards).toHaveCount(2);
+  await expect(cards.first()).toContainText("Heat");
+  await expect(cards.nth(1)).toContainText("Ronin");
+
+  await page.getByRole("link", { name: "Sagas", exact: true }).click();
+  await expect(page.getByTestId("saga-card")).toHaveCount(1);
+  await expect(page.getByTestId("saga-card")).toContainText("Saga polar");
+});
+
 test("the player switches picture quality and remembers it on the device", async () => {
   await page.goto("/movies");
   await page.getByRole("link", { name: /^Heat/ }).first().click();

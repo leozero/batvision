@@ -178,7 +178,129 @@ pub async fn refresh_movie(
         let overview = non_empty(&d.overview).or(non_empty(&fallback_overview));
         upsert_translation(db, "movie", movie_id, language, Some(&d.title), overview).await?;
     }
+    link_collection(db, tmdb, movie_id, &details, languages).await?;
     Ok(true)
+}
+
+/// Links a movie to its saga, or unlinks it. The saga itself (overview, number of
+/// movies) is fetched when new, stale or missing a language; a failure there is
+/// logged and doesn't fail the movie.
+async fn link_collection(
+    db: &Db,
+    tmdb: &TmdbClient,
+    movie_id: i64,
+    details: &[(&String, tmdb::MovieDetails)],
+    languages: &[String],
+) -> anyhow::Result<()> {
+    let Some(found) = details[0].1.belongs_to_collection.as_ref() else {
+        sqlx::query("UPDATE movies SET collection_id = NULL WHERE id = ?")
+            .bind(movie_id)
+            .execute(db)
+            .await?;
+        return Ok(());
+    };
+    let (collection_id, needs_fetch): (i64, bool) = sqlx::query_as(
+        "INSERT INTO collections (tmdb_id, poster_path, backdrop_path) VALUES (?1, ?2, ?3)
+         ON CONFLICT (tmdb_id) DO UPDATE SET poster_path = excluded.poster_path,
+           backdrop_path = excluded.backdrop_path
+         RETURNING id, metadata_updated_at IS NULL OR metadata_updated_at < ?4
+           OR (SELECT COUNT(*) FROM collection_translations t WHERE t.collection_id = collections.id
+                 AND t.language IN (SELECT value FROM json_each(?5))) < json_array_length(?5)",
+    )
+    .bind(found.id)
+    .bind(&found.poster_path)
+    .bind(&found.backdrop_path)
+    .bind(now() - STALE_AFTER_SECS)
+    .bind(serde_json::to_string(languages)?)
+    .fetch_one(db)
+    .await?;
+    sqlx::query("UPDATE movies SET collection_id = ? WHERE id = ?")
+        .bind(collection_id)
+        .bind(movie_id)
+        .execute(db)
+        .await?;
+    // The movie's details already name the saga in each language.
+    for (language, d) in details {
+        let name = d
+            .belongs_to_collection
+            .as_ref()
+            .filter(|c| c.id == found.id)
+            .and_then(|c| non_empty(&c.name));
+        if let Some(name) = name {
+            sqlx::query(
+                "INSERT INTO collection_translations (collection_id, language, name)
+                 VALUES (?, ?, ?)
+                 ON CONFLICT (collection_id, language) DO UPDATE SET name = excluded.name",
+            )
+            .bind(collection_id)
+            .bind(language)
+            .bind(name)
+            .execute(db)
+            .await?;
+        }
+    }
+    if needs_fetch
+        && let Err(err) = refresh_collection(db, tmdb, collection_id, found.id, languages).await
+    {
+        tracing::warn!(collection = found.id, error = %err, "collection refresh failed");
+    }
+    Ok(())
+}
+
+async fn refresh_collection(
+    db: &Db,
+    tmdb: &TmdbClient,
+    collection_id: i64,
+    tmdb_id: i64,
+    languages: &[String],
+) -> anyhow::Result<()> {
+    let mut per_language = Vec::with_capacity(languages.len());
+    for language in languages {
+        per_language.push((language, tmdb.collection(tmdb_id, language).await?));
+    }
+    let fallback = if !per_language
+        .iter()
+        .any(|(l, c)| *l != FALLBACK_LANGUAGE && non_empty(&c.overview).is_none())
+    {
+        None
+    } else if let Some((_, c)) = per_language.iter().find(|(l, _)| *l == FALLBACK_LANGUAGE) {
+        Some(c.clone())
+    } else {
+        tmdb.collection(tmdb_id, FALLBACK_LANGUAGE).await.ok()
+    };
+    let today: String = sqlx::query_scalar("SELECT date('now')")
+        .fetch_one(db)
+        .await?;
+    let main = &per_language[0].1;
+    sqlx::query(
+        "UPDATE collections SET poster_path = COALESCE(?, poster_path),
+           backdrop_path = COALESCE(?, backdrop_path), parts_count = ?, metadata_updated_at = ?
+         WHERE id = ?",
+    )
+    .bind(&main.poster_path)
+    .bind(&main.backdrop_path)
+    .bind(main.released_parts(&today))
+    .bind(now())
+    .bind(collection_id)
+    .execute(db)
+    .await?;
+    for (language, c) in &per_language {
+        let overview = non_empty(&c.overview)
+            .or_else(|| fallback.as_ref().and_then(|f| non_empty(&f.overview)));
+        sqlx::query(
+            "INSERT INTO collection_translations (collection_id, language, name, overview)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT (collection_id, language)
+             DO UPDATE SET name = COALESCE(excluded.name, name), overview = excluded.overview",
+        )
+        .bind(collection_id)
+        .bind(language)
+        .bind(non_empty(&c.name))
+        .bind(overview)
+        .execute(db)
+        .await?;
+    }
+    Ok(())
 }
 
 /// Refreshes a series, its local seasons and episodes. Returns false if no TMDB match.
@@ -459,6 +581,13 @@ pub async fn refresh_library(
         }
     }
     refresh_stale(db, tmdb, library_id, languages, &mut counts).await?;
+    // Sagas whose last movie left (another match, a deleted library).
+    sqlx::query(
+        "DELETE FROM collections WHERE id NOT IN
+           (SELECT collection_id FROM movies WHERE collection_id IS NOT NULL)",
+    )
+    .execute(db)
+    .await?;
     Ok(counts)
 }
 

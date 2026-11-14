@@ -69,6 +69,12 @@ export const movieQuery = (id: number) =>
     queryFn: () => call(api().GET("/api/movies/{id}", { params: { path: { id } } })),
   });
 
+export const collectionQuery = (id: number) =>
+  queryOptions({
+    queryKey: ["collection", id],
+    queryFn: () => call(api().GET("/api/collections/{id}", { params: { path: { id } } })),
+  });
+
 export const seriesQuery = (id: number) =>
   queryOptions({
     queryKey: ["series-detail", id],

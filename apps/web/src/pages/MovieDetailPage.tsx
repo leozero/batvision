@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { Check, Eye, EyeOff, Play, RotateCcw } from "lucide-react";
+import { Check, Eye, EyeOff, Layers, Play, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { DetailHeader, Dot, IdentifyButton } from "../components/detail";
 import { DownloadMovieButton, WatchlistButton } from "../components/downloads";
@@ -137,6 +137,21 @@ export function MovieDetailPage() {
                 <span className="inline-flex items-center gap-1 text-success">
                   <Check className="size-4" /> {t("detail.watched")}
                 </span>
+              </>
+            ) : null}
+            {movie.collection ? (
+              <>
+                <Dot />
+                <Link
+                  to="/sagas/$id"
+                  params={{ id: String(movie.collection.id) }}
+                  title={t("saga.open")}
+                  data-testid="saga-link"
+                  className="inline-flex items-center gap-1.5 text-fg/85 underline-offset-4 transition-colors hover:text-accent hover:underline"
+                >
+                  <Layers className="size-4" />
+                  {movie.collection.name}
+                </Link>
               </>
             ) : null}
             <DownloadedMark kind="movie" id={movie.id} />

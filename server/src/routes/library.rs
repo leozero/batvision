@@ -751,6 +751,9 @@ pub struct MovieDetail {
     /// Every file of the movie, largest first (D102).
     #[sqlx(skip)]
     pub versions: Vec<Version>,
+    /// The saga the movie belongs to (D101).
+    #[sqlx(skip)]
+    pub collection: Option<super::collections::CollectionLink>,
 }
 
 #[utoipa::path(get, path = "/api/movies/{id}", tag = "library", security(("bearer" = [])),
@@ -800,6 +803,7 @@ pub async fn load_movie_detail(
     .ok_or(ApiError::NotFound)?;
     detail.file = file_info(state, user.id, "movie", id).await?;
     detail.versions = versions::list(&state.db, user.id, "movie", id).await?;
+    detail.collection = super::collections::movie_collection(state, user, id).await?;
     Ok(detail)
 }
 
@@ -1205,6 +1209,7 @@ pub async fn image(
            SELECT 1 FROM movies WHERE poster_path = ?1 OR backdrop_path = ?1
            UNION ALL SELECT 1 FROM series WHERE poster_path = ?1 OR backdrop_path = ?1
            UNION ALL SELECT 1 FROM seasons WHERE poster_path = ?1
+           UNION ALL SELECT 1 FROM collections WHERE poster_path = ?1 OR backdrop_path = ?1
            UNION ALL SELECT 1 FROM episodes WHERE still_path = ?1)",
     )
     .bind(&tmdb_path)

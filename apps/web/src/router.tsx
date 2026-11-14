@@ -20,6 +20,7 @@ import { DownloadsPage } from "./pages/DownloadsPage";
 import { HomePage } from "./pages/HomePage";
 import { MovieDetailPage } from "./pages/MovieDetailPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
+import { SagaPage, SagasPage } from "./pages/SagasPage";
 import { SearchPage } from "./pages/SearchPage";
 import { SeriesDetailPage } from "./pages/SeriesDetailPage";
 import { WatchlistPage } from "./pages/WatchlistPage";
@@ -146,6 +147,16 @@ const series = createRoute({
     typeof s.season === "number" ? { season: s.season } : {},
   component: SeriesDetailPage,
 });
+const sagas = createRoute({
+  getParentRoute: () => shell,
+  path: "/sagas",
+  component: SagasPage,
+});
+const saga = createRoute({
+  getParentRoute: () => shell,
+  path: "/sagas/$id",
+  component: SagaPage,
+});
 const search = createRoute({
   getParentRoute: () => shell,
   path: "/search",
@@ -207,6 +218,8 @@ const routeTree = root.addChildren([
       movie,
       seriesList,
       series,
+      sagas,
+      saga,
       search,
       watchlist,
       downloads,

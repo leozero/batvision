@@ -15,7 +15,6 @@
 ### Out of scope for v1
 
 - Intro skipping.
-- Collections.
 - Parental controls.
 - Synchronized group playback.
 - Music, live TV, books.
@@ -111,6 +110,7 @@ docs/
 - **Ratings** (D59): TMDB's average out of 10 for movies, series, seasons and episodes, hidden when fewer than 5 people voted (a season counts its episodes' votes). The API returns a list per source, so other sources can be added later. They show on posters, detail pages, the season picker and episode rows, and the movie and series pages can sort by rating.
 - **Sorting** (D75): the movie and series pages sort by date added, title, year or rating. Each sort has a natural direction (A to Z for titles, newest or best first for the others) that a button reverses; items without a year or rating stay last either way. The choice is remembered per page.
 - **Top-rated movies** (D76): a home page rail with the 20 best-rated movies having at least 50 TMDB votes (fewer lets obscure titles in), watched ones included, and a link to the movies page sorted by rating.
+- **Sagas** (D101): movies TMDB groups into a collection (The Lord of the Rings, Back to the Future…) are grouped. A movie page links to its saga; the saga page shows its name, overview and backdrop, the library's movies of it in release order, and how many movies it has in all (released ones only: TMDB also lists announced movies). A Sagas page lists those with at least two movies in the library. The saga is read from the movie's TMDB details, so matched movies got theirs on the stale-metadata refresh after the update.
 
 ## 5. Playback
 

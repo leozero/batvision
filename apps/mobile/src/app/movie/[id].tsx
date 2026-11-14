@@ -1,10 +1,10 @@
 import { formatRuntime } from "@batvision/core/format";
 import { useQuery } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
-import { Check, Download, Play } from "lucide-react-native";
+import { Check, Download, Layers, Play } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { Hero, LocalMark, WatchedMark } from "../../components/Detail";
 import {
   Button,
@@ -51,6 +51,18 @@ export default function MovieScreen() {
             {m.played ? <WatchedMark /> : null}
             <LocalMark kind="movie" id={id} />
           </View>
+          {m.collection ? (
+            <Pressable
+              testID="saga-link"
+              accessibilityRole="link"
+              accessibilityHint={t("saga.open")}
+              onPress={() => router.push(`/saga/${m.collection?.id}`)}
+              className="flex-row items-center gap-1.5 self-start rounded-full bg-surface-2 px-3 py-1.5 active:opacity-70"
+            >
+              <Layers color={COLORS.accent} size={14} />
+              <Text className="text-xs font-semibold text-fg">{m.collection.name}</Text>
+            </Pressable>
+          ) : null}
         </Hero>
         <View className="w-full max-w-3xl gap-4 self-center p-4">
           <Button
