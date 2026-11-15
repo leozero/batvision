@@ -18,6 +18,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     android: { ...config.android, versionCode: versionCode(version) },
     // TestFlight refuses a build number it has already seen (D94).
     ios: { ...config.ios, buildNumber: String(versionCode(version)) },
-    plugins: [...(config.plugins ?? []), "./plugins/withReleaseSigning"],
+    plugins: [
+      ...(config.plugins ?? []),
+      "./plugins/withReleaseSigning",
+      "./plugins/withDisplayMetrics",
+    ],
   };
 };
