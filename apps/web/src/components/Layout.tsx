@@ -1,3 +1,4 @@
+import { versionGap } from "@batvision/core/version";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
@@ -8,13 +9,14 @@ import {
   Settings,
   ShieldAlert,
   ShieldCheck,
+  TriangleAlert,
   User as UserIcon,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { api } from "../lib/api";
-import { desktop, useUpdateState } from "../lib/desktop";
+import { api, call } from "../lib/api";
+import { desktop, desktopInfo, useUpdateState } from "../lib/desktop";
 import { meQuery } from "../lib/queries";
 import { Logo } from "./Logo";
 import {
@@ -174,6 +176,7 @@ export function AppLayout() {
       </AnimatePresence>
 
       <UpdateBanner />
+      <VersionBanner />
 
       <AnimatePresence mode="wait">
         <motion.div
@@ -188,6 +191,39 @@ export function AppLayout() {
         <ShieldCheck className="size-3.5" />
         BatVision
       </footer>
+    </div>
+  );
+}
+
+/**
+ * Desktop app only (a browser gets the server's own interface): the app and the server
+ * aren't the same version (D107).
+ */
+function VersionBanner() {
+  const { t } = useTranslation();
+  const update = useUpdateState();
+  const app = desktopInfo()?.version;
+  const { data } = useQuery({
+    queryKey: ["health"],
+    queryFn: () => call(api.GET("/api/health")),
+    enabled: Boolean(desktop && app),
+    staleTime: 10 * 60_000,
+    retry: false,
+  });
+  const gap = app && data ? versionGap(app, data.version) : null;
+  // A newer app on offer already says it.
+  const offered = update?.status === "ready" || update?.status === "available";
+  if (!gap || (gap === "app-older" && offered)) return null;
+  return (
+    <div
+      data-testid="version-banner"
+      className="flex items-center justify-center gap-2 bg-danger/15 px-4 py-2.5 text-sm text-danger"
+    >
+      <TriangleAlert className="size-4 shrink-0" />
+      {t(gap === "server-older" ? "common.serverOlder" : "common.appOlder", {
+        app,
+        server: data?.version,
+      })}
     </div>
   );
 }

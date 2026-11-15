@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { UpdateBanner } from "../../components/UpdateBanner";
 import { EmptyState, Loading, Poster, type PosterBadges, Screen } from "../../components/ui";
+import { VersionBanner } from "../../components/VersionBanner";
 import { HeaderButtons } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { setMovieList } from "../../lib/browse";
@@ -124,6 +125,7 @@ export default function HomeScreen() {
           <HeaderButtons />
         </View>
         {/* iOS: TestFlight and the App Store update the app (D90). */}
+        <VersionBanner />
         {Platform.OS === "android" ? <UpdateBanner /> : null}
         {empty ? <EmptyState title={t("home.emptyTitle")} /> : null}
         <Row

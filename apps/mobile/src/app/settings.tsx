@@ -9,6 +9,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { DeviceSettings } from "../components/DeviceSettings";
 import { ChoiceList, SettingRow, Sheet, SwitchRow } from "../components/Sheet";
 import { Button, COLORS, EmptyState, Loading, Screen } from "../components/ui";
+import { VersionBanner } from "../components/VersionBanner";
 import { api, type Schemas } from "../lib/api";
 import { downloadsQuery, meQuery, preferencesQuery, useSavePreferences } from "../lib/queries";
 import { ui } from "../lib/scale";
@@ -73,6 +74,7 @@ export default function Settings() {
             <ChevronRight color={COLORS.faint} size={ui(20)} />
           </Pressable>
         ) : null}
+        <VersionBanner className="" />
         <Tracks />
         <Text className="mt-2 text-lg font-semibold text-fg">{t("mobile.settings")}</Text>
         {device ? (
@@ -110,6 +112,16 @@ function Tracks() {
   const save = useSavePreferences();
   const [modes, setModes] = useState(false);
   if (!prefs) return null;
+  // A server before 0.9 knows nothing of these settings: saving would change nothing.
+  if (prefs.spoken_languages == null)
+    return (
+      <View className="gap-3">
+        <Text className="mt-2 text-lg font-semibold text-fg">{t("account.tracks")}</Text>
+        <Text testID="tracks-need-server" className="text-sm text-muted">
+          {t("account.needsServer")}
+        </Text>
+      </View>
+    );
   const name = (code: string) => {
     const label = languageName(code, i18n.language) ?? code;
     return label.charAt(0).toLocaleUpperCase(i18n.language) + label.slice(1);

@@ -1,5 +1,10 @@
 export const fr = {
   common: {
+    serverOlder:
+      "Le serveur est en version {{server}}, plus ancienne que cette app ({{app}}) : mettez le serveur à jour, sinon certaines fonctions ne marcheront pas.",
+    appOlder:
+      "Cette app ({{app}}) est plus ancienne que le serveur ({{server}}) : mettez-la à jour pour profiter de tout.",
+    share: "Partager",
     play: "Lecture",
     resume: "Reprendre",
     moreInfo: "Plus d'infos",
@@ -464,6 +469,7 @@ export const fr = {
     watchlistEpisodes: "Séries de la watchlist",
     watchlistEpisodesHint:
       "Nombre d'épisodes non vus gardés téléchargés pour chaque série de votre watchlist.",
+    needsServer: "Ce réglage demande le serveur BatVision 0.9 ou plus récent : mettez-le à jour.",
     seriesMemoryHint:
       "Si vous changez de piste pendant un film ou un épisode, ce choix est retenu pour ce film ou pour toute la série.",
     password: "Mot de passe",
@@ -549,6 +555,9 @@ export const fr = {
     libraryKind: "Type",
     users: "Utilisateurs",
     role: "Rôle",
+    reset: "Réinitialiser",
+    passwordRule: "Au moins 10 caractères. La personne pourra le changer depuis son compte.",
+    shareInvitation: "Partager un lien d'invitation",
     createUser: "Créer le compte",
     confirmRemoveUser: "Supprimer le compte de {{name}} ?",
     resetPassword: "Donner un mot de passe temporaire",

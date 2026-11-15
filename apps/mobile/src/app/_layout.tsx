@@ -9,7 +9,9 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Unreachable } from "../lib/api";
 import { askNotifications } from "../lib/permissions";
-import { applyUiScale } from "../lib/scale";
+// 1.5× on a large window (D105), decided before anything renders.
+// 1.5× on a large window (D105), decided before anything renders.
+import "../lib/scale";
 import { BatvisionSync } from "../lib/sync";
 
 const queryClient = new QueryClient({
@@ -23,9 +25,11 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
-  // 1.5× on a large window (DeX, a monitor), following its resizes (D105).
-  const { width } = useWindowDimensions();
-  useEffect(() => applyUiScale(width), [width]);
+  // Android leaves the texts on screen at the old density or font size when they change
+  // while the app runs (phone screen ↔ Samsung DeX, display size settings): sizes and
+  // measures go stale, texts get cut or overlap. Drawing everything anew fixes them (D105).
+  const { scale, fontScale } = useWindowDimensions();
+  const screen = `${scale}-${fontScale}`;
 
   useEffect(() => {
     // Sync when the app opens or comes back to the foreground (D71).
@@ -43,6 +47,7 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <StatusBar style="light" />
           <Stack
+            key={screen}
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: "#09090c" },

@@ -5,6 +5,11 @@ type Shape<T> = { [K in keyof T]: T[K] extends string ? string : Shape<T[K]> };
 
 export const en: Shape<typeof fr> = {
   common: {
+    serverOlder:
+      "The server runs version {{server}}, older than this app ({{app}}): update the server, or some features won't work.",
+    appOlder:
+      "This app ({{app}}) is older than the server ({{server}}): update it to get everything.",
+    share: "Share",
     play: "Play",
     resume: "Resume",
     moreInfo: "More info",
@@ -462,6 +467,7 @@ export const en: Shape<typeof fr> = {
     watchlistEpisodes: "Watchlist shows",
     watchlistEpisodesHint:
       "How many unwatched episodes stay downloaded for each show in your watchlist.",
+    needsServer: "This setting needs BatVision server 0.9 or later: update it.",
     seriesMemoryHint:
       "If you change tracks during a movie or an episode, the choice is kept for that movie or the whole show.",
     password: "Password",
@@ -545,6 +551,9 @@ export const en: Shape<typeof fr> = {
     libraryKind: "Type",
     users: "Users",
     role: "Role",
+    reset: "Reset",
+    passwordRule: "At least 10 characters. They can change it from their account.",
+    shareInvitation: "Share an invitation link",
     createUser: "Create account",
     confirmRemoveUser: "Delete {{name}}'s account?",
     resetPassword: "Give a temporary password",

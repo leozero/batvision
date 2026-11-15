@@ -274,7 +274,8 @@ export function EmptyState({
   return (
     <View className="items-center gap-3 px-8 py-16">
       {icon}
-      <Text className="text-center text-base font-semibold text-fg">{title}</Text>
+      {/* The full width, not its own: a text sized to itself can be cut on Android. */}
+      <Text className="w-full text-center text-base font-semibold text-fg">{title}</Text>
       {children}
     </View>
   );

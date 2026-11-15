@@ -1,9 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { ArrowLeft, Cpu, Film, RefreshCw, Trash2, Tv } from "lucide-react-native";
+import {
+  ArrowLeft,
+  Cpu,
+  Film,
+  KeyRound,
+  Link2,
+  RefreshCw,
+  ShieldOff,
+  Trash2,
+  Tv,
+  UserPlus,
+} from "lucide-react-native";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, Share, Text, View } from "react-native";
 import {
   Badge,
   Button,
@@ -19,11 +30,12 @@ import {
 import { ApiError, api, call } from "../lib/api";
 import { meQuery } from "../lib/queries";
 import { ui } from "../lib/scale";
+import { session } from "../lib/session";
 
 /**
  * The administration on the phone: what an admin checks or starts from the couch —
- * scans, the encode queue, timeline thumbnails, the server. Accounts and new
- * libraries stay on the web.
+ * scans, accounts and invitations, the encode queue, timeline thumbnails, the server.
+ * New libraries stay on the web.
  */
 export default function Admin() {
   const { t } = useTranslation();
@@ -52,6 +64,7 @@ export default function Admin() {
         ) : (
           <>
             <Libraries />
+            <Users />
             <Encodes />
             <Thumbnails />
             <System />
@@ -134,6 +147,231 @@ function Libraries() {
       })}
       <ErrorText>{errorText(scan.error)}</ErrorText>
     </Section>
+  );
+}
+
+/** Same on every language. */
+const TWO_FACTOR = "2FA";
+
+/** Accounts (D106): create one, or share an invitation link; lock-out help. */
+function Users() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const errorText = useErrorText();
+  const { data: me } = useQuery(meQuery);
+  const users = useQuery({
+    queryKey: ["admin", "users"],
+    queryFn: () => call(api().GET("/api/admin/users")),
+  });
+  const refresh = () => qc.invalidateQueries({ queryKey: ["admin", "users"] });
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"user" | "admin">("user");
+  const [temporary, setTemporary] = useState<{ name: string; password: string } | null>(null);
+  const create = useMutation({
+    mutationFn: () =>
+      call(api().POST("/api/admin/users", { body: { username: username.trim(), password, role } })),
+    onSuccess: () => {
+      setUsername("");
+      setPassword("");
+      setRole("user");
+      void refresh();
+    },
+  });
+  const remove = useMutation({
+    mutationFn: (id: number) =>
+      call(api().DELETE("/api/admin/users/{id}", { params: { path: { id } } })),
+    onSuccess: refresh,
+  });
+  const resetPassword = useMutation({
+    mutationFn: (u: { id: number; username: string }) =>
+      call(api().POST("/api/admin/users/{id}/password", { params: { path: { id: u.id } } })),
+    onSuccess: (data, u) => setTemporary({ name: u.username, password: data.password }),
+  });
+  const resetTotp = useMutation({
+    mutationFn: (id: number) =>
+      call(api().DELETE("/api/admin/users/{id}/totp", { params: { path: { id } } })),
+    onSuccess: refresh,
+  });
+  const invite = useMutation({
+    mutationFn: () => call(api().POST("/api/admin/invitations", { body: { role: "user" } })),
+    onSuccess: (inv) =>
+      void Share.share({ message: `${session().server}/invite/${inv.token}` }).catch(() => {}),
+  });
+  // Asks first: these can't be undone.
+  const confirm = (message: string, action: string, run: () => void) =>
+    Alert.alert(message, undefined, [
+      { text: t("common.cancel"), style: "cancel" },
+      { text: action, style: "destructive", onPress: run },
+    ]);
+  const error = create.error ?? remove.error ?? resetPassword.error ?? resetTotp.error;
+  return (
+    <Section title={t("admin.users")}>
+      {users.data?.map((u) => (
+        <View key={u.id} testID={`user-${u.username}`} className="flex-row items-center gap-3">
+          <View className="size-9 items-center justify-center rounded-full bg-surface-3">
+            <Text className="text-sm font-bold uppercase text-fg">{u.username.slice(0, 1)}</Text>
+          </View>
+          <View className="min-w-0 flex-1 gap-1">
+            <Text numberOfLines={1} className="font-medium text-fg">
+              {u.username}
+            </Text>
+            {u.role === "admin" || u.totp_enabled ? (
+              <View className="flex-row gap-1.5">
+                {u.role === "admin" ? <Badge tone="accent">{t("account.roleAdmin")}</Badge> : null}
+                {u.totp_enabled ? <Badge tone="success">{TWO_FACTOR}</Badge> : null}
+              </View>
+            ) : null}
+          </View>
+          {u.id !== me?.id && u.totp_enabled ? (
+            <IconButton
+              label={`${t("admin.resetTotp")} · ${u.username}`}
+              onPress={() =>
+                confirm(t("admin.confirmResetTotp", { name: u.username }), t("admin.reset"), () =>
+                  resetTotp.mutate(u.id),
+                )
+              }
+            >
+              <ShieldOff color={COLORS.muted} size={ui(18)} />
+            </IconButton>
+          ) : null}
+          {u.id !== me?.id ? (
+            <IconButton
+              label={`${t("admin.resetPassword")} · ${u.username}`}
+              onPress={() =>
+                confirm(
+                  t("admin.confirmResetPassword", { name: u.username }),
+                  t("admin.reset"),
+                  () => resetPassword.mutate(u),
+                )
+              }
+            >
+              <KeyRound color={COLORS.muted} size={ui(18)} />
+            </IconButton>
+          ) : null}
+          {u.id !== me?.id ? (
+            <IconButton
+              testID={`remove-user-${u.username}`}
+              label={`${t("common.delete")} ${u.username}`}
+              onPress={() =>
+                confirm(
+                  t("admin.confirmRemoveUser", { name: u.username }),
+                  t("common.delete"),
+                  () => remove.mutate(u.id),
+                )
+              }
+            >
+              <Trash2 color={COLORS.muted} size={ui(18)} />
+            </IconButton>
+          ) : null}
+        </View>
+      ))}
+      {temporary ? (
+        // Shown once: selectable, and shareable to send it on.
+        <View className="gap-2 rounded-xl bg-surface-2 p-3">
+          <Text className="text-sm font-medium text-fg">{t("admin.temporaryPassword")}</Text>
+          <Text className="text-xs text-muted">
+            {t("admin.temporaryPasswordHint", { name: temporary.name })}
+          </Text>
+          <Text selectable testID="temporary-password" className="font-mono text-base text-fg">
+            {temporary.password}
+          </Text>
+          <View className="flex-row gap-2">
+            <Button
+              onPress={() => void Share.share({ message: temporary.password }).catch(() => {})}
+            >
+              {t("common.share")}
+            </Button>
+            <Button onPress={() => setTemporary(null)}>{t("common.close")}</Button>
+          </View>
+        </View>
+      ) : null}
+      <ErrorText>{errorText(error)}</ErrorText>
+      <View className="gap-3 border-t border-line pt-4">
+        <Field label={t("auth.username")}>
+          <Input
+            testID="new-username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </Field>
+        <Field label={t("auth.password")}>
+          <Input
+            testID="new-password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            autoComplete="new-password"
+          />
+        </Field>
+        <View className="flex-row self-start rounded-full bg-surface-2 p-1">
+          {(["user", "admin"] as const).map((r) => (
+            <Pressable
+              key={r}
+              testID={`new-role-${r}`}
+              accessibilityRole="button"
+              accessibilityState={{ selected: role === r }}
+              onPress={() => setRole(r)}
+              className={`rounded-full px-3 py-1.5 ${role === r ? "bg-accent" : ""}`}
+            >
+              <Text
+                className={`text-xs font-semibold ${role === r ? "text-accent-ink" : "text-muted"}`}
+              >
+                {t(r === "admin" ? "account.roleAdmin" : "account.roleUser")}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Button
+          testID="create-user"
+          variant="primary"
+          loading={create.isPending}
+          disabled={!username.trim() || password.length < 10}
+          icon={<UserPlus color={COLORS.accentInk} size={ui(16)} />}
+          onPress={() => create.mutate()}
+        >
+          {t("admin.createUser")}
+        </Button>
+        <Text className="text-xs text-faint">{t("admin.passwordRule")}</Text>
+        <Button
+          testID="share-invitation"
+          loading={invite.isPending}
+          icon={<Link2 color={COLORS.fg} size={ui(16)} />}
+          onPress={() => invite.mutate()}
+        >
+          {t("admin.shareInvitation")}
+        </Button>
+        <ErrorText>{errorText(invite.error)}</ErrorText>
+      </View>
+    </Section>
+  );
+}
+
+function IconButton({
+  label,
+  onPress,
+  children,
+  testID,
+}: {
+  label: string;
+  onPress: () => void;
+  children: ReactNode;
+  testID?: string;
+}) {
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={6}
+      onPress={onPress}
+      className="size-9 items-center justify-center rounded-full active:opacity-70"
+    >
+      {children}
+    </Pressable>
   );
 }
 
