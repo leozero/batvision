@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { COLORS, Loading } from "../../components/ui";
 import { Unreachable } from "../../lib/api";
 import { meQuery } from "../../lib/queries";
+import { ui, uiScale } from "../../lib/scale";
 import { BatvisionSync } from "../../lib/sync";
 
 export default function TabsLayout() {
@@ -26,6 +27,9 @@ export default function TabsLayout() {
         tabBarActiveTintColor: COLORS.accent,
         tabBarInactiveTintColor: COLORS.faint,
         tabBarStyle: { backgroundColor: COLORS.surface, borderTopColor: COLORS.line },
+        // Not a Tailwind size: scaled by hand on a large window (D105), where labels sit
+        // beside the icons (13 there by default).
+        tabBarLabelStyle: uiScale() > 1 ? { fontSize: ui(13) } : undefined,
         sceneStyle: { backgroundColor: COLORS.bg },
       }}
     >
@@ -34,7 +38,7 @@ export default function TabsLayout() {
         options={{
           tabBarButtonTestID: "tab-home",
           title: t("nav.home"),
-          tabBarIcon: ({ color }) => <Home color={color} size={22} />,
+          tabBarIcon: ({ color }) => <Home color={color} size={ui(22)} />,
         }}
       />
       <Tabs.Screen
@@ -42,7 +46,7 @@ export default function TabsLayout() {
         options={{
           tabBarButtonTestID: "tab-movies",
           title: t("nav.movies"),
-          tabBarIcon: ({ color }) => <Film color={color} size={22} />,
+          tabBarIcon: ({ color }) => <Film color={color} size={ui(22)} />,
         }}
       />
       <Tabs.Screen
@@ -50,7 +54,7 @@ export default function TabsLayout() {
         options={{
           tabBarButtonTestID: "tab-series",
           title: t("nav.series"),
-          tabBarIcon: ({ color }) => <Tv color={color} size={22} />,
+          tabBarIcon: ({ color }) => <Tv color={color} size={ui(22)} />,
         }}
       />
       <Tabs.Screen
@@ -58,7 +62,7 @@ export default function TabsLayout() {
         options={{
           tabBarButtonTestID: "tab-watchlist",
           title: t("nav.watchlist"),
-          tabBarIcon: ({ color }) => <Bookmark color={color} size={22} />,
+          tabBarIcon: ({ color }) => <Bookmark color={color} size={ui(22)} />,
         }}
       />
       <Tabs.Screen
@@ -66,7 +70,7 @@ export default function TabsLayout() {
         options={{
           tabBarButtonTestID: "tab-downloads",
           title: t("nav.downloads"),
-          tabBarIcon: ({ color }) => <Download color={color} size={22} />,
+          tabBarIcon: ({ color }) => <Download color={color} size={ui(22)} />,
         }}
       />
     </Tabs>

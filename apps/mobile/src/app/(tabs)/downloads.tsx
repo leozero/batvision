@@ -31,6 +31,7 @@ import {
   ProgressBar,
   Screen,
 } from "../../components/ui";
+import { ui } from "../../lib/scale";
 import { BatvisionSync, type SyncItem, useSyncState } from "../../lib/sync";
 
 function Line({
@@ -185,7 +186,7 @@ function ThisDevice() {
           </Text>
           {state.online ? null : (
             <Badge tone="accent">
-              <WifiOff color={COLORS.accent} size={12} />
+              <WifiOff color={COLORS.accent} size={ui(12)} />
               <Text className="text-xs font-semibold text-accent">
                 {t("desktop.serverUnreachable")}
               </Text>
@@ -215,9 +216,9 @@ function ThisDevice() {
               onPress={() => BatvisionSync.setPaused(!state.paused)}
               icon={
                 state.paused ? (
-                  <Play color={COLORS.fg} size={16} />
+                  <Play color={COLORS.fg} size={ui(16)} />
                 ) : (
-                  <Pause color={COLORS.fg} size={16} />
+                  <Pause color={COLORS.fg} size={ui(16)} />
                 )
               }
             >
@@ -229,7 +230,7 @@ function ThisDevice() {
               testID="sync-now"
               loading={state.syncing}
               onPress={() => BatvisionSync.syncNow()}
-              icon={<RefreshCw color={COLORS.fg} size={16} />}
+              icon={<RefreshCw color={COLORS.fg} size={ui(16)} />}
             >
               {t("desktop.syncNow")}
             </Button>
@@ -270,7 +271,7 @@ function ThisDevice() {
                 onPress={() => setAction(item)}
                 className="size-9 items-center justify-center rounded-full active:bg-surface-2"
               >
-                <MoreVertical color={COLORS.muted} size={18} />
+                <MoreVertical color={COLORS.muted} size={ui(18)} />
               </Pressable>
             </View>
           ))}
@@ -287,7 +288,7 @@ function ThisDevice() {
       ) : null}
       {state.items.length === 0 ? (
         <EmptyState
-          icon={<HardDriveDownload color={COLORS.faint} size={32} />}
+          icon={<HardDriveDownload color={COLORS.faint} size={ui(32)} />}
           title={t("mobile.offlineEmpty")}
         >
           <Muted>{t("downloads.nothingExpected")}</Muted>
@@ -313,7 +314,7 @@ export default function Downloads() {
             onPress={() => router.push("/settings")}
             className="size-10 items-center justify-center rounded-full bg-surface-2 active:opacity-70"
           >
-            <Settings color={COLORS.fg} size={20} />
+            <Settings color={COLORS.fg} size={ui(20)} />
           </Pressable>
         </View>
         <ThisDevice />

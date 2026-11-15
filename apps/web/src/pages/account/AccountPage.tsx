@@ -1,9 +1,4 @@
-import {
-  LANGUAGE_PRESETS,
-  presetOf,
-  presetPreferences,
-  trackLanguage,
-} from "@batvision/core/languages";
+import { SPOKEN_LANGUAGE_CHOICES, spokenLanguages, trackLanguage } from "@batvision/core/languages";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import type { TFunction } from "i18next";
@@ -11,11 +6,13 @@ import {
   Copy,
   Laptop,
   MonitorSmartphone,
+  Plus,
   ShieldCheck,
   Smartphone,
   Tablet,
   Trash2,
   Tv,
+  X,
 } from "lucide-react";
 import { motion } from "motion/react";
 import QRCode from "qrcode";
@@ -24,7 +21,6 @@ import { useTranslation } from "react-i18next";
 import {
   Badge,
   Button,
-  cx,
   ErrorText,
   Field,
   Input,
@@ -36,6 +32,7 @@ import {
 import { METADATA_LANGUAGE, type UiLanguage, uiLanguageFor } from "../../i18n";
 import { ApiError, api, call, type Schemas } from "../../lib/api";
 import { copyText } from "../../lib/clipboard";
+import { languageName } from "../../lib/format";
 import { devicesQuery, meQuery, preferencesQuery } from "../../lib/queries";
 
 export function Card({
@@ -130,8 +127,7 @@ function ProfileCard() {
   );
 }
 
-const TRACK_LANGUAGES = ["fre", "eng", "ger", "spa", "ita", "por", "jpn", "kor"];
-
+/** The languages someone understands and how they like the rest (D104). */
 function PlaybackCard() {
   const { t, i18n } = useTranslation();
   const qc = useQueryClient();
@@ -140,80 +136,85 @@ function PlaybackCard() {
   const save = useMutation({
     mutationFn: (body: Schemas["PreferencesUpdate"]) =>
       call(api.PUT("/api/me/preferences", { body })),
-    onSuccess: (p) => qc.setQueryData(preferencesQuery.queryKey, p),
+    onError: () => qc.invalidateQueries({ queryKey: preferencesQuery.queryKey }),
   });
   if (!prefs) return null;
-  const names = new Intl.DisplayNames([i18n.language], { type: "language" });
-  const short: Record<string, string> = {
-    fre: "fr",
-    eng: "en",
-    ger: "de",
-    spa: "es",
-    ita: "it",
-    por: "pt",
-    jpn: "ja",
-    kor: "ko",
+  const name = (code: string) => {
+    const label = languageName(code, i18n.language) ?? code;
+    return label.charAt(0).toLocaleUpperCase(i18n.language) + label.slice(1);
   };
-  const option = (code: string) => (
-    <option key={code} value={code}>
-      {names.of(short[code] ?? code)}
-    </option>
-  );
-  const language = trackLanguage(me?.language ?? i18n.language);
-  const current = presetOf(prefs, language);
+  const spoken = spokenLanguages(prefs, trackLanguage(me?.language ?? i18n.language));
+  const others = SPOKEN_LANGUAGE_CHOICES.filter((c) => !spoken.includes(c));
+  const update = (
+    patch: Partial<
+      Pick<Schemas["Preferences"], "spoken_languages" | "prefer_dub" | "subtitle_mode">
+    >,
+  ) => {
+    const body = {
+      spoken_languages: spoken,
+      prefer_dub: prefs.prefer_dub,
+      subtitle_mode: prefs.subtitle_mode,
+      ...patch,
+    };
+    // Shown at once; the server's answer replaces it.
+    qc.setQueryData(preferencesQuery.queryKey, { ...prefs, ...body });
+    // Only the last change's answer: an earlier one would undo what was shown since.
+    save.mutate(body, { onSuccess: (p) => qc.setQueryData(preferencesQuery.queryKey, p) });
+  };
   return (
     <Card title={t("account.tracks")} description={t("account.tracksHint")}>
-      <p className="mb-3 text-sm font-medium">{t("account.howYouWatch")}</p>
-      <div className="mb-2 grid gap-3 sm:grid-cols-3">
-        {LANGUAGE_PRESETS.map((p) => (
+      <p className="text-sm font-medium">{t("account.spokenLanguages")}</p>
+      <p className="mb-3 mt-1 text-xs text-muted">{t("account.spokenLanguagesHint")}</p>
+      <div className="flex flex-wrap gap-2">
+        {spoken.map((code, i) => (
           <button
-            key={p}
+            key={code}
             type="button"
-            data-testid={`preset-${p}`}
-            aria-pressed={current === p}
-            onClick={() => save.mutate({ ...prefs, ...presetPreferences(p, language) })}
-            className={cx(
-              "cursor-pointer rounded-xl border p-4 text-left transition",
-              current === p
-                ? "border-accent bg-accent/10"
-                : "border-line bg-surface-2 hover:border-white/20",
-            )}
+            data-testid={`spoken-${code}`}
+            aria-label={t("account.removeLanguage", { language: name(code) })}
+            disabled={spoken.length === 1}
+            onClick={() => update({ spoken_languages: spoken.filter((c) => c !== code) })}
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-accent bg-accent/15 py-1.5 pl-3 pr-2 text-sm font-medium transition hover:bg-accent/25 disabled:cursor-default disabled:hover:bg-accent/15"
           >
-            <span className="block font-semibold">{t(`account.preset.${p}`)}</span>
-            <span className="mt-1 block text-xs text-muted">{t(`account.preset.${p}Hint`)}</span>
+            <span className="text-xs text-muted">{i + 1}</span>
+            {name(code)}
+            {spoken.length > 1 ? <X className="size-3.5 text-muted" aria-hidden /> : null}
           </button>
         ))}
       </div>
-      {current === "custom" ? (
-        <p className="mb-2 text-xs text-faint">{t("account.preset.custom")}</p>
-      ) : null}
-      <p className="mb-3 mt-5 text-sm font-medium">{t("account.details")}</p>
-      <div className="grid gap-5 sm:grid-cols-2">
-        <Field label={t("account.audioLanguage")}>
-          <Select
-            value={prefs.audio_language ?? ""}
-            onChange={(e) => save.mutate({ ...prefs, audio_language: e.target.value || null })}
+      <div className="mt-3 flex flex-wrap gap-2">
+        {others.map((code) => (
+          <button
+            key={code}
+            type="button"
+            data-testid={`add-language-${code}`}
+            aria-label={t("account.addLanguage", { language: name(code) })}
+            onClick={() => update({ spoken_languages: [...spoken, code] })}
+            className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-line bg-surface-2 py-1 pl-2 pr-3 text-xs text-muted transition hover:border-white/20 hover:text-fg"
           >
-            <option value="original">{t("account.originalAudio")}</option>
-            <option value="">{t("account.original")}</option>
-            {TRACK_LANGUAGES.map(option)}
-          </Select>
-        </Field>
-        <Field label={t("account.subtitleLanguage")}>
-          <Select
-            value={prefs.subtitle_language ?? ""}
-            onChange={(e) => save.mutate({ ...prefs, subtitle_language: e.target.value || null })}
-          >
-            <option value="">{t("account.sameAsInterface")}</option>
-            {TRACK_LANGUAGES.map(option)}
-          </Select>
-        </Field>
+            <Plus className="size-3.5" aria-hidden />
+            {name(code)}
+          </button>
+        ))}
+      </div>
+      <label className="mt-6 flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          data-testid="prefer-dub"
+          checked={prefs.prefer_dub}
+          onChange={(e) => update({ prefer_dub: e.target.checked })}
+          className="mt-0.5 size-5 shrink-0 cursor-pointer accent-[var(--color-accent)]"
+        />
+        <span>
+          <span className="block text-sm font-medium">{t("account.preferDub")}</span>
+          <span className="mt-1 block text-xs text-muted">{t("account.preferDubHint")}</span>
+        </span>
+      </label>
+      <div className="mt-6 max-w-sm">
         <Field label={t("account.subtitleMode")}>
           <Select
             value={prefs.subtitle_mode}
-            onChange={(e) =>
-              save.mutate({ ...prefs, subtitle_mode: e.target.value as Schemas["SubtitleMode"] })
-            }
+            onChange={(e) => update({ subtitle_mode: e.target.value as Schemas["SubtitleMode"] })}
           >
             <option value="foreign">{t("account.modeForeign")}</option>
             <option value="always">{t("account.modeAlways")}</option>

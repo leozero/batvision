@@ -4,6 +4,7 @@ import Constants from "expo-constants";
 import { Download } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Linking, Pressable, Text } from "react-native";
+import { ui } from "../lib/scale";
 import { COLORS } from "./ui";
 
 const LATEST_RELEASE = "https://api.github.com/repos/leozero/batvision/releases/latest";
@@ -32,7 +33,7 @@ export function UpdateBanner() {
       onPress={() => void Linking.openURL(apk.browser_download_url)}
       className="mx-4 flex-row items-center gap-2 rounded-xl bg-accent/15 px-4 py-3"
     >
-      <Download color={COLORS.accent} size={16} />
+      <Download color={COLORS.accent} size={ui(16)} />
       <Text className="flex-1 text-sm text-accent">
         {t("mobile.updateAvailable", { version: release.data.tag_name.replace(/^v/, "") })}
       </Text>

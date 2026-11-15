@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ScrollView,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { UpdateBanner } from "../../components/UpdateBanner";
@@ -15,6 +16,7 @@ import { EmptyState, Loading, Poster, type PosterBadges, Screen } from "../../co
 import { HeaderButtons } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { setMovieList } from "../../lib/browse";
+import { rowPosterWidth } from "../../lib/layout";
 import { homeQuery } from "../../lib/queries";
 
 type Card = {
@@ -37,7 +39,9 @@ function Row({
   /** A link next to the title ("See all"). */
   action?: { label: string; href: string; testID?: string };
 }) {
+  const { width } = useWindowDimensions();
   if (items.length === 0) return null;
+  const posterWidth = rowPosterWidth(width);
   return (
     <View className="gap-3">
       <View className="flex-row items-baseline justify-between px-4">
@@ -59,7 +63,8 @@ function Row({
         renderItem={({ item }) => (
           <Link href={item.href as never} asChild>
             <Pressable
-              className="w-32 active:opacity-70"
+              style={{ width: posterWidth }}
+              className="active:opacity-70"
               onPressIn={() =>
                 setMovieList(
                   items.flatMap((i) => (i.badges?.kind === "movie" ? [i.badges.id] : [])),

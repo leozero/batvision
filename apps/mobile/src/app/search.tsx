@@ -7,6 +7,7 @@ import { FlatList, Pressable, Text, View } from "react-native";
 import { COLORS, EmptyState, Input, Poster, Screen } from "../components/ui";
 import { imageUrl } from "../lib/api";
 import { searchQuery } from "../lib/queries";
+import { ui } from "../lib/scale";
 
 /** Over the tabs (a tab of its own reset the tabs to Home on Android). */
 export default function SearchScreen() {
@@ -46,7 +47,7 @@ export default function SearchScreen() {
             onPress={() => (router.canGoBack() ? router.back() : router.replace("/home"))}
             className="size-10 items-center justify-center rounded-full bg-surface-2 active:opacity-70"
           >
-            <ArrowLeft color={COLORS.fg} size={20} />
+            <ArrowLeft color={COLORS.fg} size={ui(20)} />
           </Pressable>
           <Text className="text-2xl font-bold text-fg">{t("nav.search")}</Text>
         </View>

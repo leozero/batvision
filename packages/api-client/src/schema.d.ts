@@ -1863,7 +1863,7 @@ export interface components {
         PlaybackRequest: {
             /**
              * Format: int64
-             * @description Audio stream index chosen by the user. Omitted: automatic choice.
+             * @description Audio stream index chosen by the user. Omitted: the remembered or preferred one.
              */
             audio_index?: number | null;
             capabilities: components["schemas"]["Capabilities"];
@@ -1878,23 +1878,33 @@ export interface components {
             media_file_id?: number | null;
             /** @description Picture quality. Omitted: `max`. */
             quality?: components["schemas"]["Quality"];
-            /** @description The user changed tracks: remember the choice for the rest of the series. */
+            /**
+             * @description The user changed tracks: remember the choice for this movie, or the rest of the
+             *     series. A track left out keeps the one remembered or preferred.
+             */
             remember?: boolean;
             /**
              * Format: int64
              * @description Where to start, in ms. Omitted: the resume position.
              */
             start_ms?: number | null;
-            /** @description `off`, `s<index>` (embedded) or `x<id>` (external file). Omitted: automatic choice. */
+            /**
+             * @description `off`, `s<index>` (embedded) or `x<id>` (external file). Omitted: the remembered or
+             *     preferred one.
+             */
             subtitle?: string | null;
         };
         Preferences: {
             /**
-             * @description ISO 639-2 code (`fre`, `eng`…), or `original`: the language the movie or series
-             *     was made in (D103). `None`: the file's default track.
+             * @description For a movie in a language they don't understand: its dub in one of theirs, rather
+             *     than the original version with subtitles.
              */
-            audio_language?: string | null;
-            subtitle_language?: string | null;
+            prefer_dub: boolean;
+            /**
+             * @description The languages the user understands, ISO 639-2 (`fre`, `eng`…), the one they like
+             *     best first (D104). Never empty: by default, the account's language.
+             */
+            spoken_languages: string[];
             subtitle_mode: components["schemas"]["SubtitleMode"];
             /**
              * Format: int64
@@ -1903,8 +1913,13 @@ export interface components {
             watchlist_episodes: number;
         };
         PreferencesUpdate: {
-            audio_language?: string | null;
-            subtitle_language?: string | null;
+            /** @description Omitted: unchanged. */
+            prefer_dub?: boolean | null;
+            /**
+             * @description At least one; ISO 639-1 or 639-2 codes are accepted. Omitted (apps before 0.9):
+             *     unchanged.
+             */
+            spoken_languages?: string[] | null;
             subtitle_mode: components["schemas"]["SubtitleMode"];
             /**
              * Format: int64

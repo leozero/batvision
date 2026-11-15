@@ -402,27 +402,45 @@ async fn track_preferences_roundtrip_and_validation() {
     let f = fixture().await;
     let prefs = f.get("/api/me/preferences").await;
     assert_eq!(prefs["subtitle_mode"], "foreign");
-    let (status, saved) = f
-        .app
-        .request(
+    // By default, the account's language.
+    assert_eq!(prefs["spoken_languages"], json!(["fre"]));
+    assert_eq!(prefs["prefer_dub"], false);
+    let put = |body: Value| {
+        f.app.request(
             Method::PUT,
             "/api/me/preferences",
             Some(&f.admin),
-            Some(json!({ "audio_language": "eng", "subtitle_language": "fre", "subtitle_mode": "always" })),
+            Some(body),
         )
-        .await;
+    };
+    let (status, saved) = put(json!({ "spoken_languages": ["fr", "eng", "fre"],
+        "prefer_dub": true, "subtitle_mode": "always" }))
+    .await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(saved["subtitle_mode"], "always");
-    let (status, _) = f
-        .app
-        .request(
-            Method::PUT,
-            "/api/me/preferences",
-            Some(&f.admin),
-            Some(json!({ "audio_language": "English", "subtitle_language": null, "subtitle_mode": "never" })),
-        )
+    assert_eq!(
+        saved["spoken_languages"],
+        json!(["fre", "eng"]),
+        "normalized, once each"
+    );
+    assert_eq!(
+        (&saved["prefer_dub"], &saved["subtitle_mode"]),
+        (&json!(true), &json!("always"))
+    );
+    for bad in [json!(["English"]), json!([])] {
+        let (status, _) = put(json!({ "spoken_languages": bad, "prefer_dub": false,
+            "subtitle_mode": "never" }))
         .await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+    // Apps before 0.9 send the old fields: the languages stay.
+    let (status, saved) = put(
+        json!({ "audio_language": "original", "subtitle_language": "fre",
+        "subtitle_mode": "foreign" }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(saved["spoken_languages"], json!(["fre", "eng"]));
+    assert_eq!(saved["subtitle_mode"], "foreign");
 }
 
 // ---- Real playback (needs ffmpeg) ---------------------------------------------------------
@@ -995,7 +1013,7 @@ async fn lists_filter_on_watched_and_flag_the_watchlist() {
 }
 
 #[tokio::test]
-async fn original_version_plays_the_language_the_movie_was_made_in() {
+async fn the_original_plays_when_understood_or_preferred() {
     if !ffmpeg_available() {
         return;
     }
@@ -1074,17 +1092,132 @@ async fn original_version_plays_the_language_the_movie_was_made_in() {
             info["audio_index"].clone()
         }
     };
-    let vo = json!({ "audio_language": "original", "subtitle_language": "fre", "subtitle_mode": "never" });
-    assert_eq!(play(vo).await, index_of("eng"), "original version");
-    let vf =
-        json!({ "audio_language": "fre", "subtitle_language": "fre", "subtitle_mode": "foreign" });
-    assert_eq!(play(vf).await, index_of("fre"), "dubbed");
+    let prefs = |spoken: &[&str], prefer_dub: bool| json!({ "spoken_languages": spoken, "prefer_dub": prefer_dub, "subtitle_mode": "foreign" });
+    assert_eq!(
+        play(prefs(&["fre"], false)).await,
+        index_of("eng"),
+        "original version"
+    );
+    assert_eq!(play(prefs(&["fre"], true)).await, index_of("fre"), "dubbed");
+    assert_eq!(
+        play(prefs(&["fre", "eng"], true)).await,
+        index_of("eng"),
+        "English understood: the original"
+    );
     // Unknown original language: the file's default track.
     sqlx::query("UPDATE movies SET original_language = NULL WHERE id = ?")
         .bind(id)
         .execute(&f.app.state.db)
         .await
         .unwrap();
-    let vo = json!({ "audio_language": "original", "subtitle_language": null, "subtitle_mode": "never" });
-    assert_eq!(play(vo).await, index_of("fre"));
+    assert_eq!(play(prefs(&["eng"], false)).await, index_of("fre"));
+}
+
+#[tokio::test]
+async fn a_track_choice_is_kept_for_that_movie() {
+    if !ffmpeg_available() {
+        return;
+    }
+    let f = fixture().await;
+    // French (default) and English audio, French and English subtitles next to it.
+    let file = f.media.path().join("Films/Heat (1995)/Heat.mkv");
+    std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+    let status = Command::new("ffmpeg")
+        .args([
+            "-v",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=duration=2:size=320x240:rate=25",
+        ])
+        .args([
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=duration=2",
+            "-f",
+            "lavfi",
+            "-i",
+            "sine=duration=2",
+        ])
+        .args([
+            "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-c:a", "aac",
+        ])
+        .args([
+            "-metadata:s:a:0",
+            "language=fre",
+            "-metadata:s:a:1",
+            "language=eng",
+        ])
+        .args(["-disposition:a:0", "default", "-shortest"])
+        .arg(&file)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    for lang in ["fr", "en"] {
+        std::fs::write(
+            file.with_file_name(format!("Heat.{lang}.srt")),
+            "1\n00:00:00,500 --> 00:00:01,500\nHello\n",
+        )
+        .unwrap();
+    }
+    f.library("movies", "Films").await;
+    let movies = f.get("/api/movies").await;
+    let id = movies["items"][0]["id"].as_i64().unwrap();
+    let play = |extra: Value| {
+        let f = &f;
+        async move {
+            let mut body = json!({ "kind": "movie", "id": id, "capabilities": browser_caps() });
+            body.as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            let (status, info) = f.app.post("/api/playback", Some(&f.admin), body).await;
+            assert_eq!(status, StatusCode::OK, "{info}");
+            info
+        }
+    };
+    let info = play(json!({})).await;
+    let audio = info["audio_tracks"].as_array().unwrap().clone();
+    let index_of =
+        |lang: &str| audio.iter().find(|a| a["language"] == lang).unwrap()["index"].clone();
+    let subtitle_of = |info: &Value, lang: &str| {
+        info["subtitles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|s| s["language"] == lang)
+            .unwrap()["id"]
+            .clone()
+    };
+    // French, understood: no subtitles.
+    assert_eq!(info["audio_index"], index_of("fre"));
+    assert_eq!(info["subtitle"], Value::Null);
+
+    // English audio, which they don't understand: French subtitles come with it.
+    let info = play(json!({ "audio_index": index_of("eng"), "remember": true })).await;
+    assert_eq!(info["audio_index"], index_of("eng"));
+    assert_eq!(info["subtitle"], subtitle_of(&info, "fre"));
+    // Then English subtitles: the audio stays English.
+    let english = subtitle_of(&info, "eng");
+    let info = play(json!({ "subtitle": english, "remember": true })).await;
+    assert_eq!(
+        (&info["audio_index"], &info["subtitle"]),
+        (&index_of("eng"), &english)
+    );
+
+    // Next time, for this movie: the same tracks.
+    let info = play(json!({})).await;
+    assert_eq!(
+        (&info["audio_index"], &info["subtitle"]),
+        (&index_of("eng"), &english)
+    );
+    // The download of it starts on English too.
+    let stored: Option<String> =
+        sqlx::query_scalar("SELECT audio_language FROM movie_track_preferences WHERE movie_id = ?")
+            .bind(id)
+            .fetch_one(&f.app.state.db)
+            .await
+            .unwrap();
+    assert_eq!(stored.as_deref(), Some("eng"));
 }

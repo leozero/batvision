@@ -25,8 +25,8 @@ use crate::{
         versions::{self, Version},
     },
     playback::{
-        self, Capabilities, ExternalSubtitle, GeneralPreferences, Method, Quality, QualityOption,
-        SeriesPreference, normalize_language,
+        self, Capabilities, ExternalSubtitle, Method, Quality, QualityOption, RememberedTracks,
+        normalize_language,
         signing::Grant,
         subtitles,
         transcode::{TranscodeJob, VideoEncoder, valid_hls_file},
@@ -43,13 +43,15 @@ pub struct PlaybackRequest {
     pub kind: PlayableKind,
     pub id: i64,
     pub capabilities: Capabilities,
-    /// Audio stream index chosen by the user. Omitted: automatic choice.
+    /// Audio stream index chosen by the user. Omitted: the remembered or preferred one.
     pub audio_index: Option<i64>,
-    /// `off`, `s<index>` (embedded) or `x<id>` (external file). Omitted: automatic choice.
+    /// `off`, `s<index>` (embedded) or `x<id>` (external file). Omitted: the remembered or
+    /// preferred one.
     pub subtitle: Option<String>,
     /// Where to start, in ms. Omitted: the resume position.
     pub start_ms: Option<i64>,
-    /// The user changed tracks: remember the choice for the rest of the series.
+    /// The user changed tracks: remember the choice for this movie, or the rest of the
+    /// series. A track left out keeps the one remembered or preferred.
     #[serde(default)]
     pub remember: bool,
     /// Picture quality. Omitted: `max`.
@@ -160,6 +162,38 @@ async fn load_media_file(
     })
 }
 
+/// Reading and saving a remembered track choice, for movies or series: (select, upsert).
+macro_rules! remembered_sql {
+    ($table:literal, $column:literal) => {
+        (
+            concat!(
+                "SELECT audio_language, audio_kind, subtitle_language, subtitle_kind, subtitles_off
+                 FROM ",
+                $table,
+                " WHERE user_id = ? AND ",
+                $column,
+                " = ?"
+            ),
+            concat!(
+                "INSERT INTO ",
+                $table,
+                " (user_id, ",
+                $column,
+                ", audio_language, audio_kind,
+                   subtitle_language, subtitle_kind, subtitles_off, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT (user_id, ",
+                $column,
+                ") DO UPDATE SET
+                   audio_language = excluded.audio_language, audio_kind = excluded.audio_kind,
+                   subtitle_language = excluded.subtitle_language,
+                   subtitle_kind = excluded.subtitle_kind,
+                   subtitles_off = excluded.subtitles_off, updated_at = excluded.updated_at"
+            ),
+        )
+    };
+}
+
 fn parse_kind(kind: Option<String>) -> Option<TrackKind> {
     match kind.as_deref() {
         Some("commentary") => Some(TrackKind::Commentary),
@@ -225,91 +259,103 @@ pub async fn start(
         PlayableKind::Movie => None,
     };
 
-    // Tracks: explicit choice, else preferences.
-    let explicit = req.audio_index.is_some() || req.subtitle.is_some();
-    let (audio_index, subtitle_id) = if explicit {
-        let audio = req
-            .audio_index
-            .filter(|i| info.audio.iter().any(|a| a.index == *i))
-            .or_else(|| info.audio.first().map(|a| a.index));
-        let subtitle = req
-            .subtitle
-            .filter(|s| s != "off" && options.iter().any(|o| &o.id == s));
-        (audio, subtitle)
-    } else {
-        let prefs = crate::routes::home::load_preferences(&state, user.id).await?;
-        let general = GeneralPreferences {
-            audio_language: playback::audio_for(
-                &state.db,
-                req.kind,
-                req.id,
-                prefs.audio_language.as_deref(),
-            )
-            .await?,
-            subtitle_language: prefs
-                .subtitle_language
-                .as_deref()
-                .or(Some(user.language.as_str()))
-                .and_then(normalize_language),
-            subtitle_mode: Some(prefs.subtitle_mode),
-        };
-        let series_pref = match series_id {
-            Some(series_id) => sqlx::query_as::<
-                _,
-                (
-                    Option<String>,
-                    Option<String>,
-                    Option<String>,
-                    Option<String>,
-                    bool,
-                ),
-            >(
-                "SELECT audio_language, audio_kind, subtitle_language, subtitle_kind, subtitles_off
-                 FROM series_track_preferences WHERE user_id = ? AND series_id = ?",
-            )
-            .bind(user.id)
-            .bind(series_id)
-            .fetch_optional(&state.db)
-            .await?
-            .map(|(al, ak, sl, sk, off)| SeriesPreference {
-                audio_language: al,
-                audio_kind: parse_kind(ak),
-                subtitle_language: sl,
-                subtitle_kind: parse_kind(sk),
-                subtitles_off: off,
-            }),
-            None => None,
-        };
-        playback::select_tracks(info, &options, &general, series_pref.as_ref())
+    // Tracks: what was chosen earlier for this movie or series, else the preferences; a
+    // change asked now replaces its side only.
+    let remembered_in = match (req.kind, series_id) {
+        (_, Some(series_id)) => Some((
+            remembered_sql!("series_track_preferences", "series_id"),
+            series_id,
+        )),
+        (PlayableKind::Movie, None) => Some((
+            remembered_sql!("movie_track_preferences", "movie_id"),
+            req.id,
+        )),
+        (PlayableKind::Episode, None) => None,
+    };
+    let remembered = match remembered_in {
+        Some(((select, _), item)) => sqlx::query_as::<
+            _,
+            (
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                Option<String>,
+                bool,
+            ),
+        >(select)
+        .bind(user.id)
+        .bind(item)
+        .fetch_optional(&state.db)
+        .await?
+        .map(|(al, ak, sl, sk, off)| RememberedTracks {
+            audio_language: al,
+            audio_kind: parse_kind(ak),
+            subtitle_language: sl,
+            subtitle_kind: parse_kind(sk),
+            subtitles_off: off,
+        }),
+        None => None,
+    };
+    let prefs = crate::routes::home::load_preferences(&state, user.id).await?;
+    let general = prefs.general(playback::original_language(&state.db, req.kind, req.id).await?);
+    // What is asked now goes over what was remembered, so the side left out follows it
+    // (an audio track they don't understand brings subtitles).
+    let mut wanted = remembered.unwrap_or_default();
+    let asked_audio = req
+        .audio_index
+        .and_then(|i| info.audio.iter().find(|a| a.index == i));
+    if let Some(audio) = asked_audio {
+        wanted.audio_language = audio.language.as_deref().and_then(normalize_language);
+        wanted.audio_kind = Some(audio.kind);
+    }
+    let asked_subtitle = match req.subtitle.as_deref() {
+        Some("off") => Some(None),
+        Some(id) => options.iter().find(|o| o.id == id).map(Some),
+        None => None,
+    };
+    if let Some(subtitle) = asked_subtitle {
+        wanted.subtitles_off = subtitle.is_none();
+        wanted.subtitle_language = subtitle
+            .and_then(|s| s.language.as_deref())
+            .and_then(normalize_language);
+        wanted.subtitle_kind = subtitle.map(|s| s.kind);
+    }
+    let (picked_audio, picked_subtitle) =
+        playback::select_tracks(info, &options, &general, Some(&wanted));
+    // The exact tracks asked for: another one of the same language may come first.
+    let audio_index = asked_audio.map(|a| a.index).or(picked_audio);
+    let subtitle_id = match asked_subtitle {
+        Some(subtitle) => subtitle.map(|s| s.id.clone()),
+        None => picked_subtitle,
     };
 
-    // Remember a manual choice for the next episodes of the series.
+    // Remember a manual choice: for this movie, or the next episodes of the series.
     if req.remember
-        && let Some(series_id) = series_id
+        && let Some(((_, upsert), item)) = remembered_in
     {
         let audio = audio_index.and_then(|i| info.audio.iter().find(|a| a.index == i));
         let subtitle = subtitle_id
             .as_ref()
             .and_then(|id| options.iter().find(|o| &o.id == id));
-        sqlx::query(
-            "INSERT INTO series_track_preferences (user_id, series_id, audio_language, audio_kind,
-               subtitle_language, subtitle_kind, subtitles_off, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-             ON CONFLICT (user_id, series_id) DO UPDATE SET
-               audio_language = excluded.audio_language, audio_kind = excluded.audio_kind,
-               subtitle_language = excluded.subtitle_language, subtitle_kind = excluded.subtitle_kind,
-               subtitles_off = excluded.subtitles_off, updated_at = excluded.updated_at",
-        )
-        .bind(user.id)
-        .bind(series_id)
-        .bind(audio.and_then(|a| a.language.as_deref()).and_then(normalize_language))
-        .bind(audio.map(|a| kind_str(a.kind)))
-        .bind(subtitle.and_then(|s| s.language.as_deref()).and_then(normalize_language))
-        .bind(subtitle.map(|s| kind_str(s.kind)))
-        .bind(subtitle.is_none())
-        .bind(now())
-        .execute(&state.db)
-        .await?;
+        sqlx::query(upsert)
+            .bind(user.id)
+            .bind(item)
+            .bind(
+                audio
+                    .and_then(|a| a.language.as_deref())
+                    .and_then(normalize_language),
+            )
+            .bind(audio.map(|a| kind_str(a.kind)))
+            .bind(
+                subtitle
+                    .and_then(|s| s.language.as_deref())
+                    .and_then(normalize_language),
+            )
+            .bind(subtitle.map(|s| kind_str(s.kind)))
+            .bind(subtitle.is_none())
+            .bind(now())
+            .execute(&state.db)
+            .await?;
     }
 
     let selected_subtitle = subtitle_id

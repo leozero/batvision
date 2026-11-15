@@ -507,14 +507,22 @@ test("the watchlist page holds movies and series, and cancelling removes them", 
   await expect(alice.getByText("Votre watchlist est vide")).toBeVisible();
 });
 
-test("the account picks how you watch; the movies page filters what was watched", async () => {
+test("the account says which languages you understand; the movies page filters what was watched", async () => {
   await alice.goto("/account?tab=playback");
-  await alice.getByTestId("preset-original").click();
-  await expect(alice.getByTestId("preset-original")).toHaveAttribute("aria-pressed", "true");
+  // The account's language by default, which can't be removed while it's the only one.
+  await expect(alice.getByTestId("spoken-fre")).toBeDisabled();
+  await alice.getByTestId("add-language-eng").click();
+  await expect(alice.getByTestId("spoken-eng")).toBeVisible();
+  await alice.getByTestId("prefer-dub").click();
+  await expect(alice.getByTestId("prefer-dub")).toBeChecked();
   await alice.reload();
-  await expect(alice.getByTestId("preset-original")).toHaveAttribute("aria-pressed", "true");
-  await alice.getByTestId("preset-dubbed").click();
-  await expect(alice.getByTestId("preset-dubbed")).toHaveAttribute("aria-pressed", "true");
+  await expect(alice.getByTestId("spoken-eng")).toContainText("2");
+  await expect(alice.getByTestId("prefer-dub")).toBeChecked();
+  await alice.getByTestId("spoken-eng").click();
+  await expect(alice.getByTestId("spoken-eng")).toHaveCount(0);
+  await alice.getByTestId("prefer-dub").click();
+  await expect(alice.getByTestId("prefer-dub")).not.toBeChecked();
+  await expect(alice.getByTestId("spoken-fre")).toBeDisabled();
 
   await alice.goto("/movies");
   await alice.getByTestId("watched-watched").click();

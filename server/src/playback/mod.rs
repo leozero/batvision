@@ -52,20 +52,12 @@ pub fn normalize_language(tag: &str) -> Option<String> {
     Some(code.to_owned())
 }
 
-/// Audio preference for "the language the movie or series was made in" (D103).
-pub const ORIGINAL: &str = "original";
-
-/// An audio preference made concrete for an item: `original` becomes the item's original
-/// language (its series' for an episode), `None` when unknown (the file's default track).
-pub async fn audio_for(
+/// The language a movie or series was made in (an episode: its series'), when TMDB said.
+pub async fn original_language(
     db: &crate::db::Db,
     kind: crate::userdata::PlayableKind,
     id: i64,
-    preference: Option<&str>,
 ) -> sqlx::Result<Option<String>> {
-    if preference != Some(ORIGINAL) {
-        return Ok(preference.and_then(normalize_language));
-    }
     let sql = match kind {
         crate::userdata::PlayableKind::Movie => "SELECT original_language FROM movies WHERE id = ?",
         crate::userdata::PlayableKind::Episode => {
@@ -75,7 +67,7 @@ pub async fn audio_for(
     };
     let language: Option<Option<String>> =
         sqlx::query_scalar(sql).bind(id).fetch_optional(db).await?;
-    Ok(language.flatten())
+    Ok(language.flatten().as_deref().and_then(normalize_language))
 }
 
 fn same_language(a: Option<&str>, b: Option<&str>) -> bool {
@@ -131,24 +123,53 @@ pub struct ExternalSubtitle {
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "TEXT", rename_all = "lowercase")]
 pub enum SubtitleMode {
-    /// Always show subtitles in the preferred language.
+    /// Always show subtitles in the user's language.
     Always,
-    /// Only when the audio isn't in the subtitle language (plus "forced" tracks).
+    /// Only when the audio is in a language the user doesn't understand (plus "forced"
+    /// tracks).
     Foreign,
+    /// Only "forced" tracks.
     Never,
 }
 
-/// The user's general preferences, languages already normalized.
+/// The user's general preferences for one item (D104), languages already normalized.
 #[derive(Debug, Clone, Default)]
 pub struct GeneralPreferences {
-    pub audio_language: Option<String>,
-    pub subtitle_language: Option<String>,
+    /// The languages the user understands, the one they like best first.
+    pub spoken: Vec<String>,
+    /// For what they don't understand: the dub in one of their languages, rather than the
+    /// original version with subtitles.
+    pub prefer_dub: bool,
+    /// The language the item was made in, when known.
+    pub original: Option<String>,
     pub subtitle_mode: Option<SubtitleMode>,
 }
 
-/// What the user picked earlier in the same series.
+impl GeneralPreferences {
+    fn understands(&self, language: Option<&str>) -> bool {
+        self.spoken.iter().any(|s| same_language(Some(s), language))
+    }
+
+    /// The audio languages to look for, best first: the original when understood (or
+    /// when the original version is preferred), else the user's languages.
+    pub fn audio_languages(&self) -> Vec<&str> {
+        let original = self.original.as_deref();
+        let spoken = self.spoken.iter().map(String::as_str);
+        match original {
+            Some(o) if self.understands(Some(o)) || !self.prefer_dub => {
+                std::iter::once(o).chain(spoken).collect()
+            }
+            Some(o) => spoken.chain(std::iter::once(o)).collect(),
+            // Unknown original: the dub when preferred, else the file's default track.
+            None if self.prefer_dub => spoken.collect(),
+            None => vec![],
+        }
+    }
+}
+
+/// What the user picked earlier for this movie, or in the same series.
 #[derive(Debug, Clone, Default)]
-pub struct SeriesPreference {
+pub struct RememberedTracks {
     pub audio_language: Option<String>,
     pub audio_kind: Option<TrackKind>,
     pub subtitle_language: Option<String>,
@@ -161,9 +182,10 @@ pub fn select_tracks(
     info: &MediaInfo,
     subtitles: &[SubtitleOption],
     general: &GeneralPreferences,
-    series: Option<&SeriesPreference>,
+    series: Option<&RememberedTracks>,
 ) -> (Option<i64>, Option<String>) {
-    // Audio: series choice, then general language, then the file's default, then the first.
+    // Audio: remembered choice, then the general preferences, then the file's default, then the
+    // first.
     let find_audio = |language: Option<&str>, kind: TrackKind| {
         info.audio
             .iter()
@@ -176,7 +198,12 @@ pub fn select_tracks(
                 p.audio_kind.unwrap_or(TrackKind::Normal),
             )
         })
-        .or_else(|| find_audio(general.audio_language.as_deref(), TrackKind::Normal))
+        .or_else(|| {
+            general
+                .audio_languages()
+                .into_iter()
+                .find_map(|l| find_audio(Some(l), TrackKind::Normal))
+        })
         .or_else(|| {
             info.audio
                 .iter()
@@ -194,7 +221,7 @@ pub fn select_tracks(
         })
     };
 
-    // Subtitles: the series choice wins when it can be honored.
+    // Subtitles: the remembered choice wins when it can be honored.
     if let Some(pref) = series {
         if pref.subtitles_off {
             return (audio.map(|a| a.index), None);
@@ -207,21 +234,24 @@ pub fn select_tracks(
         }
     }
 
-    let wanted = general.subtitle_language.as_deref();
+    // In the user's languages, the one they like best first.
+    let in_spoken = |kinds: &[TrackKind]| {
+        general
+            .spoken
+            .iter()
+            .find_map(|l| find_subtitle(Some(l), kinds))
+    };
+    // The "forced" track: the lines in another language than the audio's.
+    let forced = || {
+        find_subtitle(audio_language.as_deref(), &[TrackKind::Forced])
+            .or_else(|| in_spoken(&[TrackKind::Forced]))
+    };
     let subtitle = match general.subtitle_mode.unwrap_or(SubtitleMode::Foreign) {
-        SubtitleMode::Never => None,
-        SubtitleMode::Always => find_subtitle(wanted, &[TrackKind::Normal, TrackKind::Sdh]),
-        SubtitleMode::Foreign => {
-            if wanted.is_some() && !same_language(audio_language.as_deref(), wanted) {
-                find_subtitle(
-                    wanted,
-                    &[TrackKind::Normal, TrackKind::Sdh, TrackKind::Forced],
-                )
-            } else {
-                // Same language: only the "forced" track for foreign-language lines.
-                find_subtitle(wanted, &[TrackKind::Forced])
-            }
-        }
+        SubtitleMode::Never => forced(),
+        SubtitleMode::Always => in_spoken(&[TrackKind::Normal, TrackKind::Sdh]),
+        SubtitleMode::Foreign if general.understands(audio_language.as_deref()) => forced(),
+        SubtitleMode::Foreign => in_spoken(&[TrackKind::Normal, TrackKind::Sdh])
+            .or_else(|| in_spoken(&[TrackKind::Forced])),
     };
     (audio.map(|a| a.index), subtitle.map(|s| s.id.clone()))
 }
@@ -550,12 +580,25 @@ mod tests {
         }
     }
 
-    fn prefs(audio: Option<&str>, sub: Option<&str>, mode: SubtitleMode) -> GeneralPreferences {
+    fn prefs(
+        spoken: &[&str],
+        prefer_dub: bool,
+        original: Option<&str>,
+        mode: SubtitleMode,
+    ) -> GeneralPreferences {
         GeneralPreferences {
-            audio_language: audio.map(Into::into),
-            subtitle_language: sub.map(Into::into),
+            spoken: spoken.iter().map(|l| (*l).to_owned()).collect(),
+            prefer_dub,
+            original: original.map(Into::into),
             subtitle_mode: Some(mode),
         }
+    }
+
+    /// The test file: English (default) and French audio; French forced and full
+    /// subtitles, English SDH.
+    fn pick(general: GeneralPreferences) -> (Option<i64>, Option<String>) {
+        let i = info();
+        select_tracks(&i, &subtitle_options(&i, &[]), &general, None)
     }
 
     #[test]
@@ -569,74 +612,70 @@ mod tests {
     }
 
     #[test]
-    fn audio_follows_language_preference_then_file_default() {
-        let i = info();
-        let subs = subtitle_options(&i, &[]);
-        let (a, _) = select_tracks(
-            &i,
-            &subs,
-            &prefs(Some("fre"), None, SubtitleMode::Never),
-            None,
+    fn audio_is_the_original_when_understood_else_as_preferred() {
+        use SubtitleMode::Foreign;
+        let fr = ["fre"];
+        // An English movie, for someone who speaks French.
+        assert_eq!(
+            pick(prefs(&fr, false, Some("eng"), Foreign)).0,
+            Some(1),
+            "original"
         );
-        assert_eq!(a, Some(2));
-        let (a, _) = select_tracks(&i, &subs, &prefs(None, None, SubtitleMode::Never), None);
-        assert_eq!(a, Some(1), "file default");
-        let (a, _) = select_tracks(
-            &i,
-            &subs,
-            &prefs(Some("jpn"), None, SubtitleMode::Never),
-            None,
+        assert_eq!(
+            pick(prefs(&fr, true, Some("eng"), Foreign)).0,
+            Some(2),
+            "the dub"
         );
-        assert_eq!(a, Some(1), "missing language falls back to the default");
+        // …and English too: the original, dub preferred or not.
+        let both = ["fre", "eng"];
+        assert_eq!(pick(prefs(&both, true, Some("eng"), Foreign)).0, Some(1));
+        // Unknown original: the dub when preferred, else the file's default.
+        assert_eq!(pick(prefs(&fr, true, None, Foreign)).0, Some(2));
+        assert_eq!(pick(prefs(&fr, false, None, Foreign)).0, Some(1));
+        // The original isn't in the file: a language they speak.
+        assert_eq!(pick(prefs(&fr, false, Some("jpn"), Foreign)).0, Some(2));
+        // Nothing they speak: the file's default.
+        assert_eq!(pick(prefs(&["kor"], true, None, Foreign)).0, Some(1));
     }
 
     #[test]
-    fn foreign_mode_shows_full_subtitles_only_for_foreign_audio() {
-        let i = info();
-        let subs = subtitle_options(&i, &[]);
-        // Original English audio, French subtitles wanted.
-        let (a, s) = select_tracks(
-            &i,
-            &subs,
-            &prefs(None, Some("fre"), SubtitleMode::Foreign),
-            None,
+    fn subtitles_come_on_when_the_audio_is_not_understood() {
+        use SubtitleMode::Foreign;
+        let (a, s) = pick(prefs(&["fre"], false, Some("eng"), Foreign));
+        assert_eq!(
+            (a, s.as_deref()),
+            (Some(1), Some("s5")),
+            "English: French subtitles"
         );
-        assert_eq!((a, s.as_deref()), (Some(1), Some("s5")));
-        // French audio: only the forced track.
-        let (a, s) = select_tracks(
-            &i,
-            &subs,
-            &prefs(Some("fre"), Some("fre"), SubtitleMode::Foreign),
-            None,
+        let (a, s) = pick(prefs(&["fre"], true, Some("eng"), Foreign));
+        assert_eq!(
+            (a, s.as_deref()),
+            (Some(2), Some("s4")),
+            "the dub: forced only"
         );
-        assert_eq!((a, s.as_deref()), (Some(2), Some("s4")));
+        // English understood: no full subtitles.
+        let (a, s) = pick(prefs(&["eng", "fre"], false, Some("eng"), Foreign));
+        assert_eq!((a, s.as_deref()), (Some(1), Some("s4")));
+        // Their second language when the first has none.
+        let (_, s) = pick(prefs(&["ita", "eng"], false, Some("fre"), Foreign));
+        assert_eq!(s.as_deref(), Some("s6"));
     }
 
     #[test]
     fn always_and_never_modes() {
-        let i = info();
-        let subs = subtitle_options(&i, &[]);
-        let (_, s) = select_tracks(
-            &i,
-            &subs,
-            &prefs(Some("fre"), Some("fre"), SubtitleMode::Always),
-            None,
-        );
+        let (_, s) = pick(prefs(&["fre"], true, Some("eng"), SubtitleMode::Always));
         assert_eq!(s.as_deref(), Some("s5"));
-        let (_, s) = select_tracks(
-            &i,
-            &subs,
-            &prefs(None, Some("fre"), SubtitleMode::Never),
-            None,
-        );
-        assert_eq!(s, None);
+        let (_, s) = pick(prefs(&["fre"], false, Some("eng"), SubtitleMode::Never));
+        assert_eq!(s.as_deref(), Some("s4"), "forced only");
+        let (_, s) = pick(prefs(&["eng"], false, Some("eng"), SubtitleMode::Never));
+        assert_eq!(s.as_deref(), None);
     }
 
     #[test]
     fn series_choice_is_matched_by_language_and_kind_not_index() {
         let i = info();
         let subs = subtitle_options(&i, &[]);
-        let series = SeriesPreference {
+        let series = RememberedTracks {
             audio_language: Some("eng".into()),
             audio_kind: Some(TrackKind::Commentary),
             subtitle_language: Some("eng".into()),
@@ -646,7 +685,7 @@ mod tests {
         let (a, s) = select_tracks(
             &i,
             &subs,
-            &prefs(Some("fre"), Some("fre"), SubtitleMode::Always),
+            &prefs(&["fre"], true, Some("eng"), SubtitleMode::Always),
             Some(&series),
         );
         assert_eq!((a, s.as_deref()), (Some(3), Some("s6")));
@@ -656,7 +695,7 @@ mod tests {
     fn series_choice_falls_back_when_the_episode_lacks_the_track() {
         let i = info();
         let subs = subtitle_options(&i, &[]);
-        let series = SeriesPreference {
+        let series = RememberedTracks {
             audio_language: Some("ita".into()),
             subtitle_language: Some("ita".into()),
             ..Default::default()
@@ -664,18 +703,18 @@ mod tests {
         let (a, s) = select_tracks(
             &i,
             &subs,
-            &prefs(Some("fre"), Some("fre"), SubtitleMode::Always),
+            &prefs(&["fre"], true, Some("eng"), SubtitleMode::Always),
             Some(&series),
         );
         assert_eq!((a, s.as_deref()), (Some(2), Some("s5")));
-        let off = SeriesPreference {
+        let off = RememberedTracks {
             subtitles_off: true,
             ..Default::default()
         };
         let (_, s) = select_tracks(
             &i,
             &subs,
-            &prefs(None, Some("fre"), SubtitleMode::Always),
+            &prefs(&["fre"], false, None, SubtitleMode::Always),
             Some(&off),
         );
         assert_eq!(s, None);
@@ -694,7 +733,7 @@ mod tests {
         let (_, s) = select_tracks(
             &i,
             &subs,
-            &prefs(None, Some("fre"), SubtitleMode::Always),
+            &prefs(&["fre"], false, None, SubtitleMode::Always),
             None,
         );
         assert_eq!(s.as_deref(), Some("x9"));

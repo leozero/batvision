@@ -24,67 +24,37 @@ export function trackLanguage(uiLanguage: string): string {
 
 export type SubtitleMode = "always" | "foreign" | "never";
 
+/** How someone watches (D104): the languages they understand, best first. */
 export interface TrackPreferences {
-  audio_language?: string | null;
-  subtitle_language?: string | null;
+  /** ISO 639-2; missing in preferences cached by apps before 0.9. */
+  spoken_languages?: readonly string[];
+  /** For what they don't understand: the dub rather than the original with subtitles. */
+  prefer_dub?: boolean;
   subtitle_mode: SubtitleMode;
 }
 
-/**
- * How someone likes to watch (D103): dubbed in their language, original version with
- * their subtitles, or original version alone. `custom` is anything else set by hand.
- */
-export type LanguagePreset = "dubbed" | "subtitled" | "original" | "custom";
+/** The languages offered in the picker, in that order (ISO 639-2). */
+export const SPOKEN_LANGUAGE_CHOICES = [
+  "fre",
+  "eng",
+  "ger",
+  "spa",
+  "ita",
+  "por",
+  "dut",
+  "jpn",
+  "kor",
+  "chi",
+  "rus",
+  "pol",
+  "ara",
+  "tur",
+] as const;
 
-export const LANGUAGE_PRESETS: readonly Exclude<LanguagePreset, "custom">[] = [
-  "dubbed",
-  "subtitled",
-  "original",
-];
-
-/** The server's value for "the language the movie was made in". */
-export const ORIGINAL_AUDIO = "original";
-
-/** The preferences a preset stands for, for someone whose language is `language`. */
-export function presetPreferences(
-  preset: Exclude<LanguagePreset, "custom">,
-  language: string,
-): TrackPreferences {
-  switch (preset) {
-    case "dubbed":
-      // Their language when the file has it; subtitles only if it doesn't.
-      return { audio_language: language, subtitle_language: language, subtitle_mode: "foreign" };
-    case "subtitled":
-      // Subtitles whenever the original isn't in their language.
-      return {
-        audio_language: ORIGINAL_AUDIO,
-        subtitle_language: language,
-        subtitle_mode: "foreign",
-      };
-    case "original":
-      return {
-        audio_language: ORIGINAL_AUDIO,
-        subtitle_language: language,
-        subtitle_mode: "never",
-      };
-  }
-}
-
-/** Which preset saved preferences match, or `custom`. */
-export function presetOf(prefs: TrackPreferences, language: string): LanguagePreset {
-  if (prefs.audio_language === ORIGINAL_AUDIO) {
-    if (prefs.subtitle_mode === "never") return "original";
-    if (prefs.subtitle_mode === "foreign" && sameLanguage(prefs.subtitle_language, language))
-      return "subtitled";
-    return "custom";
-  }
-  if (
-    sameLanguage(prefs.audio_language, language) &&
-    prefs.subtitle_mode === "foreign" &&
-    (prefs.subtitle_language == null || sameLanguage(prefs.subtitle_language, language))
-  )
-    return "dubbed";
-  return "custom";
+/** The understood languages: the saved ones, else the account's. */
+export function spokenLanguages(prefs: TrackPreferences | undefined, language: string): string[] {
+  const saved = prefs?.spoken_languages ?? [];
+  return saved.length ? [...saved] : [language];
 }
 
 export interface SubtitleChoice {
@@ -95,7 +65,9 @@ export interface SubtitleChoice {
 
 /**
  * The subtitle a downloaded copy starts with (-1: none), by the same rules as the server:
- * without preferences (offline before they were ever loaded), only a "forced" track.
+ * subtitles in the first understood language that has some when the audio isn't
+ * understood, else only a "forced" track. Without preferences (offline before they were
+ * ever loaded), only a "forced" track.
  */
 export function defaultSubtitle(
   subtitles: readonly SubtitleChoice[],
@@ -103,23 +75,31 @@ export function defaultSubtitle(
   prefs: TrackPreferences | undefined,
   language: string,
 ): number {
-  const wanted = prefs?.subtitle_language ?? language;
-  const find = (kinds: string[]) => {
-    for (const kind of kinds) {
-      const i = subtitles.findIndex((s) => s.kind === kind && sameLanguage(s.language, wanted));
-      if (i >= 0) return i;
+  if (!prefs) return subtitles.findIndex((s) => s.kind === "forced");
+  const spoken = spokenLanguages(prefs, language);
+  const find = (languages: readonly (string | null | undefined)[], kinds: string[]) => {
+    for (const lang of languages) {
+      for (const kind of kinds) {
+        const i = subtitles.findIndex((s) => s.kind === kind && sameLanguage(s.language, lang));
+        if (i >= 0) return i;
+      }
     }
     return -1;
   };
-  if (!prefs) return subtitles.findIndex((s) => s.kind === "forced");
+  const forced = () => {
+    const i = find([audioLanguage], ["forced"]);
+    return i >= 0 ? i : find(spoken, ["forced"]);
+  };
+  const understood = spoken.some((l) => sameLanguage(l, audioLanguage));
   switch (prefs.subtitle_mode) {
     case "never":
-      return find(["forced"]);
+      return forced();
     case "always":
-      return find(["normal", "sdh"]);
-    case "foreign":
-      return sameLanguage(audioLanguage, wanted)
-        ? find(["forced"])
-        : find(["normal", "sdh", "forced"]);
+      return find(spoken, ["normal", "sdh"]);
+    case "foreign": {
+      if (understood) return forced();
+      const i = find(spoken, ["normal", "sdh"]);
+      return i >= 0 ? i : find(spoken, ["forced"]);
+    }
   }
 }

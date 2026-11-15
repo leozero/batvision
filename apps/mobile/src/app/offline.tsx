@@ -7,6 +7,7 @@ import { ScrollView, Text, View } from "react-native";
 import { LocalLibrary } from "../components/LocalLibrary";
 import { Badge, Button, COLORS, EmptyState, Muted, Screen } from "../components/ui";
 import { meQuery } from "../lib/queries";
+import { ui } from "../lib/scale";
 import { type SyncItem, useSyncState } from "../lib/sync";
 
 const watch = (item: SyncItem) =>
@@ -42,7 +43,7 @@ export default function Offline() {
         <View className="flex-row items-center gap-3">
           <Text className="text-2xl font-bold text-accent">BatVision</Text>
           <Badge tone="accent">
-            <WifiOff color={COLORS.accent} size={12} />
+            <WifiOff color={COLORS.accent} size={ui(12)} />
             <Text className="text-xs font-semibold text-accent">{t("desktop.offlineTitle")}</Text>
           </Badge>
         </View>
@@ -50,13 +51,13 @@ export default function Offline() {
           testID="retry"
           loading={retrying}
           onPress={retry}
-          icon={<RefreshCw color={COLORS.fg} size={16} />}
+          icon={<RefreshCw color={COLORS.fg} size={ui(16)} />}
         >
           {t("desktop.retry")}
         </Button>
         {done.length === 0 ? (
           <EmptyState
-            icon={<HardDriveDownload color={COLORS.faint} size={32} />}
+            icon={<HardDriveDownload color={COLORS.faint} size={ui(32)} />}
             title={t("mobile.offlineEmpty")}
           />
         ) : null}

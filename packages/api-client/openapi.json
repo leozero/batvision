@@ -5262,7 +5262,7 @@
               "null"
             ],
             "format": "int64",
-            "description": "Audio stream index chosen by the user. Omitted: automatic choice."
+            "description": "Audio stream index chosen by the user. Omitted: the remembered or preferred one."
           },
           "capabilities": {
             "$ref": "#/components/schemas/Capabilities"
@@ -5288,7 +5288,7 @@
           },
           "remember": {
             "type": "boolean",
-            "description": "The user changed tracks: remember the choice for the rest of the series."
+            "description": "The user changed tracks: remember the choice for this movie, or the rest of the\nseries. A track left out keeps the one remembered or preferred."
           },
           "start_ms": {
             "type": [
@@ -5303,29 +5303,29 @@
               "string",
               "null"
             ],
-            "description": "`off`, `s<index>` (embedded) or `x<id>` (external file). Omitted: automatic choice."
+            "description": "`off`, `s<index>` (embedded) or `x<id>` (external file). Omitted: the remembered or\npreferred one."
           }
         }
       },
       "Preferences": {
         "type": "object",
         "required": [
+          "spoken_languages",
+          "prefer_dub",
           "subtitle_mode",
           "watchlist_episodes"
         ],
         "properties": {
-          "audio_language": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "ISO 639-2 code (`fre`, `eng`…), or `original`: the language the movie or series\nwas made in (D103). `None`: the file's default track."
+          "prefer_dub": {
+            "type": "boolean",
+            "description": "For a movie in a language they don't understand: its dub in one of theirs, rather\nthan the original version with subtitles."
           },
-          "subtitle_language": {
-            "type": [
-              "string",
-              "null"
-            ]
+          "spoken_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The languages the user understands, ISO 639-2 (`fre`, `eng`…), the one they like\nbest first (D104). Never empty: by default, the account's language."
           },
           "subtitle_mode": {
             "$ref": "#/components/schemas/SubtitleMode"
@@ -5343,17 +5343,22 @@
           "subtitle_mode"
         ],
         "properties": {
-          "audio_language": {
+          "prefer_dub": {
             "type": [
-              "string",
+              "boolean",
               "null"
-            ]
+            ],
+            "description": "Omitted: unchanged."
           },
-          "subtitle_language": {
+          "spoken_languages": {
             "type": [
-              "string",
+              "array",
               "null"
-            ]
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "At least one; ISO 639-1 or 639-2 codes are accepted. Omitted (apps before 0.9):\nunchanged."
           },
           "subtitle_mode": {
             "$ref": "#/components/schemas/SubtitleMode"

@@ -2,4 +2,8 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { withNativeWind } = require("nativewind/metro");
 
-module.exports = withNativeWind(getDefaultConfig(__dirname), { input: "./src/global.css" });
+module.exports = withNativeWind(getDefaultConfig(__dirname), {
+  input: "./src/global.css",
+  // rem stays a runtime value: large windows set it 1.5× (D105, src/lib/scale.ts).
+  inlineRem: false,
+});

@@ -12,9 +12,11 @@ import { Link } from "expo-router";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, Pressable, RefreshControl, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import type { Schemas } from "../lib/api";
 import { setMovieList } from "../lib/browse";
+import { useWindowGrid } from "../lib/layout";
+import { ui } from "../lib/scale";
 import { COLORS, EmptyState, Loading, Poster, type PosterBadges, Rating } from "./ui";
 import { HeaderButtons } from "./Watchlist";
 
@@ -54,8 +56,8 @@ export function Catalog(props: {
   header?: ReactNode;
 }) {
   const { t } = useTranslation();
-  const { width } = useWindowDimensions();
-  const columns = Math.max(3, Math.floor(width / 150));
+  // px-3 on each side.
+  const { columns, itemWidth } = useWindowGrid(12);
   if (props.loading) return <Loading />;
   return (
     <FlatList
@@ -126,9 +128,9 @@ export function Catalog(props: {
             className="flex-row items-center gap-1.5 self-start rounded-full bg-surface-2 px-3 py-1.5 active:opacity-70"
           >
             {props.sorting.direction === "asc" ? (
-              <ArrowUpNarrowWide color={COLORS.fg} size={14} />
+              <ArrowUpNarrowWide color={COLORS.fg} size={ui(14)} />
             ) : (
-              <ArrowDownWideNarrow color={COLORS.fg} size={14} />
+              <ArrowDownWideNarrow color={COLORS.fg} size={ui(14)} />
             )}
             <Text className="text-xs font-semibold text-fg">
               {t(directionLabelKey(props.sorting.sort, props.sorting.direction))}
@@ -151,7 +153,7 @@ export function Catalog(props: {
       renderItem={({ item }) => (
         <Link href={item.href as never} asChild>
           <Pressable
-            style={{ width: `${100 / columns - 3}%` }}
+            style={{ width: itemWidth }}
             className="active:opacity-70"
             onPressIn={() =>
               setMovieList(

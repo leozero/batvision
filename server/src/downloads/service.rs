@@ -470,13 +470,40 @@ pub async fn plan_for_device(
         // Every audio track is in the file (D40): the language says which one the device
         // plays first.
         if item.audio_language.is_none() {
-            item.audio_language = crate::playback::audio_for(
-                &state.db,
-                item.kind,
-                item.id,
-                prefs.audio_language.as_deref(),
-            )
-            .await?;
+            // A choice made while watching it (or its series) comes first.
+            item.audio_language = match item.kind {
+                crate::userdata::PlayableKind::Movie => {
+                    sqlx::query_scalar(
+                        "SELECT audio_language FROM movie_track_preferences
+                         WHERE user_id = ? AND movie_id = ?",
+                    )
+                    .bind(user.id)
+                    .bind(item.id)
+                    .fetch_optional(&state.db)
+                    .await?
+                }
+                crate::userdata::PlayableKind::Episode => {
+                    sqlx::query_scalar(
+                        "SELECT p.audio_language FROM series_track_preferences p
+                         JOIN episodes e ON e.series_id = p.series_id
+                         WHERE p.user_id = ? AND e.id = ?",
+                    )
+                    .bind(user.id)
+                    .bind(item.id)
+                    .fetch_optional(&state.db)
+                    .await?
+                }
+            }
+            .flatten();
+        }
+        if item.audio_language.is_none() {
+            let original =
+                crate::playback::original_language(&state.db, item.kind, item.id).await?;
+            item.audio_language = prefs
+                .general(original)
+                .audio_languages()
+                .first()
+                .map(|l| (*l).to_owned());
         }
         let card = crate::routes::home::item_card(state, user, item.kind, item.id).await?;
         let mut out = PlanItem {

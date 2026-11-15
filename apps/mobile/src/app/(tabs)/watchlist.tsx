@@ -3,10 +3,11 @@ import { Link } from "expo-router";
 import { DownloadCloud } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, Pressable, RefreshControl, Text, useWindowDimensions, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
 import { ChoiceList, SettingRow, Sheet } from "../../components/Sheet";
 import { Button, COLORS, EmptyState, Loading, Muted, Poster, Screen } from "../../components/ui";
 import { imageUrl } from "../../lib/api";
+import { useWindowGrid } from "../../lib/layout";
 import {
   downloadsQuery,
   preferencesQuery,
@@ -14,6 +15,7 @@ import {
   useSaveSettings,
   watchlistQuery,
 } from "../../lib/queries";
+import { ui } from "../../lib/scale";
 import { session } from "../../lib/session";
 
 type Filter = "all" | "movie" | "series";
@@ -28,7 +30,7 @@ function AutoOffBanner() {
   return (
     <View testID="auto-off" className="gap-3 rounded-card border border-accent/30 bg-accent/10 p-4">
       <View className="flex-row items-center gap-3">
-        <DownloadCloud color={COLORS.accent} size={20} />
+        <DownloadCloud color={COLORS.accent} size={ui(20)} />
         <Text className="flex-1 text-sm text-fg">{t("watchlist.autoOffHere")}</Text>
       </View>
       <Button
@@ -50,8 +52,8 @@ export default function WatchlistScreen() {
   const savePrefs = useSavePreferences();
   const [filter, setFilter] = useState<Filter>("all");
   const [episodesOpen, setEpisodesOpen] = useState(false);
-  const { width } = useWindowDimensions();
-  const columns = Math.max(3, Math.floor(width / 150));
+  // px-3 on each side.
+  const { columns, itemWidth } = useWindowGrid(12);
   if (list.isPending) return <Loading />;
   const items = (list.data ?? []).filter((i) => filter === "all" || i.kind === filter);
   const count = prefs.data?.watchlist_episodes ?? 2;
@@ -110,7 +112,7 @@ export default function WatchlistScreen() {
           >
             <Pressable
               testID={`watchlist-${item.kind}-${item.id}`}
-              style={{ width: `${100 / columns - 3}%` }}
+              style={{ width: itemWidth }}
               className="active:opacity-70"
             >
               <Poster uri={imageUrl(item.poster_path, "w342")} />

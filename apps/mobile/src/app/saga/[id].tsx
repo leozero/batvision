@@ -2,20 +2,21 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocalSearchParams } from "expo-router";
 import { Layers } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { Hero } from "../../components/Detail";
 import { COLORS, LoadError, Loading, Muted, Poster, Rating, Screen } from "../../components/ui";
 import { imageUrl } from "../../lib/api";
 import { setMovieList } from "../../lib/browse";
+import { useMeasuredGrid } from "../../lib/layout";
 import { collectionQuery } from "../../lib/queries";
+import { ui } from "../../lib/scale";
 
 /** A saga (D101): the library's movies of a TMDB collection, in release order. */
 export default function SagaScreen() {
   const { t } = useTranslation();
   const id = Number(useLocalSearchParams<{ id: string }>().id);
   const saga = useQuery(collectionQuery(id));
-  const { width } = useWindowDimensions();
-  const columns = Math.max(3, Math.floor(Math.min(width, 768) / 150));
+  const grid = useMeasuredGrid(32);
   if (saga.isError) return <LoadError onRetry={() => void saga.refetch()} />;
   const s = saga.data;
   if (!s) return <Loading />;
@@ -28,7 +29,7 @@ export default function SagaScreen() {
             {s.name}
           </Text>
           <View className="flex-row items-center gap-1.5">
-            <Layers color={COLORS.muted} size={14} />
+            <Layers color={COLORS.muted} size={ui(14)} />
             <Muted>
               {s.total_count && s.total_count >= count
                 ? t("saga.owned", { count, total: s.total_count })
@@ -38,13 +39,13 @@ export default function SagaScreen() {
         </Hero>
         <View className="w-full max-w-3xl gap-4 self-center p-4">
           {s.overview ? <Text className="text-base leading-6 text-muted">{s.overview}</Text> : null}
-          <View className="flex-row flex-wrap gap-3">
+          <View onLayout={grid.onLayout} className="flex-row flex-wrap gap-3">
             {s.movies.map((m) => (
               <Link key={m.id} href={`/movie/${m.id}`} asChild>
                 <Pressable
                   onPressIn={() => setMovieList(s.movies.map((x) => x.id))}
                   testID={`saga-movie-${m.id}`}
-                  style={{ width: `${100 / columns - 3}%` }}
+                  style={{ width: grid.itemWidth }}
                   className="active:opacity-70"
                 >
                   <Poster

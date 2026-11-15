@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Modal, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ui } from "../lib/scale";
 import { COLORS } from "./ui";
 
 /** A panel that slides up from the bottom; tapping outside closes it. */
@@ -81,7 +82,7 @@ export function ChoiceList<T extends string>({
                 selected ? "border-accent bg-accent" : "border-faint"
               }`}
             >
-              {selected ? <Check color={COLORS.accentInk} size={12} strokeWidth={3} /> : null}
+              {selected ? <Check color={COLORS.accentInk} size={ui(12)} strokeWidth={3} /> : null}
             </View>
             <View className="flex-1 gap-0.5">
               <Text className="text-sm font-semibold text-fg">{o.label}</Text>
@@ -120,7 +121,7 @@ export function SettingRow({
         <Text className="text-sm text-accent">{value}</Text>
         {hint ? <Text className="text-xs text-muted">{hint}</Text> : null}
       </View>
-      <ChevronRight color={COLORS.faint} size={18} />
+      <ChevronRight color={COLORS.faint} size={ui(18)} />
     </Pressable>
   );
 }

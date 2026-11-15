@@ -21,6 +21,7 @@ import { MovieWatchlistButton } from "../../components/Watchlist";
 import { imageUrl } from "../../lib/api";
 import { movieNeighbours } from "../../lib/browse";
 import { movieQuery, useManualDownload, useSetPlayed } from "../../lib/queries";
+import { ui } from "../../lib/scale";
 import { session } from "../../lib/session";
 import { useLocalItem } from "../../lib/sync";
 
@@ -73,7 +74,7 @@ export default function MovieScreen() {
                 onPress={() => router.push(`/saga/${m.collection?.id}`)}
                 className="flex-row items-center gap-1.5 self-start rounded-full bg-surface-2 px-3 py-1.5 active:opacity-70"
               >
-                <Layers color={COLORS.accent} size={14} />
+                <Layers color={COLORS.accent} size={ui(14)} />
                 <Text className="text-xs font-semibold text-fg">{m.collection.name}</Text>
               </Pressable>
             ) : null}
@@ -82,7 +83,7 @@ export default function MovieScreen() {
             <Button
               testID="play"
               variant="primary"
-              icon={<Play color={COLORS.accentInk} size={18} />}
+              icon={<Play color={COLORS.accentInk} size={ui(18)} />}
               onPress={() => router.push(`/watch/movie/${id}`)}
             >
               {resume ? t("common.resume") : t("common.play")}
@@ -91,7 +92,7 @@ export default function MovieScreen() {
             {!local ? (
               <Button
                 testID="download"
-                icon={<Download color={COLORS.fg} size={18} />}
+                icon={<Download color={COLORS.fg} size={ui(18)} />}
                 loading={download.isPending}
                 disabled={requested}
                 onPress={() => {
@@ -108,7 +109,7 @@ export default function MovieScreen() {
             ) : null}
             <ErrorText>{download.error ? String(download.error.message) : null}</ErrorText>
             <Button
-              icon={<Check color={COLORS.fg} size={18} />}
+              icon={<Check color={COLORS.fg} size={ui(18)} />}
               onPress={() => played.mutate({ kind: "movie", id, played: !m.played })}
             >
               {m.played ? t("detail.markUnwatched") : t("detail.markWatched")}

@@ -231,13 +231,33 @@ export function useWatchlist() {
 
 export function useSavePreferences() {
   const qc = useQueryClient();
+  const mutationKey = ["save-preferences"];
   return useMutation({
+    mutationKey,
     mutationFn: (body: Schemas["PreferencesUpdate"]) =>
       call(api().PUT("/api/me/preferences", { body })),
+    // Shown at once; the server's answer replaces it.
+    onMutate: (body) => {
+      qc.setQueryData(preferencesQuery.queryKey, (old) =>
+        old
+          ? {
+              ...old,
+              spoken_languages: body.spoken_languages ?? old.spoken_languages,
+              prefer_dub: body.prefer_dub ?? old.prefer_dub,
+              subtitle_mode: body.subtitle_mode,
+              watchlist_episodes: body.watchlist_episodes ?? old.watchlist_episodes,
+            }
+          : old,
+      );
+    },
     onSuccess: (prefs) => {
-      qc.setQueryData(preferencesQuery.queryKey, prefs);
-      cachePreferences(prefs);
+      // Only the last change's answer: an earlier one would undo what was shown since.
+      if (qc.isMutating({ mutationKey }) <= 1) {
+        qc.setQueryData(preferencesQuery.queryKey, prefs);
+        cachePreferences(prefs);
+      }
       BatvisionSync.syncNow();
     },
+    onError: () => qc.invalidateQueries({ queryKey: preferencesQuery.queryKey }),
   });
 }

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { Schemas } from "../lib/api";
+import { ui } from "../lib/scale";
 import { useSyncState } from "../lib/sync";
 
 export const COLORS = {
@@ -201,26 +202,26 @@ export function Poster({
         />
       ) : (
         <View className="flex-1 items-center justify-center">
-          <Film color={COLORS.faint} size={28} />
+          <Film color={COLORS.faint} size={ui(28)} />
         </View>
       )}
       {badges?.inWatchlist || downloaded ? (
         <View className="absolute left-1.5 top-1.5 flex-row gap-1">
           {badges?.inWatchlist ? (
             <CornerBadge>
-              <BookmarkCheck color={COLORS.accent} size={13} />
+              <BookmarkCheck color={COLORS.accent} size={ui(13)} />
             </CornerBadge>
           ) : null}
           {downloaded ? (
             <CornerBadge>
-              <HardDriveDownload color={COLORS.fg} size={13} />
+              <HardDriveDownload color={COLORS.fg} size={ui(13)} />
             </CornerBadge>
           ) : null}
         </View>
       ) : null}
       {badges?.watched ? (
         <View className="absolute right-1.5 top-1.5 size-6 items-center justify-center rounded-full bg-accent">
-          <Check color={COLORS.accentInk} size={14} strokeWidth={3} />
+          <Check color={COLORS.accentInk} size={ui(14)} strokeWidth={3} />
         </View>
       ) : null}
       {progress ? (

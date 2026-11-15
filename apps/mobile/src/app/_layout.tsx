@@ -4,11 +4,12 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { AppState } from "react-native";
+import { AppState, useWindowDimensions } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Unreachable } from "../lib/api";
 import { askNotifications } from "../lib/permissions";
+import { applyUiScale } from "../lib/scale";
 import { BatvisionSync } from "../lib/sync";
 
 const queryClient = new QueryClient({
@@ -22,6 +23,10 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+  // 1.5× on a large window (DeX, a monitor), following its resizes (D105).
+  const { width } = useWindowDimensions();
+  useEffect(() => applyUiScale(width), [width]);
+
   useEffect(() => {
     // Sync when the app opens or comes back to the foreground (D71).
     BatvisionSync.syncNow();

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import type { Schemas } from "../lib/api";
 import { meQuery, useWatchlist } from "../lib/queries";
+import { ui } from "../lib/scale";
 import { Button, COLORS, ErrorText } from "./ui";
 
 /** The magnifier at the top of Home, Movies and Series (search left the tab bar). */
@@ -19,7 +20,7 @@ export function SearchButton() {
       onPress={() => router.push("/search")}
       className="size-10 items-center justify-center rounded-full bg-surface-2 active:opacity-70"
     >
-      <Search color={COLORS.fg} size={20} />
+      <Search color={COLORS.fg} size={ui(20)} />
     </Pressable>
   );
 }
@@ -66,9 +67,9 @@ export function MovieWatchlistButton({ movie }: { movie: Schemas["MovieDetail"] 
         loading={watchlist.isPending}
         icon={
           movie.in_watchlist ? (
-            <BookmarkCheck color={COLORS.accent} size={18} />
+            <BookmarkCheck color={COLORS.accent} size={ui(18)} />
           ) : (
-            <Bookmark color={COLORS.fg} size={18} />
+            <Bookmark color={COLORS.fg} size={ui(18)} />
           )
         }
         onPress={() => watchlist.mutate({ kind: "movie", id: movie.id, add: !movie.in_watchlist })}
@@ -90,9 +91,9 @@ export function SeriesWatchlistButton({ series }: { series: Schemas["SeriesDetai
       loading={watchlist.isPending}
       icon={
         series.in_watchlist ? (
-          <BookmarkCheck color={COLORS.accent} size={18} />
+          <BookmarkCheck color={COLORS.accent} size={ui(18)} />
         ) : (
-          <Bookmark color={COLORS.fg} size={18} />
+          <Bookmark color={COLORS.fg} size={ui(18)} />
         )
       }
       onPress={() => watchlist.mutate({ kind: "series", id: series.id, add: !series.in_watchlist })}

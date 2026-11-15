@@ -18,6 +18,7 @@ import {
 } from "../components/ui";
 import { ApiError, api, call } from "../lib/api";
 import { meQuery } from "../lib/queries";
+import { ui } from "../lib/scale";
 
 /**
  * The administration on the phone: what an admin checks or starts from the couch —
@@ -39,7 +40,7 @@ export default function Admin() {
             onPress={() => (router.canGoBack() ? router.back() : router.replace("/settings"))}
             className="size-10 items-center justify-center rounded-full bg-surface-2 active:opacity-70"
           >
-            <ArrowLeft color={COLORS.fg} size={20} />
+            <ArrowLeft color={COLORS.fg} size={ui(20)} />
           </Pressable>
           <Text className="flex-1 text-2xl font-bold text-fg">{t("admin.title")}</Text>
         </View>
@@ -112,7 +113,7 @@ function Libraries() {
         return (
           <View key={lib.id} className="flex-row items-center gap-3">
             <View className="size-10 items-center justify-center rounded-xl bg-surface-2">
-              <Icon color={COLORS.accent} size={20} />
+              <Icon color={COLORS.accent} size={ui(20)} />
             </View>
             <View className="min-w-0 flex-1">
               <Text className="font-medium text-fg">{lib.name}</Text>
@@ -123,7 +124,7 @@ function Libraries() {
             <Button
               testID={`scan-${lib.id}`}
               loading={running || (scan.isPending && scan.variables === lib.id)}
-              icon={<RefreshCw color={COLORS.fg} size={16} />}
+              icon={<RefreshCw color={COLORS.fg} size={ui(16)} />}
               onPress={() => scan.mutate(lib.id)}
             >
               {t("admin.scan")}
@@ -181,7 +182,7 @@ function Encodes() {
               onPress={() => remove.mutate(v.id)}
               className="size-9 items-center justify-center rounded-full active:opacity-70"
             >
-              <Trash2 color={COLORS.muted} size={18} />
+              <Trash2 color={COLORS.muted} size={ui(18)} />
             </Pressable>
           </View>
         ))
@@ -301,7 +302,7 @@ function System() {
         </Text>
       </View>
       <View className="flex-row items-center gap-2">
-        <Cpu color={hardware ? COLORS.success : COLORS.faint} size={16} />
+        <Cpu color={hardware ? COLORS.success : COLORS.faint} size={ui(16)} />
         <Text className="flex-1 text-sm text-fg">
           {data.ffmpeg?.gpu_filters
             ? t("admin.gpuFull")

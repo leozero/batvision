@@ -20,6 +20,7 @@ import {
 import { SeriesWatchlistButton } from "../../components/Watchlist";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { seasonQuery, seriesQuery, useManualDownload, useSubscribe } from "../../lib/queries";
+import { ui } from "../../lib/scale";
 import { session } from "../../lib/session";
 import { useLocalItem } from "../../lib/sync";
 
@@ -50,7 +51,7 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
             />
           ) : null}
           <View className="absolute inset-0 items-center justify-center">
-            <Play color={COLORS.fg} size={22} fill={COLORS.fg} />
+            <Play color={COLORS.fg} size={ui(22)} fill={COLORS.fg} />
           </View>
         </View>
         {progress ? <ProgressBar value={progress} className="mt-1" /> : null}
@@ -84,7 +85,7 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
             }}
             className="self-start"
           >
-            <Download color={requested ? COLORS.faint : COLORS.muted} size={18} />
+            <Download color={requested ? COLORS.faint : COLORS.muted} size={ui(18)} />
           </Pressable>
         )}
       </View>
@@ -146,7 +147,7 @@ export default function SeriesScreen() {
             <Button
               testID="play"
               variant="primary"
-              icon={<Play color={COLORS.accentInk} size={18} />}
+              icon={<Play color={COLORS.accentInk} size={ui(18)} />}
               onPress={() => router.push(`/watch/episode/${s.up_next?.id}`)}
             >
               {playLabel}

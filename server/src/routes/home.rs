@@ -305,34 +305,70 @@ pub async fn search(
 
 // ---- Track preferences --------------------------------------------------------------------
 
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, sqlx::FromRow)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Preferences {
-    /// ISO 639-2 code (`fre`, `eng`…), or `original`: the language the movie or series
-    /// was made in (D103). `None`: the file's default track.
-    pub audio_language: Option<String>,
-    pub subtitle_language: Option<String>,
+    /// The languages the user understands, ISO 639-2 (`fre`, `eng`…), the one they like
+    /// best first (D104). Never empty: by default, the account's language.
+    pub spoken_languages: Vec<String>,
+    /// For a movie in a language they don't understand: its dub in one of theirs, rather
+    /// than the original version with subtitles.
+    pub prefer_dub: bool,
     pub subtitle_mode: SubtitleMode,
     /// Unwatched episodes kept for each watchlist series, 1 to 10 (D73).
     pub watchlist_episodes: i64,
 }
 
+impl Preferences {
+    /// The preferences for one item, made in `original`.
+    pub fn general(&self, original: Option<String>) -> crate::playback::GeneralPreferences {
+        crate::playback::GeneralPreferences {
+            spoken: self.spoken_languages.clone(),
+            prefer_dub: self.prefer_dub,
+            original,
+            subtitle_mode: Some(self.subtitle_mode),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct PreferencesUpdate {
-    pub audio_language: Option<String>,
-    pub subtitle_language: Option<String>,
+    /// At least one; ISO 639-1 or 639-2 codes are accepted. Omitted (apps before 0.9):
+    /// unchanged.
+    pub spoken_languages: Option<Vec<String>>,
+    /// Omitted: unchanged.
+    pub prefer_dub: Option<bool>,
     pub subtitle_mode: SubtitleMode,
     /// Omitted: unchanged.
     pub watchlist_episodes: Option<i64>,
 }
 
 pub async fn load_preferences(state: &AppState, user_id: i64) -> ApiResult<Preferences> {
-    Ok(sqlx::query_as(
-        "SELECT audio_language, subtitle_language, subtitle_mode, watchlist_episodes
+    let (spoken, prefer_dub, subtitle_mode, watchlist_episodes, language): (
+        String,
+        bool,
+        SubtitleMode,
+        i64,
+        String,
+    ) = sqlx::query_as(
+        "SELECT spoken_languages, prefer_dub, subtitle_mode, watchlist_episodes, language
          FROM users WHERE id = ?",
     )
     .bind(user_id)
     .fetch_one(&state.db)
-    .await?)
+    .await?;
+    let mut spoken_languages: Vec<String> = spoken
+        .split(',')
+        .filter_map(crate::playback::normalize_language)
+        .collect();
+    if spoken_languages.is_empty() {
+        spoken_languages.extend(crate::playback::normalize_language(&language));
+    }
+    Ok(Preferences {
+        spoken_languages,
+        prefer_dub,
+        subtitle_mode,
+        watchlist_episodes,
+    })
 }
 
 #[utoipa::path(get, path = "/api/me/preferences", tag = "me", security(("bearer" = [])),
@@ -342,11 +378,6 @@ pub async fn get_preferences(
     current: CurrentDevice,
 ) -> ApiResult<Json<Preferences>> {
     Ok(Json(load_preferences(&state, current.user.id).await?))
-}
-
-fn valid_language_code(code: &Option<String>) -> bool {
-    code.as_deref()
-        .is_none_or(|c| c.len() == 3 && c.chars().all(|ch| ch.is_ascii_lowercase()))
 }
 
 #[utoipa::path(put, path = "/api/me/preferences", tag = "me", security(("bearer" = [])),
@@ -365,20 +396,31 @@ pub async fn put_preferences(
             "watchlist_episodes must be between 1 and 10",
         ));
     }
-    let audio_ok = prefs.audio_language.as_deref() == Some(crate::playback::ORIGINAL)
-        || valid_language_code(&prefs.audio_language);
-    if !audio_ok || !valid_language_code(&prefs.subtitle_language) {
+    let mut spoken: Vec<String> = Vec::new();
+    for code in prefs.spoken_languages.iter().flatten() {
+        let Some(language) = crate::playback::normalize_language(code) else {
+            return Err(ApiError::bad_request(
+                "invalid_language",
+                "languages are ISO 639 codes such as fre or eng",
+            ));
+        };
+        if !spoken.contains(&language) {
+            spoken.push(language);
+        }
+    }
+    if prefs.spoken_languages.is_some() && (spoken.is_empty() || spoken.len() > 20) {
         return Err(ApiError::bad_request(
             "invalid_language",
-            "track languages are ISO 639-2 codes such as fre or eng",
+            "between 1 and 20 spoken languages",
         ));
     }
     sqlx::query(
-        "UPDATE users SET audio_language = ?, subtitle_language = ?, subtitle_mode = ?,
+        "UPDATE users SET spoken_languages = COALESCE(?, spoken_languages),
+           prefer_dub = COALESCE(?, prefer_dub), subtitle_mode = ?,
            watchlist_episodes = COALESCE(?, watchlist_episodes) WHERE id = ?",
     )
-    .bind(&prefs.audio_language)
-    .bind(&prefs.subtitle_language)
+    .bind(prefs.spoken_languages.is_some().then(|| spoken.join(",")))
+    .bind(prefs.prefer_dub)
     .bind(prefs.subtitle_mode)
     .bind(prefs.watchlist_episodes)
     .bind(current.user.id)

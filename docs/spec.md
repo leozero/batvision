@@ -136,7 +136,7 @@ docs/
   - **Auto** (the default) starts where it settled last time on the device. It goes down after two stalls within a minute, a stall of 4 s, a stream that shows nothing for 10 s, or a measured throughput under 1.5 times the stream's bitrate. It goes back up, straight to the best level the throughput carries twice over, after 2 minutes without a stall and at most once every 5 minutes;
   - changing level restarts the session at the current position, like a seek: a device still uses a single encode.
 - Resume playback, "Continue watching", "Next up".
-- **How you watch** (D103): dubbed, original version with subtitles, or original version alone, chosen once in the preferences on any device; the detailed settings stay below. The original version is the language TMDB gives for the movie or series.
+- **Languages you understand** (D104): the preferences, on any device, list the languages someone understands, in order (the account's language by default), and a "prefer dubbing" switch. A movie in one of them plays in its original version without subtitles. Otherwise: the dub in one of their languages when they prefer dubbing and the file has it, else the original version with subtitles in the first of their languages that has some. The subtitle setting can also say always, or never (forced lines only). The original version is the language TMDB gives for the movie or series; unknown, the file's default track. A track changed while watching is kept for that movie, or for the rest of the series.
 - On touch screens, a double tap on the left or right third goes back or forward 10 s (again for each extra tap); a single tap shows the controls.
 - **Versions** (D102): a movie or episode can have several files (a 1080p and a 4K copy, a director's cut). Every video of a movie's folder is one, except parts (`CD2`); so is every copy of an episode. The detail and the playback session list them (resolution, codec, HDR, size, audio languages), largest first:
   - the largest plays by default; the player's quality menu offers the others when there are several, and switching restarts the session at the current position, with tracks picked again from the preferences;
@@ -268,6 +268,7 @@ A series in the watchlist (D73) is not a subscription: it belongs to the account
 - Player: react-native-video (Media3) with HLS, audio and subtitle tracks (subtitles drawn by the app from WebVTT, D100), the quality menu (D60), resume, next episode, picture in picture, landscape, screen kept on (D71).
 - A profile button (the user's initial) next to search, top right of Home, Movies and Series, opens the account: this device's settings, sign-out, and for administrators an administration screen with what is useful away from a computer (library scans, the encode queue, timeline thumbnail batches, the server's state). Accounts and new libraries stay on the web.
 - Offline library when the server is unreachable, as on desktop (D72).
+- Large windows (Samsung DeX, a monitor, AR glasses; at least 1400 pt wide): everything is drawn 1.5×, and posters grow with the window rather than multiplying (D105).
 - The app reports its model as device name and whether it decodes AV1 in hardware (MediaCodec).
 - Distribution: signed APK attached to the GitHub releases; the app shows a banner when a newer one exists (D65, D66).
 

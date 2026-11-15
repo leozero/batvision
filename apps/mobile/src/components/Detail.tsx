@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ui } from "../lib/scale";
 import { useLocalItem } from "../lib/sync";
 import { COLORS } from "./ui";
 
@@ -37,7 +38,7 @@ export function Hero({ backdrop, children }: { backdrop?: string; children: Reac
         style={{ top: insets.top + 8 }}
         className="absolute left-3 size-10 items-center justify-center rounded-full bg-black/50"
       >
-        <ArrowLeft color={COLORS.fg} size={20} />
+        <ArrowLeft color={COLORS.fg} size={ui(20)} />
       </Pressable>
       <View className="-mt-10 w-full max-w-3xl gap-2 self-center px-4">{children}</View>
     </View>
@@ -52,13 +53,13 @@ export function LocalMark({ kind, id }: { kind: "movie" | "episode"; id: number 
   if (item.status === "done")
     return (
       <View testID="local-done" className="flex-row items-center gap-1">
-        <HardDriveDownload color={COLORS.accent} size={14} />
+        <HardDriveDownload color={COLORS.accent} size={ui(14)} />
         <Text className="text-xs font-semibold text-accent">{t("desktop.downloaded")}</Text>
       </View>
     );
   return (
     <View testID="local-waiting" className="flex-row items-center gap-1">
-      <Download color={COLORS.faint} size={14} />
+      <Download color={COLORS.faint} size={ui(14)} />
       <Text className="text-xs text-faint">
         {item.wait ? t(`mobile.wait.${item.wait}`) : t("desktop.state.waiting")}
       </Text>
@@ -70,7 +71,7 @@ export function WatchedMark() {
   const { t } = useTranslation();
   return (
     <View className="flex-row items-center gap-1">
-      <CheckCircle2 color={COLORS.success} size={14} />
+      <CheckCircle2 color={COLORS.success} size={ui(14)} />
       <Text className="text-xs font-semibold text-success">{t("detail.watched")}</Text>
     </View>
   );

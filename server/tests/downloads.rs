@@ -517,7 +517,7 @@ async fn watchlist_series_downloads_the_next_episodes() {
             Method::PUT,
             "/api/me/preferences",
             Some(&f.phone),
-            Some(json!({ "audio_language": null, "subtitle_language": null,
+            Some(json!({ "spoken_languages": ["fre"], "prefer_dub": false,
                          "subtitle_mode": "foreign", "watchlist_episodes": 11 })),
         )
         .await;
@@ -528,7 +528,7 @@ async fn watchlist_series_downloads_the_next_episodes() {
             Method::PUT,
             "/api/me/preferences",
             Some(&f.phone),
-            Some(json!({ "audio_language": null, "subtitle_language": null,
+            Some(json!({ "spoken_languages": ["fre"], "prefer_dub": false,
                          "subtitle_mode": "foreign", "watchlist_episodes": 3 })),
         )
         .await;
@@ -543,7 +543,7 @@ async fn watchlist_series_downloads_the_next_episodes() {
             Method::PUT,
             "/api/me/preferences",
             Some(&f.phone),
-            Some(json!({ "audio_language": null, "subtitle_language": null, "subtitle_mode": "foreign" })),
+            Some(json!({ "spoken_languages": ["fre"], "prefer_dub": false, "subtitle_mode": "foreign" })),
         )
         .await;
     assert_eq!(prefs["watchlist_episodes"], 3);

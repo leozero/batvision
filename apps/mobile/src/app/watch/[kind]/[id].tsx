@@ -48,6 +48,7 @@ import {
   saveQualityMode,
 } from "../../../lib/quality";
 import { episodeQuery, meQuery, movieQuery, preferencesQuery } from "../../../lib/queries";
+import { ui } from "../../../lib/scale";
 import { session } from "../../../lib/session";
 import { BatvisionSync } from "../../../lib/sync";
 
@@ -528,9 +529,9 @@ export default function Player() {
         >
           <View className="flex-row items-center gap-2 rounded-full bg-black/60 px-4 py-2">
             {seekFlash.side === "left" ? (
-              <RotateCcw color={COLORS.fg} size={18} />
+              <RotateCcw color={COLORS.fg} size={ui(18)} />
             ) : (
-              <RotateCw color={COLORS.fg} size={18} />
+              <RotateCw color={COLORS.fg} size={ui(18)} />
             )}
             <Text className="text-sm font-semibold text-fg">
               {seekFlash.side === "left" ? "−" : "+"}
@@ -585,7 +586,7 @@ export default function Player() {
               }}
               className="size-10 items-center justify-center rounded-full bg-black/50"
             >
-              <ArrowLeft color={COLORS.fg} size={20} />
+              <ArrowLeft color={COLORS.fg} size={ui(20)} />
             </Pressable>
             <Text numberOfLines={1} className="flex-1 text-base font-semibold text-fg">
               {title}
@@ -598,7 +599,7 @@ export default function Player() {
                 onPress={() => setSheet("quality")}
                 className="size-10 items-center justify-center"
               >
-                <Settings2 color={COLORS.fg} size={20} />
+                <Settings2 color={COLORS.fg} size={ui(20)} />
               </Pressable>
             ) : null}
             {local || info ? (
@@ -609,7 +610,7 @@ export default function Player() {
                 onPress={() => setSheet("tracks")}
                 className="size-10 items-center justify-center"
               >
-                <Languages color={COLORS.fg} size={20} />
+                <Languages color={COLORS.fg} size={ui(20)} />
               </Pressable>
             ) : null}
           </View>
@@ -620,7 +621,7 @@ export default function Player() {
               accessibilityLabel={t("player.back10")}
               onPress={() => seekTo(positionRef.current - 10_000)}
             >
-              <RotateCcw color={COLORS.fg} size={28} />
+              <RotateCcw color={COLORS.fg} size={ui(28)} />
             </Pressable>
             <Pressable
               testID="play-pause"
@@ -630,9 +631,9 @@ export default function Player() {
               className="size-16 items-center justify-center rounded-full bg-black/50"
             >
               {paused ? (
-                <Play color={COLORS.fg} size={30} fill={COLORS.fg} />
+                <Play color={COLORS.fg} size={ui(30)} fill={COLORS.fg} />
               ) : (
-                <Pause color={COLORS.fg} size={30} fill={COLORS.fg} />
+                <Pause color={COLORS.fg} size={ui(30)} fill={COLORS.fg} />
               )}
             </Pressable>
             <Pressable
@@ -641,7 +642,7 @@ export default function Player() {
               accessibilityLabel={t("player.forward10")}
               onPress={() => seekTo(positionRef.current + 10_000)}
             >
-              <RotateCw color={COLORS.fg} size={28} />
+              <RotateCw color={COLORS.fg} size={ui(28)} />
             </Pressable>
           </View>
           <View className="gap-2">
@@ -651,7 +652,7 @@ export default function Player() {
                 onPress={goNext}
                 className="flex-row items-center gap-2 self-end rounded-xl bg-accent px-4 py-2"
               >
-                <SkipForward color={COLORS.accentInk} size={16} />
+                <SkipForward color={COLORS.accentInk} size={ui(16)} />
                 <Text className="font-semibold text-accent-ink">{t("player.nextEpisode")}</Text>
               </Pressable>
             ) : null}
@@ -716,7 +717,7 @@ export default function Player() {
           pointerEvents="box-none"
           className="absolute inset-x-0 items-center px-8"
           // Above the seek bar while the controls show.
-          style={{ bottom: insets.bottom + (controls ? 112 : 32) }}
+          style={{ bottom: insets.bottom + ui(controls ? 112 : 32) }}
         >
           <Text
             testID="subtitle-cue"
