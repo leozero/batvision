@@ -1,7 +1,7 @@
 {
   "name": "@batvision/desktop",
   "productName": "BatVision",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "BatVision desktop app: library, playback and offline downloads",
