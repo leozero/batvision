@@ -10,9 +10,9 @@ const saga = {
   name: "Saga polar",
   overview: "Des braquages qui tournent mal.",
   parts: [
-    { id: 949, release_date: "1995-12-15" },
-    { id: 8195, release_date: "1998-09-25" },
-    { id: 1, release_date: "1999-01-01" },
+    { id: 949, title: "Heat", release_date: "1995-12-15" },
+    { id: 8195, title: "Ronin", release_date: "1998-09-25" },
+    { id: 1, title: "Le Dernier Casse", release_date: "1999-01-01", poster_path: null },
   ],
 };
 const inSaga = { id: saga.id, name: saga.name, poster_path: null, backdrop_path: null };

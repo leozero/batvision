@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
-import { Layers } from "lucide-react";
+import { Film, Layers } from "lucide-react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
 import { DetailHeader } from "../components/detail";
@@ -60,6 +60,57 @@ function SagaCard({ saga, index }: { saga: Schemas["CollectionSummary"]; index: 
       </Link>
     </motion.div>
   );
+}
+
+/** A movie of the saga the library doesn't have (D101): greyed out, not a link. */
+function MissingCard({ movie, index }: { movie: Schemas["MissingMovie"]; index: number }) {
+  const { t } = useTranslation();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, delay: Math.min(index, 12) * 0.03, ease: [0.22, 1, 0.36, 1] }}
+      title={t("saga.missing")}
+      data-testid="saga-missing"
+    >
+      <div className="relative aspect-[2/3] overflow-hidden rounded-[var(--radius-card)] bg-surface-2 opacity-40 ring-1 ring-white/5 grayscale">
+        <Img
+          src={imageUrl(movie.poster_path, "w342")}
+          alt={movie.title}
+          className="size-full object-cover"
+          fallback={
+            <div className="flex flex-col items-center gap-2 px-3 text-center">
+              <Film className="size-7 text-faint" />
+              <span className="line-clamp-3 text-sm font-medium text-muted">{movie.title}</span>
+            </div>
+          }
+        />
+      </div>
+      <div className="mt-2.5 px-0.5 opacity-60">
+        <p className="truncate text-sm font-medium text-muted">{movie.title}</p>
+        <p className="truncate text-xs text-faint">
+          {movie.year ? `${movie.year} · ` : ""}
+          {t("saga.missing")}
+        </p>
+      </div>
+    </motion.div>
+  );
+}
+
+type SagaEntry =
+  | { kind: "owned"; movie: Schemas["MovieSummary"] }
+  | { kind: "missing"; movie: Schemas["MissingMovie"] };
+
+/** The library's movies with the missing ones slotted in, all in release order. */
+function sagaEntries(saga: Schemas["CollectionDetail"]): SagaEntry[] {
+  // A missing movie at `position` p goes after the library's first p movies.
+  const owned = saga.movies.map((movie, i) => ({ kind: "owned" as const, movie, at: i + 0.5 }));
+  const missing = saga.missing.map((movie) => ({
+    kind: "missing" as const,
+    movie,
+    at: movie.position,
+  }));
+  return [...missing, ...owned].sort((a, b) => a.at - b.at);
 }
 
 export function SagasPage() {
@@ -134,9 +185,13 @@ export function SagaPage() {
       />
       <div className="mx-auto max-w-6xl px-4 sm:px-10">
         <PosterGrid>
-          {saga.movies.map((movie, i) => (
-            <PosterCard key={movie.id} item={movie} kind="movie" index={i} />
-          ))}
+          {sagaEntries(saga).map((entry, i) =>
+            entry.kind === "owned" ? (
+              <PosterCard key={entry.movie.id} item={entry.movie} kind="movie" index={i} />
+            ) : (
+              <MissingCard key={`tmdb-${entry.movie.tmdb_id}`} movie={entry.movie} index={i} />
+            ),
+          )}
         </PosterGrid>
       </div>
     </Page>

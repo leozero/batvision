@@ -146,6 +146,7 @@ export const fr = {
     count_other: "{{count}} films",
     owned_one: "{{count}} film sur {{total}}",
     owned_other: "{{count}} films sur {{total}}",
+    missing: "Pas dans la bibliothèque",
     open: "Voir la saga",
     none: "Aucune saga pour l'instant",
     noneHint: "Une saga apparaît ici dès que la bibliothèque a deux de ses films.",

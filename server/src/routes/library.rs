@@ -1278,6 +1278,7 @@ pub async fn image(
            UNION ALL SELECT 1 FROM series WHERE poster_path = ?1 OR backdrop_path = ?1
            UNION ALL SELECT 1 FROM seasons WHERE poster_path = ?1
            UNION ALL SELECT 1 FROM collections WHERE poster_path = ?1 OR backdrop_path = ?1
+           UNION ALL SELECT 1 FROM collection_parts WHERE poster_path = ?1
            UNION ALL SELECT 1 FROM episodes WHERE still_path = ?1)",
     )
     .bind(&tmdb_path)

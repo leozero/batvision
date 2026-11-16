@@ -177,7 +177,7 @@ test("home shows the top-rated movies, with a link to all of them", async () => 
   await expect(page.getByTestId("sort-direction")).toHaveText("Mieux notés d'abord");
 });
 
-test("a movie links to its saga, which lists the library's movies in release order", async () => {
+test("a movie links to its saga, which lists its movies in release order, missing ones greyed out", async () => {
   await page.goto("/movies");
   await page
     .getByRole("link", { name: /^Ronin/ })
@@ -191,6 +191,11 @@ test("a movie links to its saga, which lists the library's movies in release ord
   await expect(cards).toHaveCount(2);
   await expect(cards.first()).toContainText("Heat");
   await expect(cards.nth(1)).toContainText("Ronin");
+  // The one the library lacks comes after them, greyed out and not a link.
+  const missing = page.getByTestId("saga-missing");
+  await expect(missing).toHaveCount(1);
+  await expect(missing).toContainText("Le Dernier Casse");
+  await expect(missing).toContainText("1999 · Pas dans la bibliothèque");
 
   await page.getByRole("link", { name: "Sagas", exact: true }).click();
   await expect(page.getByTestId("saga-card")).toHaveCount(1);
