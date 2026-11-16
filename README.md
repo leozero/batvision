@@ -38,6 +38,12 @@ pnpm --filter @batvision/web dev
 
 The server listens on `127.0.0.1:8420`, and Vite (`http://localhost:5173`) proxies `/api` calls to it.
 
+To try the app without media or a TMDB token, `pnpm demo` builds the web app and starts the server on `http://127.0.0.1:8420` with a small made-up library (placeholder files, so no playback) and a stand-in for TMDB. It prints the accounts to sign in with, and starts from a fresh state each time (in `.dev/demo`).
+
+```bash
+pnpm demo
+```
+
 ### Desktop app
 
 The desktop app shows the web client's own build, so build it first:
