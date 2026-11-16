@@ -947,7 +947,12 @@ async fn a_saga_with_one_movie_left_is_only_reached_from_it() {
         .as_array()
         .unwrap()
         .iter()
-        .map(|m| (m["tmdb_id"].as_i64().unwrap(), m["position"].as_i64().unwrap()))
+        .map(|m| {
+            (
+                m["tmdb_id"].as_i64().unwrap(),
+                m["position"].as_i64().unwrap(),
+            )
+        })
         .collect();
     assert_eq!(missing, [(165, 1), (196, 1)], "both after the one left");
 
