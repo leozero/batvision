@@ -271,9 +271,11 @@ function DeviceCard({ device, index }: { device: Schemas["DeviceDownloads"]; ind
                   <span className="font-medium">{s.series_title}</span>{" "}
                   <span className="text-muted">
                     ·{" "}
-                    {s.mode === "rolling"
-                      ? t("downloads.nextEpisodes", { count: s.count ?? 3 })
-                      : t("detail.season", { number: s.season_number })}
+                    {s.mode === "season"
+                      ? t("detail.season", { number: s.season_number })
+                      : s.count == null
+                        ? t("downloads.allNextEpisodes")
+                        : t("downloads.nextEpisodes", { count: s.count })}
                     {s.audio_language ? ` · ${languageName(s.audio_language, i18n.language)}` : ""}
                   </span>
                 </span>

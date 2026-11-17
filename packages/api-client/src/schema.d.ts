@@ -2164,6 +2164,8 @@ export interface components {
         /** @enum {string} */
         Storage: "internal" | "sd";
         SubscribeRequest: {
+            /** @description rolling: every unwatched episode, until the end of the series; `count` is ignored. */
+            all?: boolean;
             audio_language?: string | null;
             /**
              * Format: int64
@@ -2184,7 +2186,10 @@ export interface components {
         };
         SubscriptionInfo: {
             audio_language?: string | null;
-            /** Format: int64 */
+            /**
+             * Format: int64
+             * @description rolling: episodes kept, `null` for all the next ones.
+             */
             count?: number | null;
             /** Format: int64 */
             id: number;

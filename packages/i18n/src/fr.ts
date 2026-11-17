@@ -249,6 +249,7 @@ export const fr = {
     seasonHint: "Téléchargée une fois, sans passer à la suivante.",
     nextEpisodes_one: "Le prochain épisode",
     nextEpisodes_other: "Les {{count}} prochains épisodes",
+    allNextEpisodes: "Tous les prochains épisodes",
     quality: "Qualité",
     deviceDefault: "Celle de l'appareil",
     profile: {
@@ -348,7 +349,6 @@ export const fr = {
     signOut: "Se déconnecter",
     downloadHere: "Télécharger sur cet appareil",
     requested: "Demandé : le serveur prépare le fichier.",
-    nextEpisodes: "Les {{count}} prochains épisodes",
     wholeSeason: "La saison {{number}}",
     mobileUsed: "Données mobiles ce mois-ci : {{used}} sur {{cap}}",
     mobileUsedNoCap: "Données mobiles ce mois-ci : {{used}}",

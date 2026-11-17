@@ -252,6 +252,7 @@ export const en: Shape<typeof fr> = {
     seasonHint: "Downloaded once, never moves on to the next.",
     nextEpisodes_one: "The next episode",
     nextEpisodes_other: "The next {{count}} episodes",
+    allNextEpisodes: "All the next episodes",
     quality: "Quality",
     deviceDefault: "The device's",
     profile: {
@@ -348,7 +349,6 @@ export const en: Shape<typeof fr> = {
     signOut: "Sign out",
     downloadHere: "Download to this device",
     requested: "Requested: the server is preparing the file.",
-    nextEpisodes: "The next {{count}} episodes",
     wholeSeason: "Season {{number}}",
     mobileUsed: "Mobile data this month: {{used}} of {{cap}}",
     mobileUsedNoCap: "Mobile data this month: {{used}}",

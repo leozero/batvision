@@ -218,8 +218,9 @@ pub async fn load_inputs(
                 number: season.unwrap_or(1),
             }
         } else {
+            // No count: all the next episodes (D108).
             Mode::Rolling {
-                count: count.unwrap_or(3).max(1) as usize,
+                count: count.map_or(usize::MAX, |c| c.max(1) as usize),
             }
         };
         inputs.subscriptions.push(Subscription {
