@@ -3402,7 +3402,8 @@
         "required": [
           "id",
           "name",
-          "movies"
+          "movies",
+          "missing"
         ],
         "properties": {
           "backdrop_path": {
@@ -3414,6 +3415,13 @@
           "id": {
             "type": "integer",
             "format": "int64"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MissingMovie"
+            },
+            "description": "The saga's released movies the library doesn't have, in release order. Empty\nuntil TMDB told."
           },
           "movies": {
             "type": "array",
@@ -4758,6 +4766,42 @@
           "transcode_audio",
           "transcode"
         ]
+      },
+      "MissingMovie": {
+        "type": "object",
+        "description": "A movie of a saga that isn't in the library.",
+        "required": [
+          "tmdb_id",
+          "title",
+          "position"
+        ],
+        "properties": {
+          "position": {
+            "type": "integer",
+            "format": "int64",
+            "description": "How many of the library's movies (`movies`) come before it in release order."
+          },
+          "poster_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "tmdb_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
       },
       "MobileData": {
         "type": "string",

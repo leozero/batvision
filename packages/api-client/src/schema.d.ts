@@ -1332,6 +1332,11 @@ export interface components {
             backdrop_path?: string | null;
             /** Format: int64 */
             id: number;
+            /**
+             * @description The saga's released movies the library doesn't have, in release order. Empty
+             *     until TMDB told.
+             */
+            missing: components["schemas"]["MissingMovie"][];
             /** @description The saga's movies in the library, in release order. */
             movies: components["schemas"]["MovieSummary"][];
             name: string;
@@ -1719,6 +1724,20 @@ export interface components {
         };
         /** @enum {string} */
         Method: "direct" | "remux" | "transcode_audio" | "transcode";
+        /** @description A movie of a saga that isn't in the library. */
+        MissingMovie: {
+            /**
+             * Format: int64
+             * @description How many of the library's movies (`movies`) come before it in release order.
+             */
+            position: number;
+            poster_path?: string | null;
+            title: string;
+            /** Format: int64 */
+            tmdb_id: number;
+            /** Format: int64 */
+            year?: number | null;
+        };
         /** @enum {string} */
         MobileData: "off" | "light" | "all";
         MovieDetail: {

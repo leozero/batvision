@@ -90,7 +90,11 @@ pub struct CollectionRef {
 pub struct CollectionPart {
     pub id: i64,
     #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
     pub release_date: Option<String>,
+    #[serde(default)]
+    pub poster_path: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -112,14 +116,16 @@ impl CollectionDetails {
     /// Movies of the collection released by `today` (`YYYY-MM-DD`): TMDB also lists
     /// announced ones, which nobody can have yet.
     pub fn released_parts(&self, today: &str) -> i64 {
-        self.parts
-            .iter()
-            .filter(|p| {
-                p.release_date
-                    .as_deref()
-                    .is_some_and(|d| !d.is_empty() && d <= today)
-            })
-            .count() as i64
+        self.released(today).count() as i64
+    }
+
+    /// The movies [`Self::released_parts`] counts.
+    pub fn released<'a>(&'a self, today: &'a str) -> impl Iterator<Item = &'a CollectionPart> {
+        self.parts.iter().filter(move |p| {
+            p.release_date
+                .as_deref()
+                .is_some_and(|d| !d.is_empty() && d <= today)
+        })
     }
 }
 

@@ -18,6 +18,7 @@ const STALE_AFTER_SECS: i64 = 30 * 24 * 3600;
 /// Stale items refetched per library and per scan, to spread the load over scans.
 const STALE_MOVIES_PER_SCAN: i64 = 40;
 const STALE_SERIES_PER_SCAN: i64 = 10;
+const STALE_COLLECTIONS_PER_SCAN: i64 = 10;
 /// A stale item whose refresh failed is tried again after this long.
 const STALE_RETRY_SECS: i64 = 24 * 3600;
 
@@ -292,6 +293,29 @@ async fn refresh_collection(
     .bind(collection_id)
     .execute(db)
     .await?;
+    // The saga's released movies, so its page can show the ones the library lacks.
+    sqlx::query("DELETE FROM collection_parts WHERE collection_id = ?")
+        .bind(collection_id)
+        .execute(db)
+        .await?;
+    for (language, c) in &per_language {
+        for part in c.released(&today) {
+            sqlx::query(
+                "INSERT INTO collection_parts
+                   (collection_id, tmdb_id, language, title, release_date, poster_path)
+                 VALUES (?, ?, ?, ?, ?, ?)
+                 ON CONFLICT DO NOTHING",
+            )
+            .bind(collection_id)
+            .bind(part.id)
+            .bind(language)
+            .bind(non_empty(&part.title))
+            .bind(&part.release_date)
+            .bind(&part.poster_path)
+            .execute(db)
+            .await?;
+        }
+    }
     for (language, c) in &per_language {
         let overview = non_empty(&c.overview)
             .or_else(|| fallback.as_ref().and_then(|f| non_empty(&f.overview)));
@@ -664,6 +688,37 @@ async fn refresh_stale(
                     ItemKind::Series => "UPDATE series SET metadata_updated_at = ? WHERE id = ?",
                 };
                 sqlx::query(sql).bind(retry_at).bind(id).execute(db).await?;
+            }
+        }
+    }
+    // Sagas refresh with their movies, but a saga none of whose movies is stale (or one
+    // whose refresh failed) waits for its turn here.
+    let collections: Vec<(i64, i64)> = sqlx::query_as(
+        "SELECT c.id, c.tmdb_id FROM collections c
+         WHERE COALESCE(c.metadata_updated_at, 0) < ?
+           AND EXISTS (SELECT 1 FROM movies m WHERE m.collection_id = c.id
+             AND m.library_id = ? AND m.missing_since IS NULL)
+         ORDER BY COALESCE(c.metadata_updated_at, 0), c.id LIMIT ?",
+    )
+    .bind(stale_before)
+    .bind(library_id)
+    .bind(STALE_COLLECTIONS_PER_SCAN)
+    .fetch_all(db)
+    .await?;
+    for (id, tmdb_id) in collections {
+        match refresh_collection(db, tmdb, id, tmdb_id, languages).await {
+            Ok(()) => {}
+            Err(err) => {
+                counts.errors += 1;
+                tracing::warn!(collection = tmdb_id, error = %err, "collection refresh failed");
+                if is_fatal(&err) {
+                    return Err(err);
+                }
+                sqlx::query("UPDATE collections SET metadata_updated_at = ? WHERE id = ?")
+                    .bind(now() - STALE_AFTER_SECS + STALE_RETRY_SECS)
+                    .bind(id)
+                    .execute(db)
+                    .await?;
             }
         }
     }

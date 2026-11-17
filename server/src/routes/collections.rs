@@ -62,6 +62,20 @@ pub struct CollectionDetail {
     pub total_count: Option<i64>,
     /// The saga's movies in the library, in release order.
     pub movies: Vec<MovieSummary>,
+    /// The saga's released movies the library doesn't have, in release order. Empty
+    /// until TMDB told.
+    pub missing: Vec<MissingMovie>,
+}
+
+/// A movie of a saga that isn't in the library.
+#[derive(Serialize, ToSchema, sqlx::FromRow)]
+pub struct MissingMovie {
+    pub tmdb_id: i64,
+    pub title: String,
+    pub year: Option<i64>,
+    pub poster_path: Option<String>,
+    /// How many of the library's movies (`movies`) come before it in release order.
+    pub position: i64,
 }
 
 /// The saga of a movie, if it has one with a name.
@@ -149,14 +163,15 @@ pub async fn collection(
     .ok_or(ApiError::NotFound)?;
 
     // Release order; a movie TMDB gives no date for goes by its folder's year, then last.
-    let ids: Vec<i64> = sqlx::query_scalar(
-        "SELECT id FROM movies WHERE collection_id = ? AND missing_since IS NULL
-         ORDER BY COALESCE(release_date, CAST(parsed_year AS TEXT)) IS NULL,
-           COALESCE(release_date, CAST(parsed_year AS TEXT)), id",
+    let owned: Vec<(i64, Option<String>)> = sqlx::query_as(
+        "SELECT id, COALESCE(release_date, CAST(parsed_year AS TEXT)) AS released FROM movies
+         WHERE collection_id = ? AND missing_since IS NULL
+         ORDER BY released IS NULL, released, id",
     )
     .bind(id)
     .fetch_all(&state.db)
     .await?;
+    let ids: Vec<i64> = owned.iter().map(|(id, _)| *id).collect();
     if ids.is_empty() {
         return Err(ApiError::NotFound);
     }
@@ -174,6 +189,42 @@ pub async fn collection(
     let rank: HashMap<i64, usize> = ids.iter().enumerate().map(|(i, id)| (*id, i)).collect();
     movies.sort_by_key(|m| rank.get(&m.id).copied().unwrap_or(usize::MAX));
 
+    // The saga's other movies, each in the language closest to the user's. A movie the
+    // library has under another saga (or none) still counts as there.
+    let parts: Vec<MissingPart> = sqlx::query_as(
+        "SELECT tmdb_id, title, release_date, poster_path FROM (
+           SELECT p.*, ROW_NUMBER() OVER (PARTITION BY p.tmdb_id ORDER BY
+             p.title IS NULL, p.language = ?1 DESC, p.language = ?2 DESC, p.language) AS pick
+           FROM collection_parts p
+           WHERE p.collection_id = ?3 AND NOT EXISTS
+             (SELECT 1 FROM movies m WHERE m.tmdb_id = p.tmdb_id AND m.missing_since IS NULL))
+         WHERE pick = 1 AND title IS NOT NULL
+         ORDER BY release_date, tmdb_id",
+    )
+    .bind(&current.user.language)
+    .bind(&state.config.default_language)
+    .bind(id)
+    .fetch_all(&state.db)
+    .await?;
+    let missing = parts
+        .into_iter()
+        .map(|p| {
+            let date = p.release_date.unwrap_or_default();
+            // Dates compare as text; an owned movie known only by its year sorts first.
+            let position = owned
+                .iter()
+                .filter(|(_, released)| released.as_deref().is_some_and(|r| *r <= *date))
+                .count() as i64;
+            MissingMovie {
+                tmdb_id: p.tmdb_id,
+                title: p.title.unwrap_or_default(),
+                year: date.get(..4).and_then(|y| y.parse().ok()),
+                poster_path: p.poster_path,
+                position,
+            }
+        })
+        .collect();
+
     Ok(Json(CollectionDetail {
         id: row.id,
         name: row.name,
@@ -182,5 +233,14 @@ pub async fn collection(
         backdrop_path: row.backdrop_path,
         total_count: row.total_count,
         movies,
+        missing,
     }))
+}
+
+#[derive(sqlx::FromRow)]
+struct MissingPart {
+    tmdb_id: i64,
+    title: Option<String>,
+    release_date: Option<String>,
+    poster_path: Option<String>,
 }

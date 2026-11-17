@@ -149,6 +149,7 @@ export const en: Shape<typeof fr> = {
     count_other: "{{count}} movies",
     owned_one: "{{count}} of {{total}} movies",
     owned_other: "{{count}} of {{total}} movies",
+    missing: "Not in the library",
     open: "See the saga",
     none: "No sagas yet",
     noneHint: "A saga shows up here once the library has two of its movies.",

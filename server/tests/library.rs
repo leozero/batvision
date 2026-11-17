@@ -190,18 +190,22 @@ async fn mount_back_to_the_future(server: &MockServer) {
                 .await;
         }
     }
-    let parts = json!([
-        { "id": 105, "release_date": "1985-07-03" },
-        { "id": 165, "release_date": "1989-11-22" },
-        { "id": 196, "release_date": "1990-05-25" },
-        // Announced: not counted.
-        { "id": 999, "release_date": "2099-01-01" }
-    ]);
+    // Part III isn't in the library; its title and poster are translated.
+    let parts = |third: &str, poster: &str| {
+        json!([
+            { "id": 105, "title": "Back to the Future", "release_date": "1985-07-03" },
+            { "id": 165, "title": "Back to the Future Part II", "release_date": "1989-11-22" },
+            { "id": 196, "title": third, "release_date": "1990-05-25", "poster_path": poster },
+            // Announced: not counted.
+            { "id": 999, "title": "Back to the Future Part IV", "release_date": "2099-01-01" }
+        ])
+    };
     Mock::given(path("/collection/264"))
         .and(query_param("language", "fr-FR"))
         .respond_with(json(json!({
             "id": 264, "name": "Retour vers le futur - Saga", "overview": "",
-            "poster_path": "/bttf-saga.jpg", "parts": parts
+            "poster_path": "/bttf-saga.jpg",
+            "parts": parts("Retour vers le futur III", "/rvlf3.jpg")
         })))
         .mount(server)
         .await;
@@ -210,12 +214,17 @@ async fn mount_back_to_the_future(server: &MockServer) {
         .respond_with(json(json!({
             "id": 264, "name": "Back to the Future Collection",
             "overview": "Marty McFly travels through time.",
-            "poster_path": "/bttf-saga-en.jpg", "parts": parts
+            "poster_path": "/bttf-saga-en.jpg",
+            "parts": parts("Back to the Future Part III", "/bttf3.jpg")
         })))
         .mount(server)
         .await;
     Mock::given(path("/w342/bttf-saga.jpg"))
         .respond_with(ResponseTemplate::new(200).set_body_bytes(b"SAGA".to_vec()))
+        .mount(server)
+        .await;
+    Mock::given(path("/w342/rvlf3.jpg"))
+        .respond_with(ResponseTemplate::new(200).set_body_bytes(b"PART3".to_vec()))
         .mount(server)
         .await;
 }
@@ -884,6 +893,22 @@ async fn groups_movies_into_sagas() {
         page["overview"], "Marty McFly travels through time.",
         "no French overview: the English one"
     );
+    assert_eq!(
+        page["missing"],
+        json!([{
+            "tmdb_id": 196, "title": "Retour vers le futur III", "year": 1990,
+            "poster_path": "/rvlf3.jpg", "position": 2
+        }]),
+        "the saga's other released movie, after both"
+    );
+    let (_, page) = f
+        .app
+        .get(&format!("/api/collections/{saga}"), Some(&alice))
+        .await;
+    assert_eq!(page["missing"][0]["title"], "Back to the Future Part III");
+    let (status, body) = f.app.get("/api/images/w342/rvlf3.jpg", None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body, Value::String("PART3".into()));
 
     let (status, body) = f.app.get("/api/images/w342/bttf-saga.jpg", None).await;
     assert_eq!(status, StatusCode::OK);
@@ -918,6 +943,18 @@ async fn a_saga_with_one_movie_left_is_only_reached_from_it() {
     assert_eq!(f.get("/api/collections").await, json!([]));
     let page = f.get(&format!("/api/collections/{saga}")).await;
     assert_eq!(page["movies"].as_array().unwrap().len(), 1);
+    let missing: Vec<_> = page["missing"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| {
+            (
+                m["tmdb_id"].as_i64().unwrap(),
+                m["position"].as_i64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(missing, [(165, 1), (196, 1)], "both after the one left");
 
     std::fs::remove_dir_all(f.media.path().join("Films/Back to the Future (1985)")).unwrap();
     f.rescan(library).await;
@@ -952,4 +989,32 @@ async fn movies_matched_before_sagas_get_theirs_on_a_later_scan() {
         f.get(&format!("/api/movies/{bttf}")).await["collection"]["name"],
         "Retour vers le futur - Saga"
     );
+}
+
+#[tokio::test]
+async fn sagas_fetched_before_their_movies_were_kept_get_them_on_a_later_scan() {
+    let f = fixture(true).await;
+    touch(f.media.path(), "Films/Back to the Future (1985)/bttf.mkv");
+    let library = f.create_library("Films", "movies", "Films").await;
+    let bttf = movie_id(&f, "Back to the Future").await;
+    let saga = f.get(&format!("/api/movies/{bttf}")).await["collection"]["id"]
+        .as_i64()
+        .unwrap();
+
+    // As left by the collection parts migration: the movie itself is fresh.
+    let db = &f.app.state.db;
+    sqlx::query("DELETE FROM collection_parts")
+        .execute(db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE collections SET metadata_updated_at = NULL")
+        .execute(db)
+        .await
+        .unwrap();
+    let page = f.get(&format!("/api/collections/{saga}")).await;
+    assert_eq!(page["missing"], json!([]));
+
+    assert_eq!(f.rescan(library).await.metadata_refreshed, 0);
+    let page = f.get(&format!("/api/collections/{saga}")).await;
+    assert_eq!(page["missing"].as_array().unwrap().len(), 2);
 }

@@ -113,7 +113,7 @@ docs/
 - **Poster marks**: watched (a check), in the watchlist (a bookmark), and downloaded on this computer or phone.
 - **Mobile**: on a movie page, a horizontal swipe goes to the previous or next movie of the list it was opened from.
 - **Top-rated movies** (D76): a home page rail with the 20 best-rated movies having at least 50 TMDB votes (fewer lets obscure titles in), watched ones included, and a link to the movies page sorted by rating.
-- **Sagas** (D101): movies TMDB groups into a collection (The Lord of the Rings, Back to the Future…) are grouped. A movie page links to its saga; the saga page shows its name, overview and backdrop, the library's movies of it in release order, and how many movies it has in all (released ones only: TMDB also lists announced movies). A Sagas page lists those with at least two movies in the library. The saga is read from the movie's TMDB details, so matched movies got theirs on the stale-metadata refresh after the update.
+- **Sagas** (D101): movies TMDB groups into a collection (The Lord of the Rings, Back to the Future…) are grouped. A movie page links to its saga; the saga page shows its name, overview and backdrop, its movies in release order, those the library doesn't have greyed out (with their title and year, not openable), and how many movies it has in all (released ones only: TMDB also lists announced movies). A Sagas page lists those with at least two movies in the library. The saga is read from the movie's TMDB details, so matched movies got theirs on the stale-metadata refresh after the update; sagas known before missing movies were shown get them a few at a time on the following scans.
 
 ## 5. Playback
 
