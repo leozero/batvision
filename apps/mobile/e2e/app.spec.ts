@@ -44,39 +44,72 @@ async function api(path: string, token: string | null, body?: unknown, method?: 
   return text ? JSON.parse(text) : null;
 }
 
+/** Maestro's iOS driver, an XCTest runner app on the simulator. */
+const IOS_DRIVER = "dev.mobile.maestro-driver-iosUITests.xctrunner";
+
 /**
  * Runs a flow, up to 3 times: the emulator's adb link sometimes drops ("device offline")
- * on busy machines. Flows start by (re)launching the app, so a retry starts clean.
+ * on busy machines, and Maestro's iOS driver sometimes crashes ("/deviceInfo failed, code: 500")
+ * and leaves Maestro waiting forever. Each run gets `minutes` (× SLOW) before it's killed:
+ * the sync run holds the event loop, so Playwright's own timeout can't stop it.
+ * Flows start by (re)launching the app, so a retry starts clean.
  */
-function maestro(flow: string) {
+function maestro(flow: string, minutes = 4) {
   for (let attempt = 1; ; attempt++) {
     try {
-      runFlow(flow);
+      runFlow(flow, minutes * SLOW * 60_000);
       return;
     } catch (e) {
+      console.error(`maestro ${flow}, attempt ${attempt}: ${(e as Error).message}`);
       if (attempt === 3) throw e;
-      if (!IOS) execFileSync(ADB, ["reconnect", "offline"]);
+      if (IOS) restartIosDriver();
+      else execFileSync(ADB, ["reconnect", "offline"]);
       execFileSync("sleep", ["5"]);
     }
   }
 }
 
-function runFlow(flow: string) {
+function runFlow(flow: string, timeout: number) {
   if (!IOS) execFileSync(ADB, ["wait-for-device"], { timeout: 60_000 });
-  execFileSync(
-    process.env.MAESTRO ?? "maestro",
-    [
-      "test",
-      ...["-e", `APP_ID=${APP_ID}`],
-      ...["-e", `SERVER=http://${IOS ? "127.0.0.1" : "10.0.2.2"}:${server.port}`],
-      ...["-e", `USERNAME=${USER.username}`],
-      ...["-e", `PASSWORD=${USER.password}`],
-      ...["-e", `MOVIE_ID=${movieId}`],
-      ...(process.env.MAESTRO_OUTPUT ? ["--test-output-dir", process.env.MAESTRO_OUTPUT] : []),
-      join(__dirname, "flows", flow),
-    ],
-    { stdio: "inherit" },
-  );
+  try {
+    execFileSync(
+      process.env.MAESTRO ?? "maestro",
+      [
+        "test",
+        ...["-e", `APP_ID=${APP_ID}`],
+        ...["-e", `SERVER=http://${IOS ? "127.0.0.1" : "10.0.2.2"}:${server.port}`],
+        ...["-e", `USERNAME=${USER.username}`],
+        ...["-e", `PASSWORD=${USER.password}`],
+        ...["-e", `MOVIE_ID=${movieId}`],
+        ...(process.env.MAESTRO_OUTPUT ? ["--test-output-dir", process.env.MAESTRO_OUTPUT] : []),
+        join(__dirname, "flows", flow),
+      ],
+      // SIGKILL: a hung Maestro may not get through its shutdown on SIGTERM.
+      { stdio: "inherit", timeout, killSignal: "SIGKILL" },
+    );
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ETIMEDOUT") {
+      throw new Error(`${flow} still running after ${timeout / 60_000} min: killed`);
+    }
+    throw e;
+  }
+}
+
+/**
+ * A fresh XCTest driver for the next attempt: stops what a killed Maestro left running (the
+ * xcodebuild that hosts the driver) and uninstalls the driver, so Maestro installs it again.
+ */
+function restartIosDriver() {
+  for (const [command, args] of [
+    ["pkill", ["-9", "-f", "maestro-driver-ios"]],
+    ["xcrun", ["simctl", "uninstall", "booted", IOS_DRIVER]],
+  ] as const) {
+    try {
+      execFileSync(command, args, { stdio: "inherit", timeout: 60_000 });
+    } catch {
+      // nothing left running, or not installed
+    }
+  }
 }
 
 test.beforeAll(async () => {
@@ -153,7 +186,8 @@ test("a movie downloads to the device in the background engine", async () => {
     { ...device.settings, mobile_data: "all" },
     "PUT",
   );
-  maestro("download.yaml");
+  // The flow itself waits up to 6 min for the download.
+  maestro("download.yaml", 8);
   // The engine confirmed it: the server lists it as downloaded on the device.
   const overview = await api("/api/downloads/overview", userToken);
   const phone = overview.devices.find((d: { platform: string }) => d.platform === PLATFORM);
