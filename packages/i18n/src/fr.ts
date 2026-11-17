@@ -349,7 +349,6 @@ export const fr = {
     signOut: "Se déconnecter",
     downloadHere: "Télécharger sur cet appareil",
     requested: "Demandé : le serveur prépare le fichier.",
-    nextEpisodes: "Les {{count}} prochains épisodes",
     wholeSeason: "La saison {{number}}",
     mobileUsed: "Données mobiles ce mois-ci : {{used}} sur {{cap}}",
     mobileUsedNoCap: "Données mobiles ce mois-ci : {{used}}",

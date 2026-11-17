@@ -349,7 +349,6 @@ export const en: Shape<typeof fr> = {
     signOut: "Sign out",
     downloadHere: "Download to this device",
     requested: "Requested: the server is preparing the file.",
-    nextEpisodes: "The next {{count}} episodes",
     wholeSeason: "Season {{number}}",
     mobileUsed: "Mobile data this month: {{used}} of {{cap}}",
     mobileUsedNoCap: "Mobile data this month: {{used}}",
