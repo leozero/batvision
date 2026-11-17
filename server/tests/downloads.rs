@@ -208,7 +208,10 @@ async fn tvs_do_not_download() {
     let tv = body["token"].as_str().unwrap().to_owned();
     let tv_id = body["device_id"].as_i64().unwrap();
 
-    let (status, err) = f.app.post("/api/downloads/plan", Some(&tv), json!({})).await;
+    let (status, err) = f
+        .app
+        .post("/api/downloads/plan", Some(&tv), json!({}))
+        .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert_eq!(err["code"], "not_a_download_device");
 
