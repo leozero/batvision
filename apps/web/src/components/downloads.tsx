@@ -223,7 +223,8 @@ export function DownloadSeriesButton({ series }: { series: Schemas["SeriesDetail
   const [open, setOpen] = useState(false);
   const [device, setDevice] = useState<number | null>(null);
   const [mode, setMode] = useState<"rolling" | "season">("rolling");
-  const [count, setCount] = useState(3);
+  // A number of episodes, or "all" of the next ones (D108).
+  const [count, setCount] = useState("3");
   const [season, setSeason] = useState<number | null>(null);
   const [profile, setProfile] = useState("");
   const deviceId = device ?? defaultDevice(devices, current);
@@ -236,7 +237,8 @@ export function DownloadSeriesButton({ series }: { series: Schemas["SeriesDetail
             device_id: deviceId as number,
             series_id: series.id,
             mode,
-            count: mode === "rolling" ? count : null,
+            count: mode === "rolling" && count !== "all" ? Number(count) : null,
+            all: mode === "rolling" && count === "all",
             season_number: mode === "season" ? seasonNumber : null,
             profile: (profile || null) as Profile | null,
             audio_language: null,
@@ -283,12 +285,13 @@ export function DownloadSeriesButton({ series }: { series: Schemas["SeriesDetail
             </Field>
             {mode === "rolling" ? (
               <Field label={t("downloads.howMany")} hint={t("downloads.rollingHint")}>
-                <Select value={count} onChange={(e) => setCount(Number(e.target.value))}>
+                <Select value={count} onChange={(e) => setCount(e.target.value)}>
                   {[1, 2, 3, 4, 5, 6, 8, 10].map((n) => (
-                    <option key={n} value={n}>
+                    <option key={n} value={String(n)}>
                       {t("downloads.nextEpisodes", { count: n })}
                     </option>
                   ))}
+                  <option value="all">{t("downloads.allNextEpisodes")}</option>
                 </Select>
               </Field>
             ) : (

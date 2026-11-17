@@ -252,6 +252,7 @@ export const en: Shape<typeof fr> = {
     seasonHint: "Downloaded once, never moves on to the next.",
     nextEpisodes_one: "The next episode",
     nextEpisodes_other: "The next {{count}} episodes",
+    allNextEpisodes: "All the next episodes",
     quality: "Quality",
     deviceDefault: "The device's",
     profile: {

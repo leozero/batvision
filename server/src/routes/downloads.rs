@@ -201,6 +201,7 @@ pub struct SubscriptionInfo {
     pub series_id: i64,
     pub series_title: String,
     pub mode: String,
+    /// rolling: episodes kept, `null` for all the next ones.
     pub count: Option<i64>,
     pub season_number: Option<i64>,
     pub profile: Option<Profile>,
@@ -508,6 +509,9 @@ pub struct SubscribeRequest {
     pub mode: SubscriptionMode,
     /// rolling: number of unwatched episodes to keep (1 to 20).
     pub count: Option<i64>,
+    /// rolling: every unwatched episode, until the end of the series; `count` is ignored.
+    #[serde(default)]
+    pub all: bool,
     /// season: the season to download.
     pub season_number: Option<i64>,
     /// Omitted: the device's profile.
@@ -531,6 +535,8 @@ pub async fn subscribe(
     service::download_device(&state, current.user.id, req.device_id).await?;
     let audio = valid_language(&req.audio_language)?;
     let (count, season) = match req.mode {
+        // Stored without a count (D108).
+        SubscriptionMode::Rolling if req.all => (None, None),
         SubscriptionMode::Rolling => {
             let count = req.count.unwrap_or(3);
             if !(1..=20).contains(&count) {

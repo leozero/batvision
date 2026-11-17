@@ -249,6 +249,7 @@ export const fr = {
     seasonHint: "Téléchargée une fois, sans passer à la suivante.",
     nextEpisodes_one: "Le prochain épisode",
     nextEpisodes_other: "Les {{count}} prochains épisodes",
+    allNextEpisodes: "Tous les prochains épisodes",
     quality: "Qualité",
     deviceDefault: "Celle de l'appareil",
     profile: {

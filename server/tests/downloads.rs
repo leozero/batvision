@@ -369,6 +369,18 @@ async fn rolling_subscription_follows_progress() {
     assert_eq!(ids(&plan), vec![ep[1], ep[2], ep[0]]);
     assert_eq!(plan["items"][2]["watched"], true);
 
+    // All the next ones: every unwatched episode left (D108).
+    let (status, _) = f
+        .app
+        .post(
+            "/api/downloads/subscriptions",
+            Some(&f.phone),
+            json!({ "device_id": f.phone_id, "series_id": series, "mode": "rolling", "all": true }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(ids(&f.plan().await), vec![ep[1], ep[2], ep[3], ep[0]]);
+
     // A new rolling subscription replaces the old one.
     f.app
         .post(

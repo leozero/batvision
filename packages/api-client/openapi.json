@@ -6134,6 +6134,10 @@
           "mode"
         ],
         "properties": {
+          "all": {
+            "type": "boolean",
+            "description": "rolling: every unwatched episode, until the end of the series; `count` is ignored."
+          },
           "audio_language": {
             "type": [
               "string",
@@ -6200,7 +6204,8 @@
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "rolling: episodes kept, `null` for all the next ones."
           },
           "id": {
             "type": "integer",
