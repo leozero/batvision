@@ -1,0 +1,42 @@
+# First launch, signed in with a code another device approves (D111): what a TV does,
+# here from the sign-in screen's "with a code" button.
+appId: ${APP_ID}
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    text: "Allow"
+    optional: true
+- tapOn:
+    id: server-address
+- inputText: ${SERVER}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+      - tapOn:
+          id: connect
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - pressKey: Enter
+- tapOn:
+    id: use-code
+- extendedWaitUntil:
+    visible:
+      id: quick-connect-code
+    timeout: 15000
+- copyTextFrom:
+    id: quick-connect-code
+# The other device: the account approves the code shown.
+- runScript:
+    file: approve-code.js
+    env:
+      SERVER: ${SERVER}
+      TOKEN: ${TOKEN}
+- extendedWaitUntil:
+    visible:
+      id: tab-movies
+    timeout: 30000

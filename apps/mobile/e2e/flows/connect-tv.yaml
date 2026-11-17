@@ -1,0 +1,28 @@
+# Signed in on the phone: approve the code a TV shows (D111), from the account.
+appId: ${APP_ID}
+---
+- stopApp
+- launchApp
+- tapOn:
+    id: open-profile
+- tapOn:
+    id: open-connect-tv
+- tapOn:
+    id: tv-code
+- inputText: ${CODE}
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+      - tapOn:
+          id: approve-tv
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: tv-connected
+    timeout: 15000

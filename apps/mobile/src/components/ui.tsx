@@ -1,34 +1,18 @@
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { BookmarkCheck, Check, Film, HardDriveDownload } from "lucide-react-native";
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  TextInput,
-  type TextInputProps,
-  View,
-} from "react-native";
+import { ActivityIndicator, Text, TextInput, type TextInputProps, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import type { Schemas } from "../lib/api";
+import { COLORS } from "../lib/colors";
 import { ui } from "../lib/scale";
 import { useSyncState } from "../lib/sync";
+import { IS_TV } from "../lib/tv";
+import { Pressable, useFocusRing } from "./Pressable";
 
-export const COLORS = {
-  bg: "#09090c",
-  surface: "#131318",
-  surface2: "#1c1c23",
-  line: "#2c2c36",
-  fg: "#f4f4f6",
-  muted: "#a2a2b0",
-  faint: "#6b6b78",
-  accent: "#f4b740",
-  accentInk: "#1a1405",
-  danger: "#f0616d",
-  success: "#4ccf8f",
-};
+export { COLORS };
 
 export function Screen({
   children,
@@ -38,7 +22,8 @@ export function Screen({
   edges?: ComponentProps<typeof SafeAreaView>["edges"];
 }) {
   return (
-    <SafeAreaView className="flex-1 bg-bg" edges={edges ?? ["top"]}>
+    // A TV may cut the screen's edges (overscan): its screens keep clear of the top.
+    <SafeAreaView className={`flex-1 bg-bg ${IS_TV ? "pt-4" : ""}`} edges={edges ?? ["top"]}>
       {children}
     </SafeAreaView>
   );
@@ -60,6 +45,8 @@ type ButtonProps = {
   disabled?: boolean;
   icon?: ReactNode;
   testID?: string;
+  /** On a TV, the remote starts on this button (D112). */
+  tvFocus?: boolean;
 };
 
 export function Button({
@@ -70,6 +57,7 @@ export function Button({
   disabled,
   icon,
   testID,
+  tvFocus,
 }: ButtonProps) {
   const tone =
     variant === "primary" ? "bg-accent" : variant === "danger" ? "bg-danger/15" : "bg-surface-2";
@@ -80,6 +68,7 @@ export function Button({
       testID={testID}
       accessibilityRole="button"
       onPress={onPress}
+      hasTVPreferredFocus={tvFocus}
       disabled={disabled || loading}
       className={`flex-row items-center justify-center gap-2 rounded-xl px-4 py-3 active:opacity-70 ${tone} ${disabled ? "opacity-50" : ""}`}
     >
@@ -106,11 +95,23 @@ export function Field({ label, children }: { label: string; children: ReactNode 
   );
 }
 
-export function Input(props: TextInputProps) {
+export function Input({ onFocus, onBlur, ...props }: TextInputProps) {
+  // A TV shows which field the remote is on before its keyboard opens (D112).
+  const [focused, setFocused] = useState(false);
   return (
     <TextInput
       placeholderTextColor={COLORS.faint}
-      className="rounded-xl border border-line bg-surface px-4 py-3 text-base text-fg"
+      className={`rounded-xl border bg-surface px-4 py-3 text-base text-fg ${
+        IS_TV && focused ? "border-accent" : "border-line"
+      }`}
+      onFocus={(e) => {
+        setFocused(true);
+        onFocus?.(e);
+      }}
+      onBlur={(e) => {
+        setFocused(false);
+        onBlur?.(e);
+      }}
       {...props}
     />
   );
@@ -191,8 +192,13 @@ export function Poster({
   badges?: PosterBadges;
 }) {
   const downloaded = useDownloaded(badges);
+  // On a TV, the ring around the poster the remote is on (D112).
+  const ring = useFocusRing();
   return (
-    <View className={`aspect-[2/3] overflow-hidden rounded-card bg-surface-2 ${className ?? ""}`}>
+    <View
+      style={ring}
+      className={`aspect-[2/3] overflow-hidden rounded-card bg-surface-2 ${className ?? ""}`}
+    >
       {uri ? (
         <Image
           source={{ uri }}

@@ -10,9 +10,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Unreachable } from "../lib/api";
 import { askNotifications } from "../lib/permissions";
 // 1.5× on a large window (D105), decided before anything renders.
-// 1.5× on a large window (D105), decided before anything renders.
 import "../lib/scale";
 import { BatvisionSync } from "../lib/sync";
+import { IS_TV } from "../lib/tv";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -32,6 +32,8 @@ export default function RootLayout() {
   const screen = `${scale}-${fontScale}`;
 
   useEffect(() => {
+    // A TV stores nothing: no sync, no download notification (D110).
+    if (IS_TV) return;
     // Sync when the app opens or comes back to the foreground (D71).
     BatvisionSync.syncNow();
     const sub = AppState.addEventListener("change", (state) => {

@@ -3,8 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import Constants from "expo-constants";
 import { Download } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { Linking, Pressable, Text } from "react-native";
+import { Linking, Text } from "react-native";
 import { ui } from "../lib/scale";
+import { Pressable } from "./Pressable";
 import { COLORS } from "./ui";
 
 const LATEST_RELEASE = "https://api.github.com/repos/leozero/batvision/releases/latest";

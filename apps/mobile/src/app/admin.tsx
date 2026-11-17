@@ -14,7 +14,8 @@ import {
 } from "lucide-react-native";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Pressable, ScrollView, Share, Text, View } from "react-native";
+import { Alert, ScrollView, Share, Text, View } from "react-native";
+import { Pressable } from "../components/Pressable";
 import {
   Badge,
   Button,
@@ -31,6 +32,7 @@ import { ApiError, api, call } from "../lib/api";
 import { meQuery } from "../lib/queries";
 import { ui } from "../lib/scale";
 import { session } from "../lib/session";
+import { TV_EDGE, tvTail } from "../lib/tv";
 
 /**
  * The administration on the phone: what an admin checks or starts from the couch —
@@ -42,7 +44,10 @@ export default function Admin() {
   const { data: me, isPending } = useQuery(meQuery);
   return (
     <Screen>
-      <ScrollView contentContainerClassName="w-full max-w-3xl gap-5 self-center p-4 pb-10">
+      <ScrollView
+        fadingEdgeLength={TV_EDGE}
+        contentContainerClassName={`w-full max-w-3xl gap-5 self-center p-4 ${tvTail("pb-10")}`}
+      >
         <View className="flex-row items-center gap-3">
           <Pressable
             testID="back"

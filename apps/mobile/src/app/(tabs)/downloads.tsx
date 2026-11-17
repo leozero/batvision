@@ -17,8 +17,9 @@ import {
 } from "lucide-react-native";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { LocalLibrary } from "../../components/LocalLibrary";
+import { Pressable } from "../../components/Pressable";
 import { Sheet } from "../../components/Sheet";
 import {
   Badge,

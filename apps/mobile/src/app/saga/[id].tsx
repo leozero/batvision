@@ -2,14 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useLocalSearchParams } from "expo-router";
 import { Layers } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { Hero } from "../../components/Detail";
+import { Pressable } from "../../components/Pressable";
 import { COLORS, LoadError, Loading, Muted, Poster, Rating, Screen } from "../../components/ui";
 import { imageUrl, type Schemas } from "../../lib/api";
 import { setMovieList } from "../../lib/browse";
 import { useMeasuredGrid } from "../../lib/layout";
 import { collectionQuery } from "../../lib/queries";
 import { ui } from "../../lib/scale";
+import { TV_EDGE, tvGap, tvTail } from "../../lib/tv";
 
 type SagaEntry =
   | { kind: "owned"; movie: Schemas["MovieSummary"] }
@@ -42,7 +44,7 @@ export default function SagaScreen() {
   const count = s.movies.length;
   return (
     <Screen edges={[]}>
-      <ScrollView contentContainerClassName="pb-10">
+      <ScrollView fadingEdgeLength={TV_EDGE} contentContainerClassName={tvTail("pb-10")}>
         <Hero backdrop={imageUrl(s.backdrop_path ?? s.poster_path, "w1280")}>
           <Text testID="title" className="text-2xl font-bold text-fg">
             {s.name}
@@ -69,7 +71,10 @@ export default function SagaScreen() {
                     style={{ width: grid.itemWidth, opacity: 0.4, filter: [{ grayscale: 1 }] }}
                   >
                     <Poster uri={imageUrl(m.poster_path, "w342")} />
-                    <Text numberOfLines={1} className="mt-1.5 text-xs font-medium text-muted">
+                    <Text
+                      numberOfLines={1}
+                      className={`${tvGap("mt-1.5")} text-xs font-medium text-muted`}
+                    >
                       {m.title}
                     </Text>
                     <Text numberOfLines={1} className="text-xs text-faint">
@@ -87,6 +92,7 @@ export default function SagaScreen() {
                     testID={`saga-movie-${m.id}`}
                     style={{ width: grid.itemWidth }}
                     className="active:opacity-70"
+                    ringOnChild
                   >
                     <Poster
                       badges={{
@@ -100,7 +106,10 @@ export default function SagaScreen() {
                         m.duration_ms && m.position_ms ? m.position_ms / m.duration_ms : undefined
                       }
                     />
-                    <Text numberOfLines={1} className="mt-1.5 text-xs font-medium text-fg">
+                    <Text
+                      numberOfLines={1}
+                      className={`${tvGap("mt-1.5")} text-xs font-medium text-fg`}
+                    >
                       {m.title}
                     </Text>
                     <View className="flex-row items-center gap-2">

@@ -63,7 +63,7 @@ export const fr = {
   errors: {
     not_expected: "Cet élément ne fait pas partie des téléchargements de l'appareil.",
     not_a_download_device:
-      "Un navigateur ne peut pas télécharger : utilisez l'app desktop ou mobile.",
+      "Les navigateurs et les TV ne téléchargent pas : utilisez l'app desktop ou mobile.",
     invalid_count: "Choisissez entre 1 et 20 épisodes.",
     network: "Impossible de joindre le serveur.",
     tooManyAttempts: "Trop de tentatives. Réessayez dans {{seconds}} s.",
@@ -384,6 +384,24 @@ export const fr = {
     saveError: "Le réglage n'a pas pu être enregistré.",
     insecureAddress:
       "Adresse en http:// sur Internet : votre mot de passe circulera en clair. Préférez https://.",
+  },
+  tv: {
+    codeTitle: "Se connecter avec un code",
+    codeIntro:
+      "Sur un téléphone ou un ordinateur déjà connecté, ouvrez BatVision, allez dans le compte et choisissez « Connecter une TV », puis saisissez ce code.",
+    scan: "Ou scannez ce code avec votre téléphone : il ouvre votre compte avec le code déjà rempli.",
+    waiting: "En attente de validation…",
+    renews: "Un nouveau code arrive toutes les 5 minutes.",
+    codeError: "Le serveur n'a pas donné de code.",
+    usePassword: "Se connecter avec un mot de passe",
+    useCode: "Se connecter avec un code depuis un autre appareil",
+    offlineEmpty:
+      "Le serveur est injoignable. Vérifiez qu'il tourne et que la TV est sur le même réseau.",
+    connectHint:
+      "Saisissez le code affiché sur la TV (ou sur un autre appareil) pour la connecter à votre compte.",
+    codeUnknown:
+      "Aucun appareil n'affiche ce code : vérifiez-le, ou attendez le suivant sur la TV.",
+    approve: "Connecter",
   },
   desktop: {
     updateReady: "La version {{version}} est prête : cliquez pour redémarrer et l'installer.",

@@ -2,11 +2,12 @@ import { languageName } from "@batvision/core/format";
 import { SPOKEN_LANGUAGE_CHOICES, spokenLanguages, trackLanguage } from "@batvision/core/languages";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
-import { ArrowLeft, ChevronRight, Plus, ShieldCheck, X } from "lucide-react-native";
+import { ArrowLeft, ChevronRight, Plus, ShieldCheck, Tv, X } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { DeviceSettings } from "../components/DeviceSettings";
+import { Pressable } from "../components/Pressable";
 import { ChoiceList, SettingRow, Sheet, SwitchRow } from "../components/Sheet";
 import { Button, COLORS, EmptyState, Loading, Screen } from "../components/ui";
 import { VersionBanner } from "../components/VersionBanner";
@@ -15,13 +16,15 @@ import { downloadsQuery, meQuery, preferencesQuery, useSavePreferences } from ".
 import { ui } from "../lib/scale";
 import { session } from "../lib/session";
 import { BatvisionSync } from "../lib/sync";
+import { IS_TV, TV_EDGE, tvTail } from "../lib/tv";
 
 /** The account (with the administration, for admins), this device's download settings
  * and sign-out. Opened from the profile button and the Downloads tab. */
 export default function Settings() {
   const { t } = useTranslation();
   const { data: me } = useQuery(meQuery);
-  const overview = useQuery(downloadsQuery);
+  // A TV has no download settings (D110).
+  const overview = useQuery({ ...downloadsQuery, enabled: !IS_TV });
   const deviceId = session().deviceId;
   const device = overview.data?.devices.find((d) => d.id === deviceId);
   const signOut = async () => {
@@ -33,7 +36,10 @@ export default function Settings() {
   };
   return (
     <Screen>
-      <ScrollView contentContainerClassName="w-full max-w-3xl gap-5 self-center p-4 pb-10">
+      <ScrollView
+        fadingEdgeLength={TV_EDGE}
+        contentContainerClassName={`w-full max-w-3xl gap-5 self-center p-4 ${tvTail("pb-10")}`}
+      >
         <View className="flex-row items-center gap-3">
           <Pressable
             testID="back"
@@ -74,10 +80,27 @@ export default function Settings() {
             <ChevronRight color={COLORS.faint} size={ui(20)} />
           </Pressable>
         ) : null}
+        {/* Signs in a TV showing a code (D111); not from the TV itself. */}
+        {IS_TV ? null : (
+          <Pressable
+            testID="open-connect-tv"
+            accessibilityRole="button"
+            onPress={() => router.push("/connect-tv")}
+            className="flex-row items-center gap-3 rounded-card border border-line bg-surface p-4 active:opacity-70"
+          >
+            <Tv color={COLORS.accent} size={ui(20)} />
+            <Text className="flex-1 text-base font-semibold text-fg">
+              {t("account.quickConnect")}
+            </Text>
+            <ChevronRight color={COLORS.faint} size={ui(20)} />
+          </Pressable>
+        )}
         <VersionBanner className="" />
         <Tracks />
-        <Text className="mt-2 text-lg font-semibold text-fg">{t("mobile.settings")}</Text>
-        {device ? (
+        {IS_TV ? null : (
+          <Text className="mt-2 text-lg font-semibold text-fg">{t("mobile.settings")}</Text>
+        )}
+        {IS_TV ? null : device ? (
           <DeviceSettings device={device} />
         ) : overview.isPending ? (
           <Loading />

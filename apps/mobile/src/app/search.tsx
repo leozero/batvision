@@ -3,11 +3,13 @@ import { Link, router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, Pressable, Text, View } from "react-native";
+import { FlatList, Text, View } from "react-native";
+import { Pressable } from "../components/Pressable";
 import { COLORS, EmptyState, Input, Poster, Screen } from "../components/ui";
 import { imageUrl } from "../lib/api";
 import { searchQuery } from "../lib/queries";
 import { ui } from "../lib/scale";
+import { TV_EDGE, tvTail } from "../lib/tv";
 
 /** Over the tabs (a tab of its own reset the tabs to Home on Android). */
 export default function SearchScreen() {
@@ -61,9 +63,10 @@ export default function SearchScreen() {
         />
       </View>
       <FlatList
+        fadingEdgeLength={TV_EDGE}
         data={items}
         keyExtractor={(i) => i.key}
-        contentContainerClassName="gap-2 px-4 pb-8"
+        contentContainerClassName={`gap-2 px-4 ${tvTail("pb-8")}`}
         ListEmptyComponent={
           q && results.isFetched ? (
             <EmptyState title={t("search.noResults", { query: q })} />

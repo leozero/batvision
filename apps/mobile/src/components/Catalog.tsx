@@ -12,11 +12,13 @@ import { Link } from "expo-router";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import { FlatList, RefreshControl, Text, View } from "react-native";
 import type { Schemas } from "../lib/api";
 import { setMovieList } from "../lib/browse";
 import { useWindowGrid } from "../lib/layout";
 import { ui } from "../lib/scale";
+import { TV_EDGE, tvGap, tvTail } from "../lib/tv";
+import { Pressable } from "./Pressable";
 import { COLORS, EmptyState, Loading, Poster, type PosterBadges, Rating } from "./ui";
 import { HeaderButtons } from "./Watchlist";
 
@@ -61,6 +63,7 @@ export function Catalog(props: {
   if (props.loading) return <Loading />;
   return (
     <FlatList
+      fadingEdgeLength={TV_EDGE}
       key={columns}
       data={props.items}
       numColumns={columns}
@@ -68,7 +71,7 @@ export function Catalog(props: {
       onEndReached={props.onEnd}
       onEndReachedThreshold={0.6}
       refreshControl={<RefreshControl refreshing={props.refreshing} onRefresh={props.onRefresh} />}
-      contentContainerClassName="gap-4 px-3 pb-8"
+      contentContainerClassName={`gap-4 px-3 ${tvTail("pb-8")}`}
       columnWrapperClassName="gap-3"
       ListHeaderComponent={
         <View className="gap-3 px-1 pt-4">
@@ -155,6 +158,7 @@ export function Catalog(props: {
           <Pressable
             style={{ width: itemWidth }}
             className="active:opacity-70"
+            ringOnChild
             onPressIn={() =>
               setMovieList(
                 props.items.flatMap((i) => (i.badges?.kind === "movie" ? [i.badges.id] : [])),
@@ -162,7 +166,7 @@ export function Catalog(props: {
             }
           >
             <Poster uri={item.poster} progress={item.progress} badges={item.badges} />
-            <Text numberOfLines={1} className="mt-1.5 text-xs font-medium text-fg">
+            <Text numberOfLines={1} className={`${tvGap("mt-1.5")} text-xs font-medium text-fg`}>
               {item.title}
             </Text>
             <View className="flex-row items-center gap-2">

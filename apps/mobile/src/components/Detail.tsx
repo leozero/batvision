@@ -3,10 +3,11 @@ import { router } from "expo-router";
 import { ArrowLeft, CheckCircle2, Download, HardDriveDownload } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, useWindowDimensions, View } from "react-native";
+import { Text, useWindowDimensions, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ui } from "../lib/scale";
 import { useLocalItem } from "../lib/sync";
+import { Pressable } from "./Pressable";
 import { COLORS } from "./ui";
 
 /** Backdrop with a back button, title block below. */

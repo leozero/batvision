@@ -22,6 +22,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...(config.plugins ?? []),
       "./plugins/withReleaseSigning",
       "./plugins/withDisplayMetrics",
+      "./plugins/withTv",
     ],
   };
 };

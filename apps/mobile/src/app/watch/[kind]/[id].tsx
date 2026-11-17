@@ -24,16 +24,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   ActivityIndicator,
+  BackHandler,
   Modal,
   Platform,
-  Pressable,
   ScrollView,
   Text,
+  type TVRemoteEvent,
+  useTVEventHandler,
   useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Video, { SelectedTrackType, type VideoRef } from "react-native-video";
+import { Pressable } from "../../../components/Pressable";
 import { COLORS } from "../../../components/ui";
 import { ApiError, api, call, type Schemas, Unreachable } from "../../../lib/api";
 import { cachedPreferences } from "../../../lib/prefsCache";
@@ -48,9 +51,11 @@ import {
   saveQualityMode,
 } from "../../../lib/quality";
 import { episodeQuery, meQuery, movieQuery, preferencesQuery } from "../../../lib/queries";
+import { nextScrubMs, REPEAT_WINDOW_MS, remoteAction, scrubStepMs } from "../../../lib/remote";
 import { ui } from "../../../lib/scale";
 import { session } from "../../../lib/session";
 import { BatvisionSync } from "../../../lib/sync";
+import { IS_TV } from "../../../lib/tv";
 
 type Kind = "movie" | "episode";
 type Info = Schemas["PlaybackInfo"];
@@ -155,6 +160,14 @@ export default function Player() {
   // Where the bar starts on screen, and the time under the finger while it drags (s).
   const barLeft = useRef(0);
   const [scrub, setScrub] = useState<number | null>(null);
+  // TV remote (D112): where the remote lands when the controls show, whether it's on the
+  // seek bar, and each key press (the controls hide a while after the last one).
+  const [tvFocus, setTvFocus] = useState<"play" | "seek">("play");
+  const [onSeekBar, setOnSeekBar] = useState(false);
+  const [activity, setActivity] = useState(0);
+  const scrubRef = useRef<number | null>(null);
+  const scrubKeys = useRef({ at: 0, repeats: 0 });
+  const scrubTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const infoRef = useRef<Info | null>(null);
   infoRef.current = info;
 
@@ -169,8 +182,9 @@ export default function Player() {
   });
 
   // Landscape, full screen. Not on iPad: iPadOS leaves rotation to the user, and a lock
-  // it doesn't apply leaves the screen upright with its touches turned.
+  // it doesn't apply leaves the screen upright with its touches turned. A TV is both already.
   useEffect(() => {
+    if (IS_TV) return;
     const lock = !(Platform.OS === "ios" && Platform.isPad);
     if (lock) void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
     void NavigationBar.setVisibilityAsync("hidden").catch(() => {});
@@ -346,6 +360,109 @@ export default function Player() {
     else void start({ startMs: target });
   };
 
+  // ---- TV remote (D112) ------------------------------------------------------------------
+  const controlsRef = useRef(controls);
+  controlsRef.current = controls;
+  const seekRef = useRef(seekTo);
+  seekRef.current = seekTo;
+  const showScrub = (seconds: number | null) => {
+    scrubRef.current = seconds;
+    setScrub(seconds);
+  };
+  /** The preview's time becomes the playing one. */
+  const commitScrub = () => {
+    if (scrubTimer.current) clearTimeout(scrubTimer.current);
+    scrubTimer.current = null;
+    const target = scrubRef.current;
+    showScrub(null);
+    if (target !== null) seekRef.current(target * 1000);
+  };
+  const commitRef = useRef(commitScrub);
+  commitRef.current = commitScrub;
+  const showControls = (focus: "play" | "seek") => {
+    if (controlsRef.current) return;
+    setTvFocus(focus);
+    setControls(true);
+  };
+  const onRemote = (evt: TVRemoteEvent) => {
+    // Once per press: Android TV hands React Native the key's release (1), not its press.
+    if (Number(evt.eventKeyAction) !== 1) return;
+    setActivity((a) => a + 1);
+    // The tracks and quality menu has its own buttons.
+    if (sheet) return;
+    const action = remoteAction(evt.eventType, { controls, onSeekBar });
+    switch (action.type) {
+      case "toggle":
+        setPaused((p) => !p);
+        showControls("play");
+        break;
+      case "play":
+        setPaused(false);
+        break;
+      case "pause":
+        setPaused(true);
+        showControls("play");
+        break;
+      case "show":
+        showControls("play");
+        break;
+      case "scrub": {
+        // The picture under the seek bar follows; the jump comes once the keys stop.
+        const now = Date.now();
+        const keys = scrubKeys.current;
+        keys.repeats = now - keys.at < REPEAT_WINDOW_MS ? keys.repeats + 1 : 0;
+        keys.at = now;
+        const from = scrubRef.current !== null ? scrubRef.current * 1000 : positionRef.current;
+        const step = action.steps * scrubStepMs(keys.repeats);
+        showScrub(nextScrubMs(from, step, duration * 1000) / 1000);
+        showControls("seek");
+        if (scrubTimer.current) clearTimeout(scrubTimer.current);
+        scrubTimer.current = setTimeout(() => commitRef.current(), 900);
+        break;
+      }
+      case "none":
+        break;
+    }
+  };
+  const remote = useRef(onRemote);
+  remote.current = onRemote;
+  useTVEventHandler(
+    useCallback((evt: TVRemoteEvent) => {
+      if (IS_TV) remote.current(evt);
+    }, []),
+  );
+
+  // Back: drops a seek in progress, then hides the controls, then leaves.
+  useEffect(() => {
+    if (!IS_TV) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (scrubRef.current !== null) {
+        if (scrubTimer.current) clearTimeout(scrubTimer.current);
+        scrubTimer.current = null;
+        scrubRef.current = null;
+        setScrub(null);
+        return true;
+      }
+      if (controlsRef.current) {
+        setControls(false);
+        return true;
+      }
+      return false;
+    });
+    return () => {
+      sub.remove();
+      if (scrubTimer.current) clearTimeout(scrubTimer.current);
+    };
+  }, []);
+
+  // The controls step aside a few seconds after the last key, while the video plays.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: each key press restarts the wait
+  useEffect(() => {
+    if (!IS_TV || !controls || paused || sheet || scrub !== null) return;
+    const timer = setTimeout(() => setControls(false), 5_000);
+    return () => clearTimeout(timer);
+  }, [controls, paused, sheet, scrub, activity]);
+
   // Leaving the player (back, another screen): stop and save now. The screen itself
   // may be torn down a few seconds later, and must not keep playing meanwhile.
   useFocusEffect(
@@ -438,7 +555,8 @@ export default function Player() {
           // Transcoded streams are growing HLS playlists: not a live broadcast.
           controlsStyles={{ hideLiveBadge: true }}
           reportBandwidth
-          enterPictureInPictureOnLeave
+          // A TV's home button leaves the video; no picture in picture there.
+          enterPictureInPictureOnLeave={!IS_TV}
           selectedAudioTrack={
             local && localAudioIndex !== null
               ? { type: SelectedTrackType.INDEX, value: localAudioIndex }
@@ -496,6 +614,8 @@ export default function Player() {
       <Pressable
         testID="player-surface"
         className="absolute inset-0"
+        // A TV has no touch: the remote's keys drive the player (D112).
+        focusable={!IS_TV}
         onPress={(e) => {
           const x = e.nativeEvent.locationX / (screenWidth || 1);
           const side = x < 1 / 3 ? "left" : x > 2 / 3 ? "right" : null;
@@ -626,6 +746,7 @@ export default function Player() {
             <Pressable
               testID="play-pause"
               accessibilityRole="button"
+              hasTVPreferredFocus={IS_TV && tvFocus === "play"}
               accessibilityLabel={t(paused ? "player.play" : "player.pause")}
               onPress={() => setPaused((p) => !p)}
               className="size-16 items-center justify-center rounded-full bg-black/50"
@@ -664,42 +785,73 @@ export default function Player() {
                 barWidth={barWidth.current}
               />
             ) : null}
-            {/* Tap to jump, or drag: the picture under the finger shows, the jump is on release. */}
-            <View
-              testID="seek-bar"
-              className="h-6 justify-center"
-              onStartShouldSetResponder={() => true}
-              onResponderGrant={(e) => {
-                const { locationX, pageX } = e.nativeEvent;
-                barLeft.current = pageX - locationX;
-                const width = barWidth.current;
-                if (width > 0 && duration > 0)
-                  setScrub(Math.min(1, Math.max(0, locationX / width)) * duration);
-              }}
-              onResponderMove={(e) => {
-                const width = barWidth.current;
-                const x = e.nativeEvent.pageX - barLeft.current;
-                if (width > 0 && duration > 0)
-                  setScrub(Math.min(1, Math.max(0, x / width)) * duration);
-              }}
-              onResponderRelease={() => {
-                if (scrub !== null) seekTo(scrub * 1000);
-                setScrub(null);
-              }}
-              onResponderTerminate={() => setScrub(null)}
-              onLayout={(e) => {
-                barWidth.current = e.nativeEvent.layout.width;
-              }}
-            >
-              <View className="h-1 overflow-hidden rounded-full bg-white/25">
+            {IS_TV ? (
+              // The remote on the bar: left and right move the picture; OK jumps there at once,
+              // or pauses and plays when no seek is pending.
+              <Pressable
+                testID="seek-bar"
+                accessibilityRole="adjustable"
+                hasTVPreferredFocus={tvFocus === "seek"}
+                onFocus={() => setOnSeekBar(true)}
+                onBlur={() => setOnSeekBar(false)}
+                onPress={() => {
+                  if (scrubRef.current !== null) commitRef.current();
+                  else setPaused((p) => !p);
+                }}
+                className="h-6 justify-center rounded-full px-1"
+                onLayout={(e) => {
+                  barWidth.current = e.nativeEvent.layout.width;
+                }}
+              >
+                <View className="h-1 overflow-hidden rounded-full bg-white/25">
+                  <View
+                    className="h-full bg-accent"
+                    style={{
+                      width: `${duration ? Math.min(100, ((scrub ?? position) / duration) * 100) : 0}%`,
+                    }}
+                  />
+                </View>
+              </Pressable>
+            ) : (
+              <>
+                {/* Tap to jump, or drag: the picture under the finger shows, the jump is on release. */}
                 <View
-                  className="h-full bg-accent"
-                  style={{
-                    width: `${duration ? Math.min(100, ((scrub ?? position) / duration) * 100) : 0}%`,
+                  testID="seek-bar"
+                  className="h-6 justify-center"
+                  onStartShouldSetResponder={() => true}
+                  onResponderGrant={(e) => {
+                    const { locationX, pageX } = e.nativeEvent;
+                    barLeft.current = pageX - locationX;
+                    const width = barWidth.current;
+                    if (width > 0 && duration > 0)
+                      setScrub(Math.min(1, Math.max(0, locationX / width)) * duration);
                   }}
-                />
-              </View>
-            </View>
+                  onResponderMove={(e) => {
+                    const width = barWidth.current;
+                    const x = e.nativeEvent.pageX - barLeft.current;
+                    if (width > 0 && duration > 0)
+                      setScrub(Math.min(1, Math.max(0, x / width)) * duration);
+                  }}
+                  onResponderRelease={() => {
+                    if (scrub !== null) seekTo(scrub * 1000);
+                    setScrub(null);
+                  }}
+                  onResponderTerminate={() => setScrub(null)}
+                  onLayout={(e) => {
+                    barWidth.current = e.nativeEvent.layout.width;
+                  }}
+                >
+                  <View className="h-1 overflow-hidden rounded-full bg-white/25">
+                    <View
+                      className="h-full bg-accent"
+                      style={{
+                        width: `${duration ? Math.min(100, ((scrub ?? position) / duration) * 100) : 0}%`,
+                      }}
+                    />
+                  </View>
+                </View>
+              </>
+            )}
             <View className="flex-row justify-between">
               <Text testID="player-time" className="text-xs text-fg">
                 {formatClock(scrub ?? position)}

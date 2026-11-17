@@ -54,10 +54,10 @@ const IOS_DRIVER = "dev.mobile.maestro-driver-iosUITests.xctrunner";
  * the sync run holds the event loop, so Playwright's own timeout can't stop it.
  * Flows start by (re)launching the app, so a retry starts clean.
  */
-function maestro(flow: string, minutes = 4) {
+function maestro(flow: string, minutes = 4, env: Record<string, string> = {}) {
   for (let attempt = 1; ; attempt++) {
     try {
-      runFlow(flow, minutes * SLOW * 60_000);
+      runFlow(flow, minutes * SLOW * 60_000, env);
       return;
     } catch (e) {
       console.error(`maestro ${flow}, attempt ${attempt}: ${(e as Error).message}`);
@@ -69,7 +69,7 @@ function maestro(flow: string, minutes = 4) {
   }
 }
 
-function runFlow(flow: string, timeout: number) {
+function runFlow(flow: string, timeout: number, env: Record<string, string>) {
   if (!IOS) execFileSync(ADB, ["wait-for-device"], { timeout: 60_000 });
   try {
     execFileSync(
@@ -81,6 +81,7 @@ function runFlow(flow: string, timeout: number) {
         ...["-e", `USERNAME=${USER.username}`],
         ...["-e", `PASSWORD=${USER.password}`],
         ...["-e", `MOVIE_ID=${movieId}`],
+        ...Object.entries(env).flatMap(([key, value]) => ["-e", `${key}=${value}`]),
         ...(process.env.MAESTRO_OUTPUT ? ["--test-output-dir", process.env.MAESTRO_OUTPUT] : []),
         join(__dirname, "flows", flow),
       ],
@@ -231,4 +232,33 @@ test("deleting the movie on the device removes what asked for it", async () => {
   expect(phone.manual).toEqual([]);
   expect(overview.watchlist).toEqual([]);
   expect(phone.items).toEqual([]);
+});
+
+test("the phone signs in a TV showing a code", async () => {
+  test.setTimeout(200_000 * SLOW);
+  // The TV's side, through the API: it shows a code and waits (D111).
+  const started = await api("/api/auth/quick-connect/start", null, {
+    device: { name: "Salon", platform: "android_tv" },
+  });
+  maestro("connect-tv.yaml", 4, { CODE: started.code });
+  const poll = await api("/api/auth/quick-connect/poll", null, {
+    poll_secret: started.poll_secret,
+  });
+  expect(poll.status).toBe("ok");
+  expect(poll.user.username).toBe(USER.username);
+  // A TV doesn't download: the overview leaves it out (D110).
+  const overview = await api("/api/downloads/overview", userToken);
+  expect(overview.devices.map((d: { platform: string }) => d.platform)).not.toContain("android_tv");
+});
+
+test("a code approved from another device signs the app in", async () => {
+  test.setTimeout(200_000 * SLOW);
+  const mine = async () =>
+    (await api("/api/me/devices", userToken)).filter(
+      (d: { platform: string }) => d.platform === PLATFORM,
+    ).length;
+  const before = await mine();
+  maestro("quick-connect.yaml", 4, { TOKEN: userToken });
+  // Its own device and token, as with a password.
+  expect(await mine()).toBe(before + 1);
 });

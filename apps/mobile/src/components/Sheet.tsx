@@ -1,9 +1,10 @@
 import { Check, ChevronRight } from "lucide-react-native";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { Modal, ScrollView, Switch, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ui } from "../lib/scale";
+import { Pressable } from "./Pressable";
 import { COLORS } from "./ui";
 
 /** A panel that slides up from the bottom; tapping outside closes it. */
