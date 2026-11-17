@@ -171,7 +171,8 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           script: pnpm --filter @batvision/mobile test:e2e
-      - if: failure()
+      # Also when cancelled: a run that hit the job's timeout is the one to look at.
+      - if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: android-e2e
@@ -279,7 +280,8 @@ jobs:
           RUST_LOG: warn,batvision_server=info
           MAESTRO_OUTPUT: ${{ github.workspace }}/apps/mobile/maestro-output
         run: pnpm --filter @batvision/mobile test:e2e
-      - if: failure()
+      # Also when cancelled: a run that hit the job's timeout is the one to look at.
+      - if: failure() || cancelled()
         uses: actions/upload-artifact@v7
         with:
           name: ios-e2e
