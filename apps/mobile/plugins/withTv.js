@@ -1,6 +1,6 @@
 // Android TV (D109): the phone's APK also installs on a TV. The TV launcher lists apps that
 // open from LEANBACK_LAUNCHER and show a banner; Play offers the app to TVs only when
-// neither a touchscreen nor the leanback feature are required.
+// neither a touchscreen nor the leanback feature are required, nor Wi-Fi for those on Ethernet.
 const { copyFileSync, mkdirSync } = require("node:fs");
 const { join } = require("node:path");
 const {
@@ -25,6 +25,9 @@ function withTvManifest(config) {
     const manifest = mod.modResults.manifest;
     addFeature(manifest, "android.software.leanback");
     addFeature(manifest, "android.hardware.touchscreen");
+    // expo-network reads the Wi-Fi state (downloads on Wi-Fi only), which Play takes as Wi-Fi
+    // being required: TVs and boxes on Ethernet only would be left out.
+    addFeature(manifest, "android.hardware.wifi");
 
     const application = AndroidConfig.Manifest.getMainApplicationOrThrow(mod.modResults);
     application.$["android:banner"] = `@drawable/${BANNER}`;
