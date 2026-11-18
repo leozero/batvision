@@ -160,6 +160,21 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      # The emulator runner hides sdkmanager's output and doesn't retry: a failed download
+      # only showed as "emulator: not found", after ten minutes waiting for a boot.
+      - name: Install the emulator
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          df -h /
+          for attempt in 1 2 3; do
+            yes | "$sdkmanager" --install emulator --channel=0 2>&1 | tr '\r' '\n' | grep -v '^\[' || true
+            if [ -x "$ANDROID_HOME/emulator/emulator" ]; then exit 0; fi
+            echo "Attempt $attempt: no emulator binary"
+            ls -la "$ANDROID_HOME/emulator" || true
+            rm -rf "$ANDROID_HOME/emulator"
+            sleep 10
+          done
+          exit 1
       - name: End-to-end on an emulator
         uses: reactivecircus/android-emulator-runner@v2
         env:

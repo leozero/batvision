@@ -2,10 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { Bookmark, BookmarkCheck, Search } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { Schemas } from "../lib/api";
 import { meQuery, useWatchlist } from "../lib/queries";
 import { ui } from "../lib/scale";
+import { IS_TV } from "../lib/tv";
+import { Pressable } from "./Pressable";
 import { Button, COLORS, ErrorText } from "./ui";
 
 /** The magnifier at the top of Home, Movies and Series (search left the tab bar). */
@@ -45,8 +47,10 @@ export function ProfileButton() {
   );
 }
 
-/** Top right of Home, Movies and Series: search and the account. */
+/** Top right of Home, Movies and Series: search and the account. A TV has them in its
+ * sidebar (D112). */
 export function HeaderButtons() {
+  if (IS_TV) return null;
   return (
     <View className="flex-row items-center gap-2">
       <SearchButton />

@@ -2,10 +2,11 @@ import { episodeCode } from "@batvision/core/format";
 import { MoreVertical, Play } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useMeasuredGrid } from "../lib/layout";
 import { ui } from "../lib/scale";
 import type { SyncItem } from "../lib/sync";
+import { Pressable } from "./Pressable";
 import { Sheet } from "./Sheet";
 import { COLORS, Poster } from "./ui";
 

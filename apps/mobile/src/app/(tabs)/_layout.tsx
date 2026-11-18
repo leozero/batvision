@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Redirect, Tabs } from "expo-router";
 import { Bookmark, Download, Film, Home, Tv } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
+import { TvSidebar } from "../../components/TvSidebar";
 import { COLORS, Loading } from "../../components/ui";
 import { Unreachable } from "../../lib/api";
 import { meQuery } from "../../lib/queries";
 import { ui, uiScale } from "../../lib/scale";
 import { BatvisionSync } from "../../lib/sync";
+import { IS_TV } from "../../lib/tv";
 
 export default function TabsLayout() {
   const { t } = useTranslation();
@@ -22,7 +24,10 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      // A TV gets a rail on the left instead (D112).
+      tabBar={IS_TV ? (props) => <TvSidebar {...props} /> : undefined}
       screenOptions={{
+        tabBarPosition: IS_TV ? "left" : "bottom",
         headerShown: false,
         tabBarActiveTintColor: COLORS.accent,
         tabBarInactiveTintColor: COLORS.faint,

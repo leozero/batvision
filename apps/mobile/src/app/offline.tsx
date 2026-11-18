@@ -9,6 +9,7 @@ import { Badge, Button, COLORS, EmptyState, Muted, Screen } from "../components/
 import { meQuery } from "../lib/queries";
 import { ui } from "../lib/scale";
 import { type SyncItem, useSyncState } from "../lib/sync";
+import { IS_TV } from "../lib/tv";
 
 const watch = (item: SyncItem) =>
   router.push({
@@ -49,6 +50,7 @@ export default function Offline() {
         </View>
         <Button
           testID="retry"
+          tvFocus
           loading={retrying}
           onPress={retry}
           icon={<RefreshCw color={COLORS.fg} size={ui(16)} />}
@@ -58,7 +60,8 @@ export default function Offline() {
         {done.length === 0 ? (
           <EmptyState
             icon={<HardDriveDownload color={COLORS.faint} size={ui(32)} />}
-            title={t("mobile.offlineEmpty")}
+            // A TV keeps nothing: only the server can help (D110).
+            title={IS_TV ? t("tv.offlineEmpty") : t("mobile.offlineEmpty")}
           />
         ) : null}
         <LocalLibrary items={done} testPrefix="offline" onPlay={watch} />

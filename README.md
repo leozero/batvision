@@ -5,20 +5,20 @@ Self-hosted media server (movies and TV series), rewritten from scratch with Jel
 - Specification: [docs/spec.md](docs/spec.md)
 - Decision log: [docs/decisions.md](docs/decisions.md)
 
-> Early development: the server, the web client, the download engine, the desktop app and the Android app work; the iOS and iPadOS app is being built.
+> Early development: the server, the web client, the download engine, the desktop app and the Android, iOS and iPadOS apps work; the Android TV app (the same APK) is new.
 
 ## Layout
 
-| Folder                 | Content                                                            | License  |
-| ---------------------- | ------------------------------------------------------------------ | -------- |
-| `server/`              | Rust server (axum, SQLite, ffmpeg)                                 | AGPL-3.0 |
-| `apps/web/`            | Web client (React, Vite)                                           | GPL-3.0  |
-| `apps/desktop/`        | Desktop app (Electron): the web client plus downloads              | GPL-3.0  |
-| `apps/mobile/`         | Android and iOS app (Expo, React Native), Kotlin and Swift engines | GPL-3.0  |
-| `packages/api-client/` | TypeScript client generated from the OpenAPI description           | GPL-3.0  |
-| `packages/bridge/`     | Types shared by the desktop app and the web client                 | GPL-3.0  |
-| `packages/core/`       | Pure logic shared by the clients (formats, quality)                | GPL-3.0  |
-| `packages/i18n/`       | Interface translations (French, English)                           | GPL-3.0  |
+| Folder                 | Content                                                                        | License  |
+| ---------------------- | ------------------------------------------------------------------------------ | -------- |
+| `server/`              | Rust server (axum, SQLite, ffmpeg)                                             | AGPL-3.0 |
+| `apps/web/`            | Web client (React, Vite)                                                       | GPL-3.0  |
+| `apps/desktop/`        | Desktop app (Electron): the web client plus downloads                          | GPL-3.0  |
+| `apps/mobile/`         | Android, Android TV and iOS app (Expo, React Native), Kotlin and Swift engines | GPL-3.0  |
+| `packages/api-client/` | TypeScript client generated from the OpenAPI description                       | GPL-3.0  |
+| `packages/bridge/`     | Types shared by the desktop app and the web client                             | GPL-3.0  |
+| `packages/core/`       | Pure logic shared by the clients (formats, quality)                            | GPL-3.0  |
+| `packages/i18n/`       | Interface translations (French, English)                                       | GPL-3.0  |
 
 ## Development
 
@@ -71,6 +71,10 @@ adb install -r apps/mobile/android/app/build/outputs/apk/release/app-release.apk
 ```
 
 During development, `pnpm --filter @batvision/mobile android` runs a debug build with live reload on a device or an emulator. On first launch the app asks for the server address (`http://10.0.2.2:8420` reaches a local server from the emulator). Signed APKs are attached to the releases; they need the release key in the repository secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`), and `apps/mobile/app.json` and `package.json` must carry the release version.
+
+### Android TV
+
+The same APK installs on a TV (react-native-tvos, D109): `adb connect <tv-address>` then the `adb install` above, or an emulator made from an Android TV system image (`system-images;android-33;android-tv;x86`, device `tv_1080p`). It streams only (D110) and signs in with a code that a signed-in phone (account → Connect a TV) or the web's account page approves (D111).
 
 ### iOS and iPadOS app
 

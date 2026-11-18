@@ -66,7 +66,7 @@ pub fn default_settings(platform: Platform) -> DeviceSettings {
     DeviceSettings {
         auto_download: false,
         profile: match platform {
-            Platform::Android | Platform::AndroidTv | Platform::Ios => Profile::Mobile,
+            Platform::Android | Platform::Ios => Profile::Mobile,
             _ => Profile::Max,
         },
         // Desktop: 100 GB (D48); Android and iOS: 20 GB (D70, D86).
@@ -82,7 +82,7 @@ pub fn default_settings(platform: Platform) -> DeviceSettings {
     }
 }
 
-/// A device of `user_id` that can download (not a browser). 404 otherwise.
+/// A device of `user_id` that can download (not a browser, not a TV: D110). 404 otherwise.
 pub async fn download_device(
     state: &AppState,
     user_id: i64,
@@ -96,9 +96,9 @@ pub async fn download_device(
     .fetch_optional(&state.db)
     .await?;
     match platform {
-        Some(Platform::Web) => Err(ApiError::bad_request(
+        Some(Platform::Web | Platform::AndroidTv) => Err(ApiError::bad_request(
             "not_a_download_device",
-            "browsers can't download: use the desktop or Android app",
+            "browsers and TVs don't download: use the desktop or mobile app",
         )),
         Some(platform) => Ok(platform),
         None => Err(ApiError::NotFound),

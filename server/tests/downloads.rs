@@ -191,6 +191,42 @@ async fn browsers_cannot_download() {
     assert_eq!(err["code"], "not_a_download_device");
 }
 
+/// A TV streams only (D110): it can't ask for downloads, and the downloads overview
+/// leaves it out, so nobody sets download rules for it.
+#[tokio::test]
+async fn tvs_do_not_download() {
+    let f = fixture().await;
+    let (status, body) = f
+        .app
+        .post(
+            "/api/auth/login",
+            None,
+            json!({ "username": "alice", "password": PASSWORD, "device": device("Salon", "android_tv") }),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let tv = body["token"].as_str().unwrap().to_owned();
+    let tv_id = body["device_id"].as_i64().unwrap();
+
+    let (status, err) = f
+        .app
+        .post("/api/downloads/plan", Some(&tv), json!({}))
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(err["code"], "not_a_download_device");
+
+    let (status, overview) = f.app.get("/api/downloads/overview", Some(&f.phone)).await;
+    assert_eq!(status, StatusCode::OK);
+    let devices: Vec<i64> = overview["devices"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["id"].as_i64().unwrap())
+        .collect();
+    assert!(devices.contains(&f.phone_id), "the phone is listed");
+    assert!(!devices.contains(&tv_id), "the TV isn't: {devices:?}");
+}
+
 #[tokio::test]
 async fn device_settings_defaults_and_ownership() {
     let f = fixture().await;

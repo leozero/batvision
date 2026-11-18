@@ -5,8 +5,9 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Check, CheckCircle2, ChevronDown, Download, Play } from "lucide-react-native";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { Hero, LocalMark } from "../../components/Detail";
+import { Pressable, useFocusRing } from "../../components/Pressable";
 import { ChoiceList, Sheet } from "../../components/Sheet";
 import {
   Button,
@@ -30,6 +31,7 @@ import {
 import { ui } from "../../lib/scale";
 import { session } from "../../lib/session";
 import { useLocalItem } from "../../lib/sync";
+import { IS_TV, TV_EDGE, tvTail } from "../../lib/tv";
 
 /** How many of the next episodes to keep on the phone: the obvious picks, or all of them (D108). */
 const ROLLING = ["1", "3", "5", "10", "all"] as const;
@@ -67,6 +69,16 @@ function EpisodeAction({
   );
 }
 
+/** An episode's picture, with the ring when the remote is on it (D112). */
+function Still({ children }: { children: ReactNode }) {
+  const ring = useFocusRing();
+  return (
+    <View style={ring} className="aspect-video overflow-hidden rounded-lg bg-surface-2">
+      {children}
+    </View>
+  );
+}
+
 function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
   const { t, i18n } = useTranslation();
   const download = useManualDownload();
@@ -85,15 +97,18 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
     .join(" · ");
   return (
     <View className="gap-3 py-4">
-      <View className="flex-row items-center gap-3">
+      {/* On a TV, room between the ring around the still and the text (D112). */}
+      <View className={`flex-row items-center ${IS_TV ? "gap-6" : "gap-3"}`}>
         <Pressable
           testID={`episode-${e.id}`}
           accessibilityRole="button"
           accessibilityLabel={`${t("common.play")} ${episodeCode(e.season_number, e.episode_number)}`}
           onPress={() => router.push(`/watch/episode/${e.id}`)}
-          className="w-36 active:opacity-70"
+          // Wider on a TV, seen from the couch.
+          className={`${IS_TV ? "w-52" : "w-36"} active:opacity-70`}
+          ringOnChild
         >
-          <View className="aspect-video overflow-hidden rounded-lg bg-surface-2">
+          <Still>
             {e.still_path ? (
               <Image
                 source={{ uri: imageUrl(e.still_path, "w500") }}
@@ -114,7 +129,7 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
             {progress ? (
               <ProgressBar value={progress} className="absolute inset-x-1.5 bottom-1.5" />
             ) : null}
-          </View>
+          </Still>
         </Pressable>
         <View className="flex-1 gap-1">
           <Text numberOfLines={1} className="text-xs text-faint">
@@ -138,7 +153,8 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
           >
             <Check color={e.played ? COLORS.success : COLORS.muted} size={ui(18)} />
           </EpisodeAction>
-          {local ? null : (
+          {/* A TV streams only (D110). */}
+          {local || IS_TV ? null : (
             <EpisodeAction
               testID={`download-episode-${e.id}`}
               label={t("mobile.downloadHere")}
@@ -164,6 +180,7 @@ function Episode({ e }: { e: Schemas["EpisodeSummary"] }) {
           accessibilityRole="button"
           accessibilityState={{ expanded }}
           onPress={() => setExpanded((x) => !x)}
+          className="rounded-md"
         >
           <Text numberOfLines={expanded ? undefined : 3} className="text-sm leading-5 text-muted">
             {e.overview}
@@ -226,7 +243,7 @@ export default function SeriesScreen() {
   };
   return (
     <Screen edges={[]}>
-      <ScrollView contentContainerClassName="pb-10">
+      <ScrollView fadingEdgeLength={TV_EDGE} contentContainerClassName={tvTail("pb-10")}>
         <Hero backdrop={imageUrl(s.backdrop_path ?? s.poster_path, "w1280")}>
           <Text testID="title" className="text-2xl font-bold text-fg">
             {s.title}
@@ -237,73 +254,82 @@ export default function SeriesScreen() {
           </View>
         </Hero>
         <View className="w-full max-w-3xl gap-4 self-center p-4">
-          {s.up_next ? (
+          {/* On a TV, side by side, Play first (D112). */}
+          <View className={IS_TV ? "flex-row flex-wrap gap-3" : "gap-4"}>
+            {s.up_next ? (
+              <Button
+                testID="play"
+                variant="primary"
+                tvFocus
+                icon={<Play color={COLORS.accentInk} size={ui(18)} />}
+                onPress={() => router.push(`/watch/episode/${s.up_next?.id}`)}
+              >
+                {playLabel}
+              </Button>
+            ) : null}
+            <SeriesWatchlistButton series={s} />
             <Button
-              testID="play"
-              variant="primary"
-              icon={<Play color={COLORS.accentInk} size={ui(18)} />}
-              onPress={() => router.push(`/watch/episode/${s.up_next?.id}`)}
+              testID="played-series"
+              icon={<Check color={COLORS.fg} size={ui(18)} />}
+              loading={setPlayed.isPending && setPlayed.variables?.kind === "series"}
+              onPress={() => setPlayed.mutate({ kind: "series", id, played: !allPlayed })}
             >
-              {playLabel}
+              {allPlayed ? t("detail.markUnwatched") : t("detail.markSeriesWatched")}
             </Button>
-          ) : null}
-          <SeriesWatchlistButton series={s} />
-          <Button
-            testID="played-series"
-            icon={<Check color={COLORS.fg} size={ui(18)} />}
-            loading={setPlayed.isPending && setPlayed.variables?.kind === "series"}
-            onPress={() => setPlayed.mutate({ kind: "series", id, played: !allPlayed })}
-          >
-            {allPlayed ? t("detail.markUnwatched") : t("detail.markSeriesWatched")}
-          </Button>
-          <View className="gap-2">
-            <Text className="text-sm font-semibold text-muted">{t("mobile.downloadHere")}</Text>
-            <View className="flex-row gap-2">
-              <View className="flex-1">
-                <Button
-                  testID="subscribe-rolling"
-                  loading={subscribe.isPending && subscribe.variables?.mode === "rolling"}
-                  onPress={() => setPicking(true)}
-                >
-                  <View className="flex-row items-center gap-1">
-                    <Text numberOfLines={1} className="shrink font-semibold text-fg">
-                      {rollingLabel(rolling)}
-                    </Text>
-                    <ChevronDown color={COLORS.muted} size={ui(16)} />
-                  </View>
-                </Button>
-              </View>
-              <View className="flex-1">
-                <Button
-                  testID="subscribe-season"
-                  disabled={subscribed === "season"}
-                  onPress={() => sub("season")}
-                >
-                  {t("mobile.wholeSeason", { number: season ?? 1 })}
-                </Button>
-              </View>
-            </View>
-            {subscribed ? <Muted>{t("mobile.requested")}</Muted> : null}
           </View>
-          <Sheet
-            testID="rolling-sheet"
-            open={picking}
-            onClose={() => setPicking(false)}
-            title={t("mobile.downloadHere")}
-            description={t("downloads.rollingHint")}
-          >
-            <ChoiceList
-              value={subscribed === "rolling" ? rolling : ""}
-              options={ROLLING.map((r) => ({ value: r, label: rollingLabel(r) }))}
-              onChange={(r) => {
-                // "": nothing picked yet, never an option.
-                if (r === "") return;
-                setRolling(r);
-                setPicking(false);
-                sub("rolling", r);
-              }}
-            />
-          </Sheet>
+          {/* A TV streams only (D110). */}
+          {IS_TV ? null : (
+            <>
+              <View className="gap-2">
+                <Text className="text-sm font-semibold text-muted">{t("mobile.downloadHere")}</Text>
+                <View className="flex-row gap-2">
+                  <View className="flex-1">
+                    <Button
+                      testID="subscribe-rolling"
+                      loading={subscribe.isPending && subscribe.variables?.mode === "rolling"}
+                      onPress={() => setPicking(true)}
+                    >
+                      <View className="flex-row items-center gap-1">
+                        <Text numberOfLines={1} className="shrink font-semibold text-fg">
+                          {rollingLabel(rolling)}
+                        </Text>
+                        <ChevronDown color={COLORS.muted} size={ui(16)} />
+                      </View>
+                    </Button>
+                  </View>
+                  <View className="flex-1">
+                    <Button
+                      testID="subscribe-season"
+                      disabled={subscribed === "season"}
+                      onPress={() => sub("season")}
+                    >
+                      {t("mobile.wholeSeason", { number: season ?? 1 })}
+                    </Button>
+                  </View>
+                </View>
+                {subscribed ? <Muted>{t("mobile.requested")}</Muted> : null}
+              </View>
+              <Sheet
+                testID="rolling-sheet"
+                open={picking}
+                onClose={() => setPicking(false)}
+                title={t("mobile.downloadHere")}
+                description={t("downloads.rollingHint")}
+              >
+                <ChoiceList
+                  value={subscribed === "rolling" ? rolling : ""}
+                  options={ROLLING.map((r) => ({ value: r, label: rollingLabel(r) }))}
+                  onChange={(r) => {
+                    // "": nothing picked yet, never an option.
+                    if (r === "") return;
+                    setRolling(r);
+                    setPicking(false);
+                    sub("rolling", r);
+                  }}
+                />
+              </Sheet>
+            </>
+          )}
           {s.overview ? (
             <Text numberOfLines={5} className="text-sm leading-5 text-muted">
               {s.overview}
@@ -312,7 +338,10 @@ export default function SeriesScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            contentContainerClassName="gap-2"
+            // Room for the ring around the season the remote is on (D112), the first season
+            // still lined up with the page.
+            className={IS_TV ? "-mx-2" : undefined}
+            contentContainerClassName={`gap-2 ${IS_TV ? "px-2 py-2" : ""}`}
           >
             {s.seasons.map((x) => (
               <Pressable
@@ -339,7 +368,7 @@ export default function SeriesScreen() {
               onPress={() =>
                 setPlayed.mutate({ kind: "season", id: current.id, played: !seasonPlayed })
               }
-              className={`flex-row items-center gap-2 self-start active:opacity-70 ${seasonPlayed === null ? "opacity-50" : ""}`}
+              className={`flex-row items-center gap-2 self-start rounded-md active:opacity-70 ${seasonPlayed === null ? "opacity-50" : ""}`}
             >
               <CheckCircle2 color={seasonPlayed ? COLORS.success : COLORS.muted} size={ui(16)} />
               <Text className="text-sm font-semibold text-muted">

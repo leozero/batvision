@@ -34,6 +34,16 @@ const feature = `<div style="width:1024px;height:500px;display:flex;align-items:
   </div>
 </div>`;
 
+// Android TV banner (D109): logo and name on the app's background, in the launcher's row
+// (320 × 180) and on the Play listing (1280 × 720).
+const tvBanner = (
+  scale,
+) => `<div style="width:${320 * scale}px;height:${180 * scale}px;display:flex;align-items:center;justify-content:center;gap:${18 * scale}px;box-sizing:border-box;
+  background:radial-gradient(circle at 25% 35%, #26262f 0%, #09090c 75%);font-family:Inter,system-ui,-apple-system,Roboto,sans-serif">
+  <svg width="${76 * scale}" height="${76 * scale}" viewBox="0 0 32 32"><defs>${GRADIENT}</defs>${disc(0, 0, 1)}</svg>
+  <div style="color:#f4b740;font-size:${44 * scale}px;font-weight:800;letter-spacing:${-1 * scale}px;line-height:1">BatVision</div>
+</div>`;
+
 const outputs = [
   { html: square, size: [1024, 1024], file: "assets/icon.png" },
   {
@@ -44,6 +54,8 @@ const outputs = [
   },
   { html: square, size: [512, 512], file: "store/en-US/icon.png" },
   { html: feature, size: [1024, 500], file: "store/en-US/feature_graphic.png" },
+  { html: tvBanner(1), size: [320, 180], file: "assets/tv-banner.png" },
+  { html: tvBanner(4), size: [1280, 720], file: "store/en-US/tv_banner.png" },
 ];
 
 const browser = await chromium.launch();

@@ -4,13 +4,13 @@ import { useTranslation } from "react-i18next";
 import {
   FlatList,
   Platform,
-  Pressable,
   RefreshControl,
   ScrollView,
   Text,
   useWindowDimensions,
   View,
 } from "react-native";
+import { Pressable } from "../../components/Pressable";
 import { UpdateBanner } from "../../components/UpdateBanner";
 import { EmptyState, Loading, Poster, type PosterBadges, Screen } from "../../components/ui";
 import { VersionBanner } from "../../components/VersionBanner";
@@ -19,6 +19,7 @@ import { imageUrl, type Schemas } from "../../lib/api";
 import { setMovieList } from "../../lib/browse";
 import { rowPosterWidth } from "../../lib/layout";
 import { homeQuery } from "../../lib/queries";
+import { IS_TV, TV_EDGE, tvGap, tvTail } from "../../lib/tv";
 
 type Card = {
   key: string;
@@ -34,9 +35,12 @@ function Row({
   title,
   items,
   action,
+  first,
 }: {
   title: string;
   items: Card[];
+  /** The first row shown: on a TV, the remote starts on its first poster. */
+  first?: boolean;
   /** A link next to the title ("See all"). */
   action?: { label: string; href: string; testID?: string };
 }) {
@@ -60,12 +64,15 @@ function Row({
         data={items}
         keyExtractor={(i) => i.key}
         showsHorizontalScrollIndicator={false}
-        contentContainerClassName="gap-3 px-4"
-        renderItem={({ item }) => (
+        // Room for the ring around the poster the remote is on (D112).
+        contentContainerClassName={`gap-3 px-4 ${IS_TV ? "py-4" : ""}`}
+        renderItem={({ item, index }) => (
           <Link href={item.href as never} asChild>
             <Pressable
               style={{ width: posterWidth }}
               className="active:opacity-70"
+              ringOnChild
+              hasTVPreferredFocus={first && index === 0}
               onPressIn={() =>
                 setMovieList(
                   items.flatMap((i) => (i.badges?.kind === "movie" ? [i.badges.id] : [])),
@@ -73,7 +80,7 @@ function Row({
               }
             >
               <Poster uri={item.poster} progress={item.progress} badges={item.badges} />
-              <Text numberOfLines={1} className="mt-2 text-sm font-medium text-fg">
+              <Text numberOfLines={1} className={`${tvGap("mt-2")} text-sm font-medium text-fg`}>
                 {item.title}
               </Text>
               {item.subtitle ? (
@@ -112,10 +119,21 @@ export default function HomeScreen() {
     !data.next_up.length &&
     !data.recent_movies.length &&
     !data.recent_series.length;
+  // The row the remote starts in, on a TV: the first one shown.
+  const firstRow = (
+    [
+      ["continue", data?.continue_watching],
+      ["next", data?.next_up],
+      ["movies", data?.recent_movies],
+      ["top", data?.top_rated_movies],
+      ["series", data?.recent_series],
+    ] as const
+  ).find(([, items]) => items?.length)?.[0];
   return (
     <Screen>
       <ScrollView
-        contentContainerClassName="gap-8 pb-8"
+        fadingEdgeLength={TV_EDGE}
+        contentContainerClassName={`gap-8 ${tvTail("pb-8")}`}
         refreshControl={
           <RefreshControl refreshing={home.isRefetching} onRefresh={() => void home.refetch()} />
         }
@@ -130,11 +148,17 @@ export default function HomeScreen() {
         {empty ? <EmptyState title={t("home.emptyTitle")} /> : null}
         <Row
           title={t("home.continueWatching")}
+          first={firstRow === "continue"}
           items={(data?.continue_watching ?? []).map(homeCard)}
         />
-        <Row title={t("home.nextUp")} items={(data?.next_up ?? []).map(homeCard)} />
+        <Row
+          title={t("home.nextUp")}
+          first={firstRow === "next"}
+          items={(data?.next_up ?? []).map(homeCard)}
+        />
         <Row
           title={t("home.recentMovies")}
+          first={firstRow === "movies"}
           items={(data?.recent_movies ?? []).map((m) => ({
             key: `movie-${m.id}`,
             href: `/movie/${m.id}`,
@@ -146,6 +170,7 @@ export default function HomeScreen() {
         />
         <Row
           title={t("home.topRatedMovies")}
+          first={firstRow === "top"}
           action={{ label: t("home.seeAll"), href: "/movies?sort=rating", testID: "top-rated-all" }}
           items={(data?.top_rated_movies ?? []).map((m) => ({
             key: `top-${m.id}`,
@@ -158,6 +183,7 @@ export default function HomeScreen() {
         />
         <Row
           title={t("home.recentSeries")}
+          first={firstRow === "series"}
           items={(data?.recent_series ?? []).map((s) => ({
             key: `series-${s.id}`,
             href: `/series/${s.id}`,

@@ -4,9 +4,11 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.UiModeManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -115,8 +117,15 @@ object Scheduler {
 
   private fun connected() = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
+  /** A TV streams only (D110): the same app runs there, with nothing to sync. */
+  private fun isTv(context: Context): Boolean {
+    val modes = context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+    return modes?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+  }
+
   /** The 30-minute sync (D71); Android may delay it. */
   fun start(context: Context) {
+    if (isTv(context)) return
     WorkManager.getInstance(context).enqueueUniquePeriodicWork(
       PERIODIC,
       ExistingPeriodicWorkPolicy.KEEP,
@@ -130,6 +139,7 @@ object Scheduler {
    * must work without it. The engine handles an unreachable server itself.
    */
   fun now(context: Context) {
+    if (isTv(context)) return
     val request = OneTimeWorkRequestBuilder<SyncWorker>()
       .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
       .build()

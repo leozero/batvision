@@ -4,9 +4,10 @@ import { router, useLocalSearchParams } from "expo-router";
 import { Check, Download, Layers, Play } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { GestureDetector, usePanGesture } from "react-native-gesture-handler";
 import { Hero, LocalMark, WatchedMark } from "../../components/Detail";
+import { Pressable } from "../../components/Pressable";
 import {
   Button,
   COLORS,
@@ -24,6 +25,7 @@ import { movieQuery, useManualDownload, useSetPlayed } from "../../lib/queries";
 import { ui } from "../../lib/scale";
 import { session } from "../../lib/session";
 import { useLocalItem } from "../../lib/sync";
+import { IS_TV, TV_EDGE, tvTail } from "../../lib/tv";
 
 export default function MovieScreen() {
   const { t, i18n } = useTranslation();
@@ -52,7 +54,7 @@ export default function MovieScreen() {
   return (
     <Screen edges={[]}>
       <GestureDetector gesture={swipe}>
-        <ScrollView contentContainerClassName="pb-10">
+        <ScrollView fadingEdgeLength={TV_EDGE} contentContainerClassName={tvTail("pb-10")}>
           <Hero backdrop={imageUrl(m.backdrop_path ?? m.poster_path, "w1280")}>
             <Text testID="title" className="text-2xl font-bold text-fg">
               {m.title}
@@ -79,17 +81,22 @@ export default function MovieScreen() {
               </Pressable>
             ) : null}
           </Hero>
-          <View className="w-full max-w-3xl gap-4 self-center p-4">
+          {/* On a TV, the actions sit side by side under the title, Play first (D112). */}
+          <View
+            className={`w-full max-w-3xl self-center p-4 ${IS_TV ? "flex-row flex-wrap gap-3" : "gap-4"}`}
+          >
             <Button
               testID="play"
               variant="primary"
+              tvFocus
               icon={<Play color={COLORS.accentInk} size={ui(18)} />}
               onPress={() => router.push(`/watch/movie/${id}`)}
             >
               {resume ? t("common.resume") : t("common.play")}
             </Button>
             <MovieWatchlistButton movie={m} />
-            {!local ? (
+            {/* A TV streams only (D110). */}
+            {!local && !IS_TV ? (
               <Button
                 testID="download"
                 icon={<Download color={COLORS.fg} size={ui(18)} />}
@@ -115,7 +122,7 @@ export default function MovieScreen() {
               {m.played ? t("detail.markUnwatched") : t("detail.markWatched")}
             </Button>
             {m.overview ? (
-              <Text className="text-base leading-6 text-muted">{m.overview}</Text>
+              <Text className="w-full text-base leading-6 text-muted">{m.overview}</Text>
             ) : null}
           </View>
         </ScrollView>

@@ -67,7 +67,7 @@ export const en: Shape<typeof fr> = {
   },
   errors: {
     not_expected: "This item isn't part of the device's downloads.",
-    not_a_download_device: "Browsers can't download: use the desktop or mobile app.",
+    not_a_download_device: "Browsers and TVs don't download: use the desktop or mobile app.",
     invalid_count: "Choose between 1 and 20 episodes.",
     network: "Can't reach the server.",
     tooManyAttempts: "Too many attempts. Try again in {{seconds}} s.",
@@ -384,6 +384,23 @@ export const en: Shape<typeof fr> = {
     saveError: "The setting couldn't be saved.",
     insecureAddress:
       "An http:// address on the internet: your password will travel unencrypted. Prefer https://.",
+  },
+  tv: {
+    codeTitle: "Sign in with a code",
+    codeIntro:
+      "On a phone or a computer already signed in, open BatVision, go to the account and choose “Connect a TV”, then enter this code.",
+    scan: "Or scan this code with your phone: it opens your account with the code filled in.",
+    waiting: "Waiting for approval…",
+    renews: "A new code comes every 5 minutes.",
+    codeError: "No code from the server.",
+    usePassword: "Sign in with a password",
+    useCode: "Sign in with a code from another device",
+    offlineEmpty:
+      "The server can't be reached. Check that it's running and that the TV is on the same network.",
+    connectHint:
+      "Enter the code shown on the TV (or on another device) to sign it in to your account.",
+    codeUnknown: "No device shows this code: check it, or wait for a new one on the TV.",
+    approve: "Connect",
   },
   desktop: {
     updateReady: "Version {{version}} is ready: click to restart and install it.",

@@ -2,16 +2,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { KeyboardAvoidingView, Platform, ScrollView, Text, View } from "react-native";
+import { KeyboardAvoidingView, ScrollView, Text, View } from "react-native";
+import { QuickConnect } from "../components/QuickConnect";
 import { Button, ErrorText, Field, Input, Muted, Screen } from "../components/ui";
 import { ApiError, api, call, Unreachable } from "../lib/api";
-import { deviceName, session } from "../lib/session";
+import { deviceName, devicePlatform, session } from "../lib/session";
 import { BatvisionSync } from "../lib/sync";
+import { IS_TV } from "../lib/tv";
 
-/** Password, then the 2FA code when the account has one (D72). */
+/** Password, then the 2FA code when the account has one (D72); or a code approved from
+ * another device, which a TV shows first (D111). */
 export default function Login() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const [withCode, setWithCode] = useState(IS_TV);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [challenge, setChallenge] = useState<string | null>(null);
@@ -49,7 +53,7 @@ export default function Login() {
           body: {
             username: username.trim(),
             password,
-            device: { name: deviceName(), platform: Platform.OS === "ios" ? "ios" : "android" },
+            device: { name: deviceName(), platform: devicePlatform() },
           },
         }),
       );
@@ -66,54 +70,79 @@ export default function Login() {
     <Screen>
       <KeyboardAvoidingView behavior="padding" className="flex-1">
         <ScrollView
-          contentContainerClassName="w-full max-w-lg flex-grow justify-center gap-5 self-center p-6"
+          contentContainerClassName={`w-full flex-grow justify-center gap-5 self-center p-6 ${
+            withCode && IS_TV ? "max-w-3xl" : "max-w-lg"
+          }`}
           keyboardShouldPersistTaps="handled"
         >
           <View className="gap-2">
             <Text className="text-3xl font-bold text-accent">BatVision</Text>
-            <Text className="text-xl font-semibold text-fg">{t("auth.welcome")}</Text>
-            <Muted>{challenge ? t("auth.totpPrompt") : t("auth.signInPrompt")}</Muted>
+            {withCode ? null : (
+              <>
+                <Text className="text-xl font-semibold text-fg">{t("auth.welcome")}</Text>
+                <Muted>{challenge ? t("auth.totpPrompt") : t("auth.signInPrompt")}</Muted>
+              </>
+            )}
             <Muted className="text-faint">{session().server}</Muted>
           </View>
-          {challenge ? (
-            <Field label={t("auth.code")}>
-              <Input
-                testID="totp-code"
-                value={code}
-                onChangeText={setCode}
-                keyboardType="number-pad"
-                autoFocus
-                onSubmitEditing={submit}
-              />
-            </Field>
+          {withCode ? (
+            <QuickConnect onSignedIn={signedIn} />
           ) : (
             <>
-              <Field label={t("auth.username")}>
-                <Input
-                  testID="username"
-                  value={username}
-                  onChangeText={setUsername}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  textContentType="username"
-                />
-              </Field>
-              <Field label={t("auth.password")}>
-                <Input
-                  testID="password"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  textContentType="password"
-                  onSubmitEditing={submit}
-                />
-              </Field>
+              {challenge ? (
+                <Field label={t("auth.code")}>
+                  <Input
+                    testID="totp-code"
+                    value={code}
+                    onChangeText={setCode}
+                    keyboardType="number-pad"
+                    autoFocus
+                    onSubmitEditing={submit}
+                  />
+                </Field>
+              ) : (
+                <>
+                  <Field label={t("auth.username")}>
+                    <Input
+                      testID="username"
+                      value={username}
+                      onChangeText={setUsername}
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      textContentType="username"
+                    />
+                  </Field>
+                  <Field label={t("auth.password")}>
+                    <Input
+                      testID="password"
+                      value={password}
+                      onChangeText={setPassword}
+                      secureTextEntry
+                      textContentType="password"
+                      onSubmitEditing={submit}
+                    />
+                  </Field>
+                </>
+              )}
+              <ErrorText>{error}</ErrorText>
+              <Button testID="sign-in" variant="primary" loading={busy} onPress={submit}>
+                {challenge ? t("auth.verify") : t("auth.signIn")}
+              </Button>
             </>
           )}
-          <ErrorText>{error}</ErrorText>
-          <Button testID="sign-in" variant="primary" loading={busy} onPress={submit}>
-            {challenge ? t("auth.verify") : t("auth.signIn")}
-          </Button>
+          {/* No challenge pending: switching drops nothing typed but the password. */}
+          {challenge ? null : (
+            <Button
+              testID={withCode ? "use-password" : "use-code"}
+              tvFocus={withCode}
+              onPress={() => {
+                setError(null);
+                setWithCode((c) => !c);
+              }}
+            >
+              {withCode ? t("tv.usePassword") : t("tv.useCode")}
+            </Button>
+          )}
           <Button
             onPress={() => {
               BatvisionSync.setServer(null);

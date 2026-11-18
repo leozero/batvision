@@ -3,7 +3,8 @@ import { Link } from "expo-router";
 import { DownloadCloud } from "lucide-react-native";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import { FlatList, RefreshControl, Text, View } from "react-native";
+import { Pressable } from "../../components/Pressable";
 import { ChoiceList, SettingRow, Sheet } from "../../components/Sheet";
 import { Button, COLORS, EmptyState, Loading, Muted, Poster, Screen } from "../../components/ui";
 import { imageUrl } from "../../lib/api";
@@ -17,6 +18,7 @@ import {
 } from "../../lib/queries";
 import { ui } from "../../lib/scale";
 import { session } from "../../lib/session";
+import { IS_TV, TV_EDGE, tvGap, tvTail } from "../../lib/tv";
 
 type Filter = "all" | "movie" | "series";
 
@@ -65,6 +67,7 @@ export default function WatchlistScreen() {
   return (
     <Screen>
       <FlatList
+        fadingEdgeLength={TV_EDGE}
         key={columns}
         data={items}
         numColumns={columns}
@@ -72,19 +75,24 @@ export default function WatchlistScreen() {
         refreshControl={
           <RefreshControl refreshing={list.isRefetching} onRefresh={() => void list.refetch()} />
         }
-        contentContainerClassName="gap-4 px-3 pb-8"
+        contentContainerClassName={`gap-4 px-3 ${tvTail("pb-8")}`}
         columnWrapperClassName="gap-3"
         ListHeaderComponent={
           <View className="gap-3 px-1 pt-4">
             <Text className="text-2xl font-bold text-fg">{t("watchlist.title")}</Text>
             <Muted>{t("watchlist.intro")}</Muted>
-            <SettingRow
-              testID="watchlist-episodes"
-              label={t("watchlist.episodesSetting")}
-              value={t("watchlist.episodes", { count })}
-              onPress={() => setEpisodesOpen(true)}
-            />
-            <AutoOffBanner />
+            {/* What downloads where: nothing on a TV (D110). */}
+            {IS_TV ? null : (
+              <>
+                <SettingRow
+                  testID="watchlist-episodes"
+                  label={t("watchlist.episodesSetting")}
+                  value={t("watchlist.episodes", { count })}
+                  onPress={() => setEpisodesOpen(true)}
+                />
+                <AutoOffBanner />
+              </>
+            )}
             <View className="flex-row gap-2">
               {filters.map((f) => (
                 <Pressable
@@ -114,9 +122,10 @@ export default function WatchlistScreen() {
               testID={`watchlist-${item.kind}-${item.id}`}
               style={{ width: itemWidth }}
               className="active:opacity-70"
+              ringOnChild
             >
               <Poster uri={imageUrl(item.poster_path, "w342")} />
-              <Text numberOfLines={1} className="mt-1.5 text-xs font-medium text-fg">
+              <Text numberOfLines={1} className={`${tvGap("mt-1.5")} text-xs font-medium text-fg`}>
                 {item.title}
               </Text>
               <Text className="text-xs text-faint">

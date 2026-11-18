@@ -307,7 +307,8 @@ pub async fn overview(
     let user = &current.user;
     let devices: Vec<(i64, String, Platform, i64)> = sqlx::query_as(
         "SELECT id, name, platform, last_seen_at FROM devices
-         WHERE user_id = ? AND revoked_at IS NULL AND platform != 'web' ORDER BY last_seen_at DESC",
+         WHERE user_id = ? AND revoked_at IS NULL AND platform NOT IN ('web', 'android_tv')
+         ORDER BY last_seen_at DESC",
     )
     .bind(user.id)
     .fetch_all(&state.db)

@@ -154,8 +154,9 @@ The server is exposed to the internet.
 - **One token per device**, long-lived and revocable. Users see their device list and can revoke any of them.
 - **Quick connect (TV):**
   1. the device shows a 6-character code, valid for 5 minutes;
-  2. the user approves it from an already signed-in device;
+  2. the user approves it from an already signed-in device: the mobile app's account ("Connect a TV"), or the web's account page, which a QR code on the TV opens with the code filled in (D111);
   3. the device receives its own token.
+  - The TV shows it first; the phone and tablet apps offer it too, under the password form.
 - **Attack protection:** attempt limits per IP and per account, with a delay that grows after each failure.
 - **Playback and downloads:** media URLs are signed and short-lived, because browser `<video>` tags cannot send an authentication header. Downloads accept HTTP Range requests, so an interrupted download can resume.
 
@@ -236,12 +237,12 @@ A series in the watchlist (D73) is not a subscription: it belongs to the account
 
 ### 7.8 Role of each client
 
-| Client             | Downloads       | Role                                                                                                 |
-| ------------------ | --------------- | ---------------------------------------------------------------------------------------------------- |
-| Web                | No              | Playback, plus control: watchlist, series subscriptions, device rules, quotas, encoding queue, admin |
-| Desktop (Electron) | Yes             | First offline client. It validates the download engine                                               |
-| Android (Expo)     | Yes             | Storage in the app's private space **or** on the SD card, chosen per device                          |
-| Android TV (Expo)  | To decide later | Playback, quick connect                                                                              |
+| Client             | Downloads | Role                                                                                                 |
+| ------------------ | --------- | ---------------------------------------------------------------------------------------------------- |
+| Web                | No        | Playback, plus control: watchlist, series subscriptions, device rules, quotas, encoding queue, admin |
+| Desktop (Electron) | Yes       | First offline client. It validates the download engine                                               |
+| Android (Expo)     | Yes       | Storage in the app's private space **or** on the SD card, chosen per device                          |
+| Android TV (Expo)  | No (D110) | Playback, quick connect                                                                              |
 
 ### 7.9 Desktop client
 
@@ -272,6 +273,14 @@ A series in the watchlist (D73) is not a subscription: it belongs to the account
 - Large windows (Samsung DeX, a monitor, AR glasses; at least 1400 pt wide): everything is drawn 1.5×, and posters grow with the window rather than multiplying (D105).
 - The app reports its model as device name and whether it decodes AV1 in hardware (MediaCodec).
 - Distribution: signed APK attached to the GitHub releases; the app shows a banner when a newer one exists (D65, D66).
+
+### 7.11 Android TV client
+
+- **The Android app itself** (D109): the same APK and Play listing, built on react-native-tvos. It shows in the TV's launcher with its banner; a touchscreen isn't required.
+- **Streaming only** (D110): no downloads, no Downloads tab, no download buttons, no background sync. The server refuses download requests from a TV and leaves it out of the downloads overview, like a browser.
+- **Sign-in** (D111): server address typed with the TV's keyboard, then a quick connect code (spec 6) with a QR code; a password sign-in stays one button away.
+- **Interface** (D112): a rail on the left (Home, Movies, Series, Watchlist, then search and the account) instead of the tab bar; the element under the remote has an amber ring, posters grow a little; the remote starts on the first poster of Home and on Play on a detail page. Detail actions sit side by side.
+- **Player with the remote** (D112): OK pauses or plays; left and right seek by 10 s, then 30 s and a minute when pressed in quick succession, the timeline picture following, the jump made once the keys stop; up and down show the controls, which hide 5 s after the last key; on the seek bar, left and right seek, elsewhere they move between buttons; media keys work everywhere; Back drops a seek in progress, then hides the controls, then leaves. No picture in picture.
 
 ## 8. Milestones
 
