@@ -258,7 +258,7 @@ test("a code approved from another device signs the app in", async () => {
       (d: { platform: string }) => d.platform === PLATFORM,
     ).length;
   const before = await mine();
-  maestro("quick-connect.yaml", 4, { TOKEN: userToken });
+  maestro("quick-connect.yaml", 4, { TOKEN: userToken, HOST_SERVER: server.origin });
   // Its own device and token, as with a password.
   expect(await mine()).toBe(before + 1);
 });

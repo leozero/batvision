@@ -30,11 +30,13 @@ appId: ${APP_ID}
     timeout: 15000
 - copyTextFrom:
     id: quick-connect-code
-# The other device: the account approves the code shown.
+# The other device: the account approves the code shown. The script runs on the machine
+# driving the tests, which reaches the server at HOST_SERVER (the emulator's SERVER,
+# 10.0.2.2, only exists inside the emulator).
 - runScript:
     file: approve-code.js
     env:
-      SERVER: ${SERVER}
+      SERVER: ${HOST_SERVER}
       TOKEN: ${TOKEN}
 - extendedWaitUntil:
     visible:
