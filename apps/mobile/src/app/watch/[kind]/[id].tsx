@@ -888,14 +888,21 @@ export default function Player() {
         supportedOrientations={["landscape"]}
       >
         {/* Neither the backdrop nor the sheet become one element (iOS would merge every
-            choice into it): each choice stays its own button. */}
+            choice into it): each choice stays its own button. On a TV neither takes the
+            remote either: a focused backdrop covers the screen, so no arrow finds a choice
+            next to it, and OK closed the menu (D112). */}
         <Pressable
           accessible={false}
+          focusable={!IS_TV}
+          // A choice's focus reaches it too: no ring of its own.
+          ringOnChild
           className="flex-1 items-end justify-center bg-black/60 p-6"
           onPress={() => setSheet(null)}
         >
           <Pressable
             accessible={false}
+            focusable={!IS_TV}
+            ringOnChild
             className="max-h-full w-80 rounded-card bg-surface p-4"
             onPress={() => {}}
           >
@@ -957,6 +964,8 @@ export default function Player() {
                       <Pressable
                         key={q}
                         testID={`quality-${q}`}
+                        // The remote starts on the current choice.
+                        hasTVPreferredFocus={IS_TV && selected}
                         onPress={() => {
                           setSheet(null);
                           setMode(q);
@@ -982,6 +991,7 @@ export default function Player() {
                     <Pressable
                       key={a.index}
                       testID={`audio-${a.index}`}
+                      hasTVPreferredFocus={IS_TV && a.index === audioSelected}
                       onPress={() => {
                         setSheet(null);
                         if (local) setLocalAudioIndex(a.index);
